@@ -1,0 +1,72 @@
+package manage
+
+import (
+	"net/http"
+
+	authhandler "pass-pivot/internal/server/auth/handler"
+)
+
+func RegisterRoutes(mux *http.ServeMux, manage *Handler, authn authnHandler, authz authzHandler, passkey *authhandler.PasskeyHandler) {
+	mux.HandleFunc("POST /api/manage/v1/organization/query", manage.ListOrganizations)
+	mux.HandleFunc("POST /api/manage/v1/organization/create", manage.CreateOrganization)
+	mux.HandleFunc("POST /api/manage/v1/organization/update", manage.UpdateOrganization)
+	mux.HandleFunc("POST /api/manage/v1/project/query", manage.ListProjects)
+	mux.HandleFunc("POST /api/manage/v1/project/create", manage.CreateProject)
+	mux.HandleFunc("POST /api/manage/v1/project/update", manage.UpdateProject)
+	mux.HandleFunc("POST /api/manage/v1/application/query", manage.ListApplications)
+	mux.HandleFunc("POST /api/manage/v1/application/create", manage.CreateApplication)
+	mux.HandleFunc("POST /api/manage/v1/application/key/reset", manage.ResetApplicationKey)
+	mux.HandleFunc("POST /api/manage/v1/application/update", manage.UpdateApplication)
+	mux.HandleFunc("POST /api/manage/v1/user/query", manage.ListUsers)
+	mux.HandleFunc("POST /api/manage/v1/user/create", manage.CreateUser)
+	mux.HandleFunc("POST /api/manage/v1/user/update", manage.UpdateUser)
+	mux.HandleFunc("POST /api/manage/v1/user/mfa_method/update", manage.UpdateUserMFAMethod)
+	mux.HandleFunc("POST /api/manage/v1/user/mfa_enrollment/delete", manage.DeleteUserMFAEnrollment)
+	mux.HandleFunc("POST /api/manage/v1/user/passkey/delete", manage.DeleteUserPasskey)
+	mux.HandleFunc("POST /api/manage/v1/user/passkey/register/begin", passkey.BeginRegistration)
+	mux.HandleFunc("POST /api/manage/v1/user/passkey/register/finish", passkey.FinishRegistration)
+	mux.HandleFunc("POST /api/manage/v1/user/totp/enroll", authn.EnrollTOTP)
+	mux.HandleFunc("POST /api/manage/v1/user/totp/verify", authn.VerifyTOTPEnrollment)
+	mux.HandleFunc("POST /api/manage/v1/user/recovery_code/generate", authn.GenerateRecoveryCodes)
+	mux.HandleFunc("POST /api/manage/v1/user/recovery_code/delete", manage.DeleteUserRecoveryCodes)
+	mux.HandleFunc("POST /api/manage/v1/user/detail/query", manage.GetUserDetail)
+	mux.HandleFunc("POST /api/manage/v1/user/delete", manage.DeleteUser)
+	mux.HandleFunc("POST /api/manage/v1/user/disable", manage.DisableUser)
+	mux.HandleFunc("POST /api/manage/v1/user/enable", manage.EnableUser)
+	mux.HandleFunc("POST /api/manage/v1/user/reset_password", manage.ResetUserPassword)
+	mux.HandleFunc("POST /api/manage/v1/user/reset_ukid", manage.ResetUserUKID)
+	mux.HandleFunc("POST /api/manage/v1/user/token/rotate", manage.RotateUserToken)
+	mux.HandleFunc("POST /api/manage/v1/user/session/revoke_all", manage.RevokeUserSessions)
+	mux.HandleFunc("POST /api/manage/v1/user/device/untrust", manage.UntrustUserDevice)
+	mux.HandleFunc("POST /api/manage/v1/audit_log/query", manage.ListAuditLogs)
+	mux.HandleFunc("POST /api/manage/v1/external_idp/query", manage.ListExternalIDPs)
+	mux.HandleFunc("POST /api/manage/v1/external_idp/create", manage.CreateExternalIDP)
+	mux.HandleFunc("POST /api/manage/v1/external_idp/update", manage.UpdateExternalIDP)
+	mux.HandleFunc("POST /api/manage/v1/external_identity_binding/create", manage.CreateExternalIdentityBinding)
+	mux.HandleFunc("POST /api/manage/v1/external_identity_binding/delete", manage.DeleteExternalIdentityBinding)
+	mux.HandleFunc("POST /api/manage/v1/role/query", authz.ListRoles)
+	mux.HandleFunc("POST /api/manage/v1/role/create", authz.CreateRole)
+	mux.HandleFunc("POST /api/manage/v1/role/update", authz.UpdateRole)
+	mux.HandleFunc("POST /api/manage/v1/role/delete", authz.DeleteRole)
+	mux.HandleFunc("POST /api/manage/v1/policy/query", authz.ListPolicies)
+	mux.HandleFunc("POST /api/manage/v1/policy/create", authz.CreatePolicy)
+	mux.HandleFunc("POST /api/manage/v1/policy/update", authz.UpdatePolicy)
+	mux.HandleFunc("POST /api/manage/v1/policy/delete", authz.DeletePolicy)
+}
+
+type authnHandler interface {
+	EnrollTOTP(http.ResponseWriter, *http.Request)
+	VerifyTOTPEnrollment(http.ResponseWriter, *http.Request)
+	GenerateRecoveryCodes(http.ResponseWriter, *http.Request)
+}
+
+type authzHandler interface {
+	ListRoles(http.ResponseWriter, *http.Request)
+	CreateRole(http.ResponseWriter, *http.Request)
+	UpdateRole(http.ResponseWriter, *http.Request)
+	DeleteRole(http.ResponseWriter, *http.Request)
+	ListPolicies(http.ResponseWriter, *http.Request)
+	CreatePolicy(http.ResponseWriter, *http.Request)
+	UpdatePolicy(http.ResponseWriter, *http.Request)
+	DeletePolicy(http.ResponseWriter, *http.Request)
+}

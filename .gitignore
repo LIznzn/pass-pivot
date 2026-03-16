@@ -1,0 +1,10 @@
+.gocache/
+.gomodcache/
+node_modules/
+web/node_modules/
+web/dist/
+.DS_Store
+.idea/
+.env
+.init
+external/geoip/resource/*.mmdb

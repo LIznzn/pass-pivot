@@ -1,0 +1,31 @@
+{
+  "name": "ppvt-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev:auth": "vite --config auth/vite.config.ts",
+    "dev:portal": "vite --config portal/vite.config.ts",
+    "dev:console": "vite --config console/vite.config.ts",
+    "build:auth": "vue-tsc -p auth/tsconfig.json && vite build --config auth/vite.config.ts",
+    "build:portal": "vue-tsc -p portal/tsconfig.json && vite build --config portal/vite.config.ts",
+    "build:console": "vue-tsc -p console/tsconfig.json && vite build --config console/vite.config.ts",
+    "build": "npm run build:auth && npm run build:portal && npm run build:console"
+  },
+  "dependencies": {
+    "bootstrap": "^5.3.8",
+    "bootstrap-icons": "^1.13.1",
+    "bootstrap-vue-next": "^0.40.8",
+    "qrcode": "^1.5.4",
+    "vue": "^3.5.22",
+    "vue-router": "^4.6.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "@types/qrcode": "^1.5.6",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.5",
+    "vue-tsc": "^3.0.7"
+  }
+}
