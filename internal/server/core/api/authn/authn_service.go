@@ -13,6 +13,7 @@ import (
 	coreservice "pass-pivot/internal/server/core/service"
 	sharedauthn "pass-pivot/internal/server/shared/authn"
 	sharedfido "pass-pivot/internal/server/shared/fido"
+	sharedhandler "pass-pivot/internal/server/shared/handler"
 	"pass-pivot/util"
 
 	"gorm.io/gorm"
@@ -578,6 +579,17 @@ func (s *AuthnService) GenerateCurrentUserRecoveryCodes(ctx context.Context, ses
 		return nil, err
 	}
 	return s.GenerateRecoveryCodes(ctx, userID)
+}
+
+func (s *AuthnService) CanManageUser(ctx context.Context, roleNames []string, userID string) (bool, error) {
+	if strings.TrimSpace(userID) == "" {
+		return false, errors.New("userId is required")
+	}
+	var user model.User
+	if err := s.db.WithContext(ctx).Select("id", "organization_id").First(&user, "id = ?", userID).Error; err != nil {
+		return false, err
+	}
+	return sharedhandler.RolesContainOrganizationManagementRole(roleNames, user.OrganizationID), nil
 }
 
 func (s *AuthnService) IssueClientCredentialToken(ctx context.Context, clientID, clientSecret, scope string) ([]model.Token, error) {

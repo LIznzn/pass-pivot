@@ -15,6 +15,7 @@ import (
 	"pass-pivot/internal/config"
 	"pass-pivot/internal/db"
 	"pass-pivot/internal/model"
+	sharedhandler "pass-pivot/internal/server/shared/handler"
 	"pass-pivot/util"
 
 	"gorm.io/driver/mysql"
@@ -458,9 +459,16 @@ func seed(ctx context.Context, database *gorm.DB, cfg config.Config) error {
 			{
 				BaseModel:      model.BaseModel{ID: cfg.ConsoleAdminRoleID},
 				OrganizationID: cfg.InternalOrganizationID,
-				Name:           "console:admin",
+				Name:           sharedhandler.OrganizationOwnerRoleName(cfg.InternalOrganizationID),
 				Type:           "user",
-				Description:    "Built-in console administrator role label",
+				Description:    "Built-in internal organization owner role",
+			},
+			{
+				BaseModel:      model.BaseModel{ID: stableUUID(cfg.InternalOrganizationID + ":" + sharedhandler.OrganizationAdminRoleName(cfg.InternalOrganizationID))},
+				OrganizationID: cfg.InternalOrganizationID,
+				Name:           sharedhandler.OrganizationAdminRoleName(cfg.InternalOrganizationID),
+				Type:           "user",
+				Description:    "Built-in internal organization admin role",
 			},
 			{
 				BaseModel:      model.BaseModel{ID: stableUUID(cfg.InternalOrganizationID + ":user:self:all")},
@@ -505,11 +513,12 @@ func seed(ctx context.Context, database *gorm.DB, cfg config.Config) error {
 		}
 		policies := []model.Policy{
 			newPolicy(cfg.InternalOrganizationID, roles[0].ID, "manage:all", "allow", 10, []model.PolicyAPIRule{{Method: "POST", Path: "/api/manage/v1/*"}}),
-			newPolicy(cfg.InternalOrganizationID, roles[1].ID, "user:self:all", "allow", 10, []model.PolicyAPIRule{{Method: "POST", Path: "/api/user/v1/*"}}),
-			newPolicy(cfg.InternalOrganizationID, roles[2].ID, "manage:all", "allow", 10, []model.PolicyAPIRule{{Method: "POST", Path: "/api/manage/v1/*"}}),
-			newPolicy(cfg.InternalOrganizationID, roles[3].ID, "user:self:all", "allow", 10, []model.PolicyAPIRule{{Method: "POST", Path: "/api/user/v1/*"}}),
-			newPolicy(cfg.InternalOrganizationID, roles[4].ID, "authn:all", "allow", 10, []model.PolicyAPIRule{{Method: "POST", Path: "/api/authn/v1/*"}}),
-			newPolicy(cfg.InternalOrganizationID, roles[5].ID, "authz:all", "allow", 10, []model.PolicyAPIRule{{Method: "POST", Path: "/api/authz/v1/*"}}),
+			newPolicy(cfg.InternalOrganizationID, roles[1].ID, "manage:all", "allow", 10, []model.PolicyAPIRule{{Method: "POST", Path: "/api/manage/v1/*"}}),
+			newPolicy(cfg.InternalOrganizationID, roles[2].ID, "user:self:all", "allow", 10, []model.PolicyAPIRule{{Method: "POST", Path: "/api/user/v1/*"}}),
+			newPolicy(cfg.InternalOrganizationID, roles[3].ID, "manage:all", "allow", 10, []model.PolicyAPIRule{{Method: "POST", Path: "/api/manage/v1/*"}}),
+			newPolicy(cfg.InternalOrganizationID, roles[4].ID, "user:self:all", "allow", 10, []model.PolicyAPIRule{{Method: "POST", Path: "/api/user/v1/*"}}),
+			newPolicy(cfg.InternalOrganizationID, roles[5].ID, "authn:all", "allow", 10, []model.PolicyAPIRule{{Method: "POST", Path: "/api/authn/v1/*"}}),
+			newPolicy(cfg.InternalOrganizationID, roles[6].ID, "authz:all", "allow", 10, []model.PolicyAPIRule{{Method: "POST", Path: "/api/authz/v1/*"}}),
 		}
 		for i := range policies {
 			if err := upsertByID(tx, &policies[i]); err != nil {
@@ -524,7 +533,7 @@ func seed(ctx context.Context, database *gorm.DB, cfg config.Config) error {
 			Name:           "Administrator",
 			Email:          "admin@example.com",
 			PhoneNumber:    "",
-			Roles:          []string{"console:admin", "user:self:all"},
+			Roles:          []string{sharedhandler.OrganizationOwnerRoleName(cfg.InternalOrganizationID), "user:self:all"},
 			Status:         "active",
 			PasswordHash:   passwordHash,
 			CurrentUKID:    "ukid-" + cfg.AdminUserID,

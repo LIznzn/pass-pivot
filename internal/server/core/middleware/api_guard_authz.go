@@ -32,6 +32,10 @@ func APIPolicyAuthorization(authz *apiauthz.AuthzService, next http.Handler) htt
 				sharedweb.Error(w, http.StatusForbidden, "user context is required")
 				return
 			}
+			if strings.HasPrefix(r.URL.Path, "/api/manage/v1/") && sharedhandler.HasAnyOrganizationManagementRole(identity) {
+				next.ServeHTTP(w, r)
+				return
+			}
 			userDecision, err := authz.CheckPolicy(r.Context(), "user", identity.User.ID, r.Method, r.URL.Path)
 			if err != nil {
 				sharedweb.Error(w, http.StatusForbidden, err.Error())

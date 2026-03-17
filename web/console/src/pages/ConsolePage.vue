@@ -846,16 +846,16 @@
         </div>
       </section>
 
-      <section v-else-if="tab === 'role' && roleViewMode === 'list'" class="section-grid">
+      <section v-else-if="tab === 'role' && roleViewMode === 'list'" class="card-stack">
         <div class="info-card">
           <div class="section-title">当前组织下可用的用户角色</div>
           <div class="d-flex align-items-center justify-content-between gap-3 mb-3 flex-wrap">
             <div class="d-flex align-items-center gap-2 flex-wrap">
-              <BButton size="sm" variant="outline-danger" :disabled="selectedRoleIds.length === 0" @click="deleteSelectedRoles">删除角色</BButton>
+              <BButton size="sm" variant="outline-danger" :disabled="selectedRoleIdsByType('user').length === 0" @click="deleteSelectedRolesByType('user')">删除角色</BButton>
             </div>
-            <BButton size="sm" variant="primary" @click="showCreateRoleForm = !showCreateRoleForm">{{ showCreateRoleForm ? '收起添加角色' : '添加角色' }}</BButton>
+            <BButton size="sm" variant="primary" @click="toggleCreateRoleForm('user')">{{ showCreateRoleForm && createRoleFormType === 'user' ? '收起添加角色' : '添加角色' }}</BButton>
           </div>
-          <div v-if="showCreateRoleForm" class="detail-card mb-3">
+          <div v-if="showCreateRoleForm && createRoleFormType === 'user'" class="detail-card mb-3">
             <BForm @submit.prevent="submitRoleCreateFromList">
               <BFormInput v-model="roleForm.name" placeholder="role label" class="mb-2" />
               <BFormSelect v-model="roleForm.type" :options="roleTypeOptions" class="mb-2" />
@@ -910,6 +910,23 @@
         </div>
         <div class="info-card">
           <div class="section-title">当前组织下可用的应用角色</div>
+          <div class="d-flex align-items-center justify-content-between gap-3 mb-3 flex-wrap">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              <BButton size="sm" variant="outline-danger" :disabled="selectedRoleIdsByType('application').length === 0" @click="deleteSelectedRolesByType('application')">删除角色</BButton>
+            </div>
+            <BButton size="sm" variant="primary" @click="toggleCreateRoleForm('application')">{{ showCreateRoleForm && createRoleFormType === 'application' ? '收起添加角色' : '添加角色' }}</BButton>
+          </div>
+          <div v-if="showCreateRoleForm && createRoleFormType === 'application'" class="detail-card mb-3">
+            <BForm @submit.prevent="submitRoleCreateFromList">
+              <BFormInput v-model="roleForm.name" placeholder="role label" class="mb-2" />
+              <BFormSelect v-model="roleForm.type" :options="roleTypeOptions" class="mb-2" />
+              <BFormInput v-model="roleForm.description" placeholder="description" class="mb-2" />
+              <div class="d-flex gap-2">
+                <BButton type="submit" variant="primary">创建角色</BButton>
+                <BButton type="button" variant="outline-secondary" @click="showCreateRoleForm = false">取消</BButton>
+              </div>
+            </BForm>
+          </div>
           <div class="table-responsive">
             <table class="table align-middle console-list-table mb-0">
               <thead>
@@ -2083,6 +2100,7 @@ const projectAssignedUserIds = ref<string[]>([])
 const projectAssignmentDraftUserIds = ref<string[]>([])
 const showCreateUserForm = ref(false)
 const showCreateRoleForm = ref(false)
+const createRoleFormType = ref<'user' | 'application'>('user')
 const organizationMetadataRows = ref<Array<{ id: string; key: string; value: string }>>([])
 const userRoleAssignments = ref<string[]>([])
 
@@ -3519,10 +3537,37 @@ function toggleRoleSelection(roleId: string, checked: boolean) {
   selectedRoleIds.value = selectedRoleIds.value.filter((id) => id !== roleId)
 }
 
+function selectedRoleIdsByType(type: 'user' | 'application') {
+  const targetIds = new Set(roles.value.filter((item: any) => item.type === type).map((item: any) => item.id))
+  return selectedRoleIds.value.filter((id) => targetIds.has(id))
+}
+
+function toggleCreateRoleForm(type: 'user' | 'application') {
+  roleForm.type = type
+  if (showCreateRoleForm.value && createRoleFormType.value === type) {
+    showCreateRoleForm.value = false
+    return
+  }
+  createRoleFormType.value = type
+  showCreateRoleForm.value = true
+}
+
 async function deleteSelectedRoles() {
   await withFeedback(async () => {
     await apiPost('/api/manage/v1/role/delete', { roleIds: selectedRoleIds.value })
     selectedRoleIds.value = []
+    await loadRoles()
+  })
+}
+
+async function deleteSelectedRolesByType(type: 'user' | 'application') {
+  const roleIds = selectedRoleIdsByType(type)
+  if (!roleIds.length) {
+    return
+  }
+  await withFeedback(async () => {
+    await apiPost('/api/manage/v1/role/delete', { roleIds })
+    selectedRoleIds.value = selectedRoleIds.value.filter((id) => !roleIds.includes(id))
     await loadRoles()
   })
 }
