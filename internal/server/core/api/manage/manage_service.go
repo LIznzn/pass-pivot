@@ -2,6 +2,7 @@ package manage
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sort"
 	"strings"
@@ -9,8 +10,8 @@ import (
 
 	"pass-pivot/internal/config"
 	"pass-pivot/internal/model"
-	authservice "pass-pivot/internal/server/auth/service"
 	coreservice "pass-pivot/internal/server/core/service"
+	sharedfido "pass-pivot/internal/server/shared/fido"
 	"pass-pivot/util"
 
 	"github.com/google/uuid"
@@ -18,10 +19,19 @@ import (
 )
 
 type Service struct {
-	db    *gorm.DB
-	cfg   config.Config
-	audit *coreservice.AuditService
-	geoip *coreservice.GeoIPService
+	db                             *gorm.DB
+	cfg                            config.Config
+	audit                          *coreservice.AuditService
+	geoip                          *coreservice.GeoIPService
+	fido                           fidoRegistrationService
+	deleteAuthorizationCodesByUser func(string)
+	deleteMFAChallengesByUser      func(string)
+}
+
+type fidoRegistrationService interface {
+	BeginRegistration(ctx context.Context, userID, purpose string) (string, any, error)
+	BeginRegistrationForSession(ctx context.Context, sessionID, purpose string) (string, any, error)
+	FinishRegistration(ctx context.Context, challengeID string, payload json.RawMessage) error
 }
 
 var (
@@ -66,6 +76,42 @@ func NewService(db *gorm.DB, cfg config.Config, audit *coreservice.AuditService)
 		audit: audit,
 		geoip: coreservice.NewGeoIPService("external/ip/GeoLite2-City.mmdb"),
 	}
+}
+
+func (s *Service) SetFIDOService(fido fidoRegistrationService) {
+	s.fido = fido
+}
+
+func (s *Service) SetAuthStateCleanup(deleteAuthorizationCodesByUser, deleteMFAChallengesByUser func(string)) {
+	s.deleteAuthorizationCodesByUser = deleteAuthorizationCodesByUser
+	s.deleteMFAChallengesByUser = deleteMFAChallengesByUser
+}
+
+func (s *Service) BeginUserSecureKeyRegistration(ctx context.Context, userID, purpose string) (string, any, error) {
+	if s.fido == nil {
+		return "", nil, errors.New("fido service is not configured")
+	}
+	if strings.TrimSpace(userID) == "" {
+		return "", nil, errors.New("userId is required")
+	}
+	return s.fido.BeginRegistration(ctx, userID, purpose)
+}
+
+func (s *Service) BeginCurrentUserSecureKeyRegistration(ctx context.Context, sessionID, purpose string) (string, any, error) {
+	if s.fido == nil {
+		return "", nil, errors.New("fido service is not configured")
+	}
+	return s.fido.BeginRegistrationForSession(ctx, sessionID, purpose)
+}
+
+func (s *Service) FinishSecureKeyRegistration(ctx context.Context, challengeID string, payload json.RawMessage) error {
+	if s.fido == nil {
+		return errors.New("fido service is not configured")
+	}
+	if strings.TrimSpace(challengeID) == "" {
+		return errors.New("challengeId is required")
+	}
+	return s.fido.FinishRegistration(ctx, challengeID, payload)
 }
 
 func (s *Service) ListOrganizations(ctx context.Context) ([]model.Organization, error) {
@@ -431,7 +477,7 @@ func (s *Service) CreateApplication(ctx context.Context, app model.Application) 
 	app.Roles = validatedRoles
 	generatedPrivateKey := ""
 	if app.ClientAuthenticationType == "private_key_jwt" {
-		publicKey, privateKey, err := authservice.GenerateClientKeyMaterial()
+		publicKey, privateKey, err := util.GenerateEd25519KeyMaterial()
 		if err != nil {
 			return nil, err
 		}
@@ -505,7 +551,7 @@ func (s *Service) UpdateApplication(ctx context.Context, app model.Application) 
 	updates["token_type"] = candidate.TokenType
 	updates["roles"] = candidate.Roles
 	if candidate.ClientAuthenticationType == "private_key_jwt" && strings.TrimSpace(existing.PublicKey) == "" {
-		publicKey, privateKey, err := authservice.GenerateClientKeyMaterial()
+		publicKey, privateKey, err := util.GenerateEd25519KeyMaterial()
 		if err != nil {
 			return nil, err
 		}
@@ -537,7 +583,7 @@ func (s *Service) ResetApplicationKey(ctx context.Context, applicationID string)
 	if app.ClientAuthenticationType != "private_key_jwt" {
 		return nil, errors.New("application is not configured for private_key_jwt")
 	}
-	publicKey, privateKey, err := authservice.GenerateClientKeyMaterial()
+	publicKey, privateKey, err := util.GenerateEd25519KeyMaterial()
 	if err != nil {
 		return nil, err
 	}
@@ -731,14 +777,6 @@ func grantTypesContain(values []string, expected string) bool {
 	return false
 }
 
-func AppGrantTypesContain(values []string, expected string) bool {
-	return grantTypesContain(values, expected)
-}
-
-func AppTokenTypesContain(values []string, expected string) bool {
-	return tokenTypesContain(values, expected)
-}
-
 func normalizeRoleNames(values []string) []string {
 	if len(values) == 0 {
 		return []string{}
@@ -856,24 +894,24 @@ func (s *Service) GetUserDetail(ctx context.Context, userID string) (*coreservic
 	if err := s.db.WithContext(ctx).First(&user, "id = ?", userID).Error; err != nil {
 		return nil, err
 	}
-	var credentials []model.MFAPasskey
+	var credentials []model.SecureKey
 	if err := s.db.WithContext(ctx).
-		Where("user_id = ? AND type = ?", user.ID, "passkey").
+		Where("user_id = ?", user.ID).
 		Order("created_at desc").
 		Find(&credentials).Error; err != nil {
 		return nil, err
 	}
-	passkeys := make([]coreservice.UserDetailPasskey, 0)
+	secureKeys := make([]coreservice.UserDetailSecureKey, 0)
 	for _, credential := range credentials {
-		passkeys = append(passkeys, coreservice.UserDetailPasskey{
-			ID:          credential.ID,
-			PublicKeyID: credential.PublicKeyID,
-			Identifier:  credential.Identifier,
-			SignCount:   credential.SignCount,
-			IsPasskey:   credential.IsPasskey,
-			IsU2f:       credential.IsU2f,
-			CreatedAt:   credential.CreatedAt,
-			UpdatedAt:   credential.UpdatedAt,
+		secureKeys = append(secureKeys, coreservice.UserDetailSecureKey{
+			ID:             credential.ID,
+			PublicKeyID:    credential.PublicKeyID,
+			Identifier:     credential.Identifier,
+			SignCount:      credential.SignCount,
+			WebAuthnEnable: credential.WebAuthnEnable,
+			U2FEnable:      credential.U2FEnable,
+			CreatedAt:      credential.CreatedAt,
+			UpdatedAt:      credential.UpdatedAt,
 		})
 	}
 
@@ -970,7 +1008,7 @@ func (s *Service) GetUserDetail(ctx context.Context, userID string) (*coreservic
 	return &coreservice.UserDetailData{
 		User:               user,
 		PasswordCredential: strings.TrimSpace(user.PasswordHash) != "",
-		Passkeys:           passkeys,
+		SecureKeys:         secureKeys,
 		Bindings:           bindings,
 		ExternalIDPs:       providers,
 		MFAEnrollments:     enrollments,
@@ -1081,7 +1119,7 @@ func (s *Service) SetUserMFAMethod(ctx context.Context, userID, method string, e
 	if userID == "" {
 		return errors.New("userId is required")
 	}
-	if method != "email_code" && method != "sms_code" && method != "passkey" {
+	if method != "email_code" && method != "sms_code" && method != "webauthn" {
 		return errors.New("unsupported method")
 	}
 	var user model.User
@@ -1094,22 +1132,22 @@ func (s *Service) SetUserMFAMethod(ctx context.Context, userID, method string, e
 		target = user.PhoneNumber
 		label = "手机验证码"
 	}
-	if method == "passkey" {
+	if method == "webauthn" {
 		label = "通行密钥"
 		target = ""
 		var count int64
 		if err := s.db.WithContext(ctx).
-			Model(&model.MFAPasskey{}).
-			Where("user_id = ? AND type = ? AND is_passkey = ? AND deleted_at IS NULL", user.ID, "passkey", true).
+			Model(&model.SecureKey{}).
+			Where("user_id = ? AND webauthn_enable = ? AND deleted_at IS NULL", user.ID, true).
 			Count(&count).Error; err != nil {
 			return err
 		}
 		if enabled && count == 0 {
-			return errors.New("passkey is required before enabling method")
+			return errors.New("securekey is required before enabling webauthn")
 		}
 	}
 	if enabled && target == "" {
-		if method != "passkey" {
+		if method != "webauthn" {
 			return errors.New("target is required before enabling method")
 		}
 	}
@@ -1143,6 +1181,7 @@ func (s *Service) SetUserMFAMethod(ctx context.Context, userID, method string, e
 			status = "active"
 		}
 		if err := s.db.WithContext(ctx).Model(&enrollment).Updates(map[string]any{
+			"method": method,
 			"label":  label,
 			"target": target,
 			"status": status,
@@ -1188,7 +1227,7 @@ func (s *Service) DeleteUserMFAEnrollments(ctx context.Context, userID, method s
 	})
 }
 
-func (s *Service) DeleteUserPasskey(ctx context.Context, userID, credentialID string) error {
+func (s *Service) DeleteUserSecureKey(ctx context.Context, userID, credentialID string) error {
 	if userID == "" || credentialID == "" {
 		return errors.New("userId and credentialId are required")
 	}
@@ -1198,21 +1237,21 @@ func (s *Service) DeleteUserPasskey(ctx context.Context, userID, credentialID st
 	}
 	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		result := tx.
-			Where("id = ? AND user_id = ? AND type = ?", credentialID, userID, "passkey").
-			Delete(&model.MFAPasskey{})
+			Where("id = ? AND user_id = ?", credentialID, userID).
+			Delete(&model.SecureKey{})
 		if result.Error != nil {
 			return result.Error
 		}
 		if result.RowsAffected == 0 {
-			return errors.New("passkey not found")
+			return errors.New("securekey not found")
 		}
-		return coreservice.SyncWebAuthnMFAEnrollments(ctx, tx, user)
+		return sharedfido.SyncCredentialEnrollments(ctx, tx, user)
 	}); err != nil {
 		return err
 	}
 	return s.audit.Record(ctx, coreservice.AuditEvent{
 		ActorType:  "admin",
-		EventType:  "user.passkey.deleted",
+		EventType:  "user.securekey.deleted",
 		Result:     "success",
 		TargetType: "credential",
 		TargetID:   credentialID,
@@ -1256,7 +1295,7 @@ func (s *Service) DeleteUsers(ctx context.Context, userIDs []string) error {
 		if err := tx.Where("user_id IN ?", userIDs).Delete(&model.Session{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("user_id IN ?", userIDs).Delete(&model.MFAPasskey{}).Error; err != nil {
+		if err := tx.Where("user_id IN ?", userIDs).Delete(&model.SecureKey{}).Error; err != nil {
 			return err
 		}
 		if err := tx.Where("user_id IN ?", userIDs).Delete(&model.MFAEnrollment{}).Error; err != nil {
@@ -1275,8 +1314,12 @@ func (s *Service) DeleteUsers(ctx context.Context, userIDs []string) error {
 			return err
 		}
 		for _, user := range users {
-			coreservice.DeleteAuthorizationCodesByUser(user.ID)
-			coreservice.DeleteMFAChallengesByUser(user.ID)
+			if s.deleteAuthorizationCodesByUser != nil {
+				s.deleteAuthorizationCodesByUser(user.ID)
+			}
+			if s.deleteMFAChallengesByUser != nil {
+				s.deleteMFAChallengesByUser(user.ID)
+			}
 		}
 		for _, user := range users {
 			_ = s.audit.Record(ctx, coreservice.AuditEvent{
@@ -1497,12 +1540,12 @@ func (s *Service) DeleteCurrentUserMFAEnrollments(ctx context.Context, sessionID
 	return s.DeleteUserMFAEnrollments(ctx, user.ID, method)
 }
 
-func (s *Service) DeleteCurrentUserPasskey(ctx context.Context, sessionID, credentialID string) error {
+func (s *Service) DeleteCurrentUserSecureKey(ctx context.Context, sessionID, credentialID string) error {
 	_, user, err := s.loadSessionUser(ctx, sessionID)
 	if err != nil {
 		return err
 	}
-	return s.DeleteUserPasskey(ctx, user.ID, credentialID)
+	return s.DeleteUserSecureKey(ctx, user.ID, credentialID)
 }
 
 func (s *Service) UpdateCurrentUserPassword(ctx context.Context, sessionID, currentPassword, newPassword string) error {
@@ -1620,10 +1663,6 @@ func (s *Service) CreateExternalIDP(ctx context.Context, provider model.External
 	case "oidc", "oauth":
 		if provider.Issuer == "" || provider.ClientID == "" {
 			return nil, errors.New("issuer and clientId are required for oauth/oidc providers")
-		}
-	case "saml":
-		if provider.Issuer == "" {
-			return nil, errors.New("issuer is required for saml providers")
 		}
 	default:
 		return nil, errors.New("unsupported external idp protocol")
@@ -1746,7 +1785,9 @@ func (s *Service) RevokeUserSessions(ctx context.Context, userID string) error {
 		if err := tx.Where("user_id = ?", userID).Delete(&model.Session{}).Error; err != nil {
 			return err
 		}
-		coreservice.DeleteAuthorizationCodesByUser(userID)
+		if s.deleteAuthorizationCodesByUser != nil {
+			s.deleteAuthorizationCodesByUser(userID)
+		}
 		return nil
 	}); err != nil {
 		return err
@@ -1771,7 +1812,9 @@ func (s *Service) RotateUserToken(ctx context.Context, userID string) error {
 			Updates(map[string]any{"revoked_at": now, "revocation_note": "token_rotated_by_admin"}).Error; err != nil {
 			return err
 		}
-		coreservice.DeleteAuthorizationCodesByUser(userID)
+		if s.deleteAuthorizationCodesByUser != nil {
+			s.deleteAuthorizationCodesByUser(userID)
+		}
 		return nil
 	}); err != nil {
 		return err

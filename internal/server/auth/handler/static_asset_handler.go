@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 )
 
-func OAuthUIAssetHandler(filename string) http.HandlerFunc {
+func StaticAssetHandler(filename string) http.HandlerFunc {
 	distDir := filepath.Join("web", "auth", "dist")
 	assetPath := filepath.Join(distDir, filename)
 	return func(w http.ResponseWriter, r *http.Request) {

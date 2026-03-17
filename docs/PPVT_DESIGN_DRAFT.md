@@ -99,7 +99,7 @@ PPVT 由两大核心模块组成：
 当前规划支持的认证方式包括：
 
 - 用户名/密码登录
-- Passkeys（无密码登录）
+- WebAuthn（前端可显示为通行密钥 / Passkey，用于无密码登录）
 - API Token（系统到系统访问）
 - 二次确认流程（敏感操作再验证）
 - 多因素认证（MFA）
@@ -121,7 +121,7 @@ MFA 支持方式：
 
 建议安全优先级：
 
-1. U2F / Passkeys
+1. U2F / WebAuthn
 2. TOTP
 3. 邮箱验证码
 4. 短信验证码（可作为兜底，不建议作为高安全默认项）
@@ -174,8 +174,8 @@ PPVT 为每个用户维护一组“用户密钥标识”（`ukid`）和对应公
 设计原则：
 
 - 系统侧仅保存公钥与 `ukid`
-- 私钥仅在用户侧持有（Passkey/U2F 设备），PPVT 不保存私钥
-- 未启用 Passkey 的用户，不保存私钥，仅保留公钥记录与密钥版本
+- 私钥仅在用户侧持有（securekey / WebAuthn / U2F 设备），PPVT 不保存私钥
+- 未启用 WebAuthn 的用户，不保存私钥，仅保留公钥记录与密钥版本
 
 令牌绑定规则：
 
@@ -267,7 +267,6 @@ PPVT 需要预留可拓展架构，覆盖内部统一认证和外部身份接入
 - OIDC
 - OAuth2
 - JWT
-- SAML
 
 ### 5.2 对外身份接入（作为第三方身份桥接能力）
 
@@ -337,7 +336,7 @@ scope 建议：
 
 - 系统标识信息：`system_id`、`name`、`description`
 - 系统访问入口：`base_url`、`redirect_uris`
-- 支持协议声明：`oidc`、`oauth2`、`saml`、`jwt`
+- 支持协议声明：`oidc`、`oauth2`、`jwt`
 - 权限规则定义：`resources`、`actions`、`permissions`
 - 版本与兼容信息：`schema_version`
 - 元数据校验信息：`issuer`、`updated_at`
@@ -425,7 +424,7 @@ PPVT 不包含网关实现，也不包含业务系统鉴权中间件实现；两
 3. 定义自发现配置 schema（`/.well-known/ppvt-iam.json`）与签名校验机制
 4. 定义统一权限命名规范（资源+动作）
 5. 先实现最小闭环：密码登录 + RBAC + 审计日志 + 单系统接入
-6. 再逐步扩展：MFA、Passkeys、OIDC/OAuth2、第三方登录桥接
+6. 再逐步扩展：MFA、WebAuthn、OIDC/OAuth2、第三方登录桥接
 
 ## 11. 未来里程碑（当前不实现）
 

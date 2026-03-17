@@ -69,21 +69,21 @@
                 <div class="col-lg-6">
                   <div class="detail-card h-100">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                      <div class="record-meta mb-0">通行密钥：{{ loginPasskeys.length }} · {{ passkeyLoginEnabled ? '已启用登录' : '已关闭登录' }}</div>
+                      <div class="record-meta mb-0">通行密钥：{{ loginSecureKeys.length }} · {{ webauthnLoginEnabled ? '已启用登录' : '已关闭登录' }}</div>
                       <div class="d-flex gap-2">
-                        <BButton size="sm" :variant="passkeyLoginEnabled ? 'outline-danger' : 'outline-secondary'" :disabled="!loginPasskeys.length" @click="togglePasskeyLogin(!passkeyLoginEnabled)">
-                          {{ passkeyLoginEnabled ? '关闭登录' : '启用登录' }}
+                        <BButton size="sm" :variant="webauthnLoginEnabled ? 'outline-danger' : 'outline-secondary'" :disabled="!loginSecureKeys.length" @click="toggleWebAuthnLogin(!webauthnLoginEnabled)">
+                          {{ webauthnLoginEnabled ? '关闭登录' : '启用登录' }}
                         </BButton>
-                        <BButton size="sm" variant="outline-primary" @click="registerPasskey('passkey')">注册通行密钥</BButton>
+                        <BButton size="sm" variant="outline-primary" @click="registerSecureKey('webauthn')">注册通行密钥</BButton>
                       </div>
                     </div>
-                    <div v-if="!loginPasskeys.length" class="record-meta">当前没有通行密钥，注册后才可启用通行密钥登录。</div>
-                    <div v-for="passkey in loginPasskeys" :key="passkey.id" class="record-row">
+                    <div v-if="!loginSecureKeys.length" class="record-meta">当前没有通行密钥，注册后才可启用通行密钥登录。</div>
+                    <div v-for="secureKey in loginSecureKeys" :key="secureKey.id" class="record-row">
                       <div>
-                        <strong>{{ passkey.identifier || '通行密钥' }}</strong>
-                        <div class="record-meta small-break">{{ passkey.publicKeyId }}</div>
+                        <strong>{{ secureKey.identifier || '通行密钥' }}</strong>
+                        <div class="record-meta small-break">{{ secureKey.publicKeyId }}</div>
                       </div>
-                      <BButton size="sm" variant="outline-danger" @click="deletePasskey(passkey.id)">删除</BButton>
+                      <BButton size="sm" variant="outline-danger" @click="deleteSecureKey(secureKey.id)">删除</BButton>
                     </div>
                   </div>
                 </div>
@@ -199,19 +199,19 @@
 
       <template v-else-if="mfaModalType === 'u2f'">
         <div class="record-meta mb-3">安全密钥与通行密钥共用同一套 WebAuthn 凭据。</div>
-        <div class="record-meta mb-3">当前已注册 {{ u2fPasskeys.length }} 把安全密钥。</div>
-        <div v-for="passkey in u2fPasskeys" :key="passkey.id" class="record-row mb-2">
+        <div class="record-meta mb-3">当前已注册 {{ u2fSecureKeys.length }} 把安全密钥。</div>
+        <div v-for="secureKey in u2fSecureKeys" :key="secureKey.id" class="record-row mb-2">
           <div>
-            <strong>{{ passkey.identifier || '安全密钥' }}</strong>
-            <div class="record-meta small-break">{{ passkey.publicKeyId }}</div>
+            <strong>{{ secureKey.identifier || '安全密钥' }}</strong>
+            <div class="record-meta small-break">{{ secureKey.publicKeyId }}</div>
           </div>
           <div class="d-flex align-items-center gap-2">
-            <code>{{ formatDateTime(passkey.createdAt) }}</code>
-            <BButton size="sm" variant="outline-danger" @click="deletePasskey(passkey.id)">删除</BButton>
+            <code>{{ formatDateTime(secureKey.createdAt) }}</code>
+            <BButton size="sm" variant="outline-danger" @click="deleteSecureKey(secureKey.id)">删除</BButton>
           </div>
         </div>
-        <div v-if="!u2fPasskeys.length" class="record-meta mb-3">当前没有已注册的安全密钥。</div>
-        <BButton variant="outline-primary" @click="registerPasskey('u2f')">新增安全密钥</BButton>
+        <div v-if="!u2fSecureKeys.length" class="record-meta mb-3">当前没有已注册的安全密钥。</div>
+        <BButton variant="outline-primary" @click="registerSecureKey('u2f')">新增安全密钥</BButton>
       </template>
 
       <template v-else-if="mfaModalType === 'recovery_code'">
@@ -255,7 +255,7 @@ type DetailData = {
     phoneNumber: string
   }
   passwordCredential: boolean
-  passkeys: Array<{ id: string; identifier: string; publicKeyId: string; isPasskey: boolean; isU2f: boolean; createdAt: string }>
+  secureKeys: Array<{ id: string; identifier: string; publicKeyId: string; webauthnEnable: boolean; u2fEnable: boolean; createdAt: string }>
   bindings: Array<{ id: string; providerName: string; externalIdpId: string; issuer: string; subject: string; createdAt: string }>
   externalIdps: Array<{ id: string; name: string; issuer: string }>
   mfaEnrollments: Array<{ id: string; method: string; label: string; target: string; status: string; lastUsedAt?: string }>
@@ -312,13 +312,13 @@ const sections = [
 ]
 
 const activeTotpEnrollment = computed(() => detail.value?.mfaEnrollments.find((item) => item.method === 'totp' && item.status === 'active') ?? null)
-const passkeyEnrollment = computed(() => detail.value?.mfaEnrollments.find((item) => item.method === 'passkey') ?? null)
-const loginPasskeys = computed(() => (detail.value?.passkeys ?? []).filter((item) => item.isPasskey))
-const u2fPasskeys = computed(() => (detail.value?.passkeys ?? []).filter((item) => item.isU2f))
-const passkeyLoginEnabled = computed(() => passkeyEnrollment.value?.status === 'active' && loginPasskeys.value.length > 0)
+const webauthnEnrollment = computed(() => detail.value?.mfaEnrollments.find((item) => item.method === 'webauthn') ?? null)
+const loginSecureKeys = computed(() => (detail.value?.secureKeys ?? []).filter((item) => item.webauthnEnable))
+const u2fSecureKeys = computed(() => (detail.value?.secureKeys ?? []).filter((item) => item.u2fEnable))
+const webauthnLoginEnabled = computed(() => webauthnEnrollment.value?.status === 'active' && loginSecureKeys.value.length > 0)
 const mfaRows = computed(() => {
   const enrollments = detail.value?.mfaEnrollments ?? []
-  const u2fEnabled = enrollments.some((item) => item.method === 'u2f' && item.status === 'active') && u2fPasskeys.value.length > 0
+  const u2fEnabled = enrollments.some((item) => item.method === 'u2f' && item.status === 'active') && u2fSecureKeys.value.length > 0
   const emailEnabled = enrollments.some((item) => item.method === 'email_code' && item.status === 'active')
   const smsEnabled = enrollments.some((item) => item.method === 'sms_code' && item.status === 'active')
   const totpEnabled = enrollments.some((item) => item.method === 'totp' && item.status === 'active')
@@ -326,7 +326,7 @@ const mfaRows = computed(() => {
     { id: 'email_code', label: '邮箱验证码', enabled: emailEnabled, summary: emailEnabled ? `目标：${profile.email || '未配置邮箱'}` : '使用邮箱接收验证码' },
     { id: 'sms_code', label: '手机验证码', enabled: smsEnabled, summary: smsEnabled ? `目标：${profile.phoneNumber || '未配置手机'}` : '使用手机接收验证码' },
     { id: 'totp', label: '身份验证器（TOTP）', enabled: totpEnabled, summary: totpEnabled ? '已配置身份验证器' : '使用身份验证器 App 生成动态验证码' },
-    { id: 'u2f', label: '安全密钥', enabled: u2fEnabled, summary: u2fEnabled ? `已登记 ${u2fPasskeys.value.length} 把安全密钥` : '使用 WebAuthn 安全密钥进行验证' },
+    { id: 'u2f', label: '安全密钥', enabled: u2fEnabled, summary: u2fEnabled ? `已登记 ${u2fSecureKeys.value.length} 把安全密钥` : '使用 WebAuthn 安全密钥进行验证' },
     { id: 'recovery_code', label: '备用验证码', enabled: (detail.value?.recoverySummary?.available ?? 0) > 0, summary: `剩余可用 ${detail.value?.recoverySummary?.available ?? 0} 个` }
   ]
 })
@@ -372,15 +372,15 @@ async function savePassword() {
   toast.success('密码已更新')
 }
 
-async function registerPasskey(purpose: 'passkey' | 'u2f' = 'passkey') {
-  const begin = await apiPost<{ challengeId: string; options: any }>('/api/user/v1/passkey/register/begin', { purpose })
+async function registerSecureKey(purpose: 'webauthn' | 'u2f' = 'webauthn') {
+  const begin = await apiPost<{ challengeId: string; options: any }>('/api/user/v1/securekey/register/begin', { purpose })
   const credential = await navigator.credentials.create({
     publicKey: normalizeCreationOptions(begin.options)
   })
   if (!credential) {
     return
   }
-  await apiPost('/api/user/v1/passkey/register/finish', {
+  await apiPost('/api/user/v1/securekey/register/finish', {
     challengeId: begin.challengeId,
     response: serializeCredential(credential as PublicKeyCredential)
   })
@@ -388,14 +388,14 @@ async function registerPasskey(purpose: 'passkey' | 'u2f' = 'passkey') {
   await loadPortalData()
 }
 
-async function deletePasskey(credentialId: string) {
-  await apiPost('/api/user/v1/passkey/delete', { credentialId })
+async function deleteSecureKey(credentialId: string) {
+  await apiPost('/api/user/v1/securekey/delete', { credentialId })
   toast.success('通行密钥已删除')
   await loadPortalData()
 }
 
-async function togglePasskeyLogin(enabled: boolean) {
-  await apiPost('/api/user/v1/mfa_method/update', { method: 'passkey', enabled })
+async function toggleWebAuthnLogin(enabled: boolean) {
+  await apiPost('/api/user/v1/mfa_method/update', { method: 'webauthn', enabled })
   toast.success(enabled ? '已启用通行密钥登录' : '已关闭通行密钥登录')
   await loadPortalData()
 }

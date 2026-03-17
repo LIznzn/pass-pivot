@@ -2,11 +2,9 @@ package manage
 
 import (
 	"net/http"
-
-	authhandler "pass-pivot/internal/server/auth/handler"
 )
 
-func RegisterRoutes(mux *http.ServeMux, manage *Handler, authn authnHandler, authz authzHandler, passkey *authhandler.PasskeyHandler) {
+func RegisterRoutes(mux *http.ServeMux, manage *Handler, authn authnHandler, authz authzHandler) {
 	mux.HandleFunc("POST /api/manage/v1/organization/query", manage.ListOrganizations)
 	mux.HandleFunc("POST /api/manage/v1/organization/create", manage.CreateOrganization)
 	mux.HandleFunc("POST /api/manage/v1/organization/update", manage.UpdateOrganization)
@@ -22,9 +20,9 @@ func RegisterRoutes(mux *http.ServeMux, manage *Handler, authn authnHandler, aut
 	mux.HandleFunc("POST /api/manage/v1/user/update", manage.UpdateUser)
 	mux.HandleFunc("POST /api/manage/v1/user/mfa_method/update", manage.UpdateUserMFAMethod)
 	mux.HandleFunc("POST /api/manage/v1/user/mfa_enrollment/delete", manage.DeleteUserMFAEnrollment)
-	mux.HandleFunc("POST /api/manage/v1/user/passkey/delete", manage.DeleteUserPasskey)
-	mux.HandleFunc("POST /api/manage/v1/user/passkey/register/begin", passkey.BeginRegistration)
-	mux.HandleFunc("POST /api/manage/v1/user/passkey/register/finish", passkey.FinishRegistration)
+	mux.HandleFunc("POST /api/manage/v1/user/securekey/delete", manage.DeleteUserSecureKey)
+	mux.HandleFunc("POST /api/manage/v1/user/securekey/register/begin", manage.BeginUserSecureKeyRegistration)
+	mux.HandleFunc("POST /api/manage/v1/user/securekey/register/finish", manage.FinishUserSecureKeyRegistration)
 	mux.HandleFunc("POST /api/manage/v1/user/totp/enroll", authn.EnrollTOTP)
 	mux.HandleFunc("POST /api/manage/v1/user/totp/verify", authn.VerifyTOTPEnrollment)
 	mux.HandleFunc("POST /api/manage/v1/user/recovery_code/generate", authn.GenerateRecoveryCodes)

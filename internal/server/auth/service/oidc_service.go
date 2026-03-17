@@ -14,7 +14,7 @@ import (
 
 	"pass-pivot/internal/config"
 	"pass-pivot/internal/model"
-	sharedauthn "pass-pivot/internal/server/shared/authn"
+	coreservice "pass-pivot/internal/server/core/service"
 	"pass-pivot/util"
 )
 
@@ -27,9 +27,9 @@ type OIDCService struct {
 }
 
 type oidcAuthService interface {
-	IssueClientCredentialTokenForApplication(ctx context.Context, app model.Application, scope string) (*sharedauthn.TokenPair, error)
-	IssuePasswordGrantTokenForApplication(ctx context.Context, app model.Application, identifier, password, scope, ipAddress, userAgent string) (*sharedauthn.TokenPair, *model.User, *model.Session, error)
-	IssueTokenPairForApplication(ctx context.Context, user model.User, session model.Session, applicationID, scope string) (*sharedauthn.TokenPair, error)
+	IssueClientCredentialTokenForApplication(ctx context.Context, app model.Application, scope string) ([]model.Token, error)
+	IssuePasswordGrantTokenForApplication(ctx context.Context, app model.Application, identifier, password, scope, ipAddress, userAgent string) ([]model.Token, *model.User, *model.Session, error)
+	IssueTokensForApplication(ctx context.Context, user model.User, session model.Session, applicationID, scope string) ([]model.Token, error)
 	RevokeToken(ctx context.Context, tokenValue, reason string) error
 	ResetUserUKID(ctx context.Context, userID string) (string, error)
 }
@@ -78,7 +78,7 @@ func (s *OIDCService) Metadata(ctx context.Context, clientID, applicationID stri
 }
 
 func (s *OIDCService) MetadataByIssuer(ctx context.Context) (map[string]any, error) {
-	settings := ApplicationSettings{TokenIssuer: s.cfg.AuthURL}
+	settings := coreservice.ApplicationSettings{TokenIssuer: s.cfg.AuthURL}
 	return map[string]any{
 		"issuer":                                settings.TokenIssuer,
 		"authorization_endpoint":                settings.TokenIssuer + "/auth/authorize",
@@ -152,7 +152,7 @@ func (s *OIDCService) Authorize(ctx context.Context, in AuthorizeInput) (*model.
 	return code, nil
 }
 
-func (s *OIDCService) ExchangeCode(ctx context.Context, audience, clientID, clientSecret, clientAssertionType, clientAssertion, codeValue, redirectURI, verifier string) (*sharedauthn.TokenPair, string, error) {
+func (s *OIDCService) ExchangeCode(ctx context.Context, audience, clientID, clientSecret, clientAssertionType, clientAssertion, codeValue, redirectURI, verifier string) ([]model.Token, string, error) {
 	app, err := s.validateClientAuthentication(ctx, audience, clientID, clientSecret, clientAssertionType, clientAssertion)
 	if err != nil {
 		return nil, "", err
@@ -187,7 +187,7 @@ func (s *OIDCService) ExchangeCode(ctx context.Context, audience, clientID, clie
 	if err := s.db.WithContext(ctx).First(&session, "id = ?", code.SessionID).Error; err != nil {
 		return nil, "", err
 	}
-	pair, err := s.auth.IssueTokenPairForApplication(ctx, user, session, code.ApplicationID, code.Scope)
+	tokens, err := s.auth.IssueTokensForApplication(ctx, user, session, code.ApplicationID, code.Scope)
 	if err != nil {
 		return nil, "", err
 	}
@@ -199,7 +199,7 @@ func (s *OIDCService) ExchangeCode(ctx context.Context, audience, clientID, clie
 			return nil, "", err
 		}
 	}
-	return pair, idToken, nil
+	return tokens, idToken, nil
 }
 
 func (s *OIDCService) UserInfo(ctx context.Context, accessToken string) (map[string]any, error) {
@@ -214,7 +214,7 @@ func (s *OIDCService) UserInfo(ctx context.Context, accessToken string) (map[str
 	if err := s.db.WithContext(ctx).First(&user, "id = ?", token.UserID).Error; err != nil {
 		return nil, err
 	}
-	settings, err := resolveApplicationSettingsByID(ctx, s.db, s.cfg, token.ApplicationID)
+	settings, err := coreservice.ResolveApplicationSettingsByID(ctx, s.db, s.cfg, token.ApplicationID)
 	if err != nil {
 		return nil, err
 	}
@@ -246,20 +246,20 @@ func verifyCodeChallenge(method string, challenge string, verifier string) error
 }
 
 func applicationReturnsIDToken(tokenType []string) bool {
-	return TokenTypesContain(tokenType, "id_token")
+	return coreservice.TokenTypesContain(tokenType, "id_token")
 }
 
 func applicationSupportsAuthorizationCode(app model.Application) bool {
-	return AppGrantTypesContain(app.GrantType, "authorization_code") ||
-		AppGrantTypesContain(app.GrantType, "authorization_code_pkce")
+	return coreservice.AppGrantTypesContain(app.GrantType, "authorization_code") ||
+		coreservice.AppGrantTypesContain(app.GrantType, "authorization_code_pkce")
 }
 
 func applicationSupportsAuthorizationCodePKCE(app model.Application) bool {
-	return AppGrantTypesContain(app.GrantType, "authorization_code_pkce")
+	return coreservice.AppGrantTypesContain(app.GrantType, "authorization_code_pkce")
 }
 
 func (s *OIDCService) signIDToken(ctx context.Context, applicationID string, user model.User, audience, scope, nonce string, authTime *time.Time, sessionID string) (string, error) {
-	settings, err := resolveApplicationSettingsByID(ctx, s.db, s.cfg, applicationID)
+	settings, err := coreservice.ResolveApplicationSettingsByID(ctx, s.db, s.cfg, applicationID)
 	if err != nil {
 		return "", err
 	}
@@ -306,10 +306,10 @@ func (s *OIDCService) SignIDTokenForApplication(ctx context.Context, application
 	return s.signIDToken(ctx, applicationID, user, audience, scope, nonce, authTime, sessionID)
 }
 
-func (s *OIDCService) resolveSettings(ctx context.Context, clientID, applicationID string) (ApplicationSettings, error) {
+func (s *OIDCService) resolveSettings(ctx context.Context, clientID, applicationID string) (coreservice.ApplicationSettings, error) {
 	if clientID != "" {
-		_, settings, err := resolveApplicationSettingsByClientID(ctx, s.db, s.cfg, clientID)
+		_, settings, err := coreservice.ResolveApplicationSettingsByClientID(ctx, s.db, s.cfg, clientID)
 		return settings, err
 	}
-	return resolveApplicationSettingsByID(ctx, s.db, s.cfg, applicationID)
+	return coreservice.ResolveApplicationSettingsByID(ctx, s.db, s.cfg, applicationID)
 }

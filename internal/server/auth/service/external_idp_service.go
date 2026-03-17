@@ -13,36 +13,35 @@ import (
 
 	"pass-pivot/internal/config"
 	"pass-pivot/internal/model"
-	sharedauthn "pass-pivot/internal/server/shared/authn"
 	"pass-pivot/util"
 )
 
-type FederationService struct {
+type ExternalIDPService struct {
 	db    *gorm.DB
 	cfg   config.Config
 	audit *AuditService
-	auth  federationAuthService
+	auth  externalIDPAuthService
 }
 
-type federationAuthService interface {
-	IssueTokenPair(ctx context.Context, user model.User, session model.Session, scope string) (*sharedauthn.TokenPair, error)
+type externalIDPAuthService interface {
+	IssueTokens(ctx context.Context, user model.User, session model.Session, scope string) ([]model.Token, error)
 }
 
-func NewFederationService(db *gorm.DB, cfg config.Config, audit *AuditService, auth federationAuthService) *FederationService {
-	return &FederationService{db: db, cfg: cfg, audit: audit, auth: auth}
+func NewExternalIDPService(db *gorm.DB, cfg config.Config, audit *AuditService, auth externalIDPAuthService) *ExternalIDPService {
+	return &ExternalIDPService{db: db, cfg: cfg, audit: audit, auth: auth}
 }
 
-type StartFederationResult struct {
+type StartExternalIDPResult struct {
 	AuthURL string `json:"authUrl"`
 	State   string `json:"state"`
 }
 
-type FederationCallbackResult struct {
+type ExternalIDPCallbackResult struct {
 	Session model.Session `json:"session"`
 	Tokens  []model.Token `json:"tokens"`
 }
 
-func (s *FederationService) StartLogin(ctx context.Context, providerID, applicationID, redirectURI string) (*StartFederationResult, error) {
+func (s *ExternalIDPService) StartLogin(ctx context.Context, providerID, applicationID, redirectURI string) (*StartExternalIDPResult, error) {
 	var provider model.ExternalIDP
 	if err := s.db.WithContext(ctx).First(&provider, "id = ?", providerID).Error; err != nil {
 		return nil, err
@@ -83,20 +82,20 @@ func (s *FederationService) StartLogin(ctx context.Context, providerID, applicat
 		ClientSecret: provider.ClientSecret,
 		RedirectURL:  redirectURI,
 		Endpoint:     oidcProvider.Endpoint(),
-		Scopes:       federationScopes(provider.Scopes),
+		Scopes:       externalIDPScopes(provider.Scopes),
 	}
 	authURL := oauthConfig.AuthCodeURL(state, oidc.Nonce(nonce))
-	return &StartFederationResult{AuthURL: authURL, State: state}, nil
+	return &StartExternalIDPResult{AuthURL: authURL, State: state}, nil
 }
 
-func (s *FederationService) CompleteLogin(ctx context.Context, stateValue, code, applicationID string) (*FederationCallbackResult, error) {
+func (s *ExternalIDPService) CompleteLogin(ctx context.Context, stateValue, code, applicationID string) (*ExternalIDPCallbackResult, error) {
 	authState, ok := loadExternalAuthState(stateValue)
 	if !ok {
-		return nil, errors.New("federation state not found")
+		return nil, errors.New("external idp state not found")
 	}
 	if authState.ExpiresAt.Before(time.Now()) {
 		deleteExternalAuthState(stateValue)
-		return nil, errors.New("federation state expired")
+		return nil, errors.New("external idp state expired")
 	}
 	var provider model.ExternalIDP
 	if err := s.db.WithContext(ctx).First(&provider, "id = ?", authState.ProviderID).Error; err != nil {
@@ -111,7 +110,7 @@ func (s *FederationService) CompleteLogin(ctx context.Context, stateValue, code,
 		ClientSecret: provider.ClientSecret,
 		RedirectURL:  authState.RedirectURI,
 		Endpoint:     oidcProvider.Endpoint(),
-		Scopes:       federationScopes(provider.Scopes),
+		Scopes:       externalIDPScopes(provider.Scopes),
 	}
 	token, err := oauthConfig.Exchange(ctx, code)
 	if err != nil {
@@ -158,7 +157,7 @@ func (s *FederationService) CompleteLogin(ctx context.Context, stateValue, code,
 	if err := s.db.WithContext(ctx).Create(&session).Error; err != nil {
 		return nil, err
 	}
-	pair, err := s.auth.IssueTokenPair(ctx, user, session, "openid profile email phone")
+	tokens, err := s.auth.IssueTokens(ctx, user, session, "openid profile email phone")
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +166,7 @@ func (s *FederationService) CompleteLogin(ctx context.Context, stateValue, code,
 		ApplicationID:  applicationID,
 		ActorType:      "user",
 		ActorID:        user.ID,
-		EventType:      "auth.federation.succeeded",
+		EventType:      "auth.external_idp.succeeded",
 		Result:         "success",
 		TargetType:     "session",
 		TargetID:       session.ID,
@@ -177,13 +176,13 @@ func (s *FederationService) CompleteLogin(ctx context.Context, stateValue, code,
 		},
 	})
 	deleteExternalAuthState(stateValue)
-	return &FederationCallbackResult{
+	return &ExternalIDPCallbackResult{
 		Session: session,
-		Tokens:  sharedauthn.CompactTokens(pair),
+		Tokens:  tokens,
 	}, nil
 }
 
-func federationScopes(raw string) []string {
+func externalIDPScopes(raw string) []string {
 	if strings.TrimSpace(raw) == "" {
 		return []string{oidc.ScopeOpenID, "profile", "email", "phone"}
 	}

@@ -1,9 +1,7 @@
 # PPVT (Pass Pivot)
 
-PPVT 是一个控制面导向的 IAM 平台实现。当前仓库的设计依据为：
+PPVT 是一个控制面导向的 IAM 平台实现。
 
-- [docs/PPVT_DESIGN_DRAFT.md](docs/PPVT_DESIGN_DRAFT.md)
-- [docs/PLNK_INTEGRATION_DRAFT.md](docs/PLNK_INTEGRATION_DRAFT.md)
 
 当前代码已经包含：
 
@@ -199,7 +197,6 @@ npm run dev:console
 未完全实现：
 
 - 短信供应商接入
-- 完整 SAML federation 流程
 - discovery 运行能力
 - 组织级策略对所有登录/用户页的强制执行
 - 更完整的外部 IdP 生命周期管理

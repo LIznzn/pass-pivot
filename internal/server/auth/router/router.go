@@ -7,11 +7,11 @@ import (
 	authhandler "pass-pivot/internal/server/auth/handler"
 )
 
-func NewAuthRouter(oidc *authhandler.OIDCHandler, oauthUIAssetHandler func(string) http.HandlerFunc, cors func(http.Handler) http.Handler) http.Handler {
+func NewAuthRouter(oidc *authhandler.OIDCHandler, staticAssetHandler func(string) http.HandlerFunc, cors func(http.Handler) http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	oauth := authhandler.NewOAuthHandler(oidc.Config(), oidc.Service())
-	mux.HandleFunc("GET /auth/authorize/app.js", oauthUIAssetHandler("auth.js"))
-	mux.HandleFunc("GET /auth/authorize/app.css", oauthUIAssetHandler("auth.css"))
+	mux.HandleFunc("GET /auth/authorize/app.js", staticAssetHandler("auth.js"))
+	mux.HandleFunc("GET /auth/authorize/app.css", staticAssetHandler("auth.css"))
 	mux.HandleFunc("GET /auth/authorize/", func(w http.ResponseWriter, r *http.Request) {
 		target := "/auth/authorize"
 		if rawQuery := strings.TrimSpace(r.URL.RawQuery); rawQuery != "" {
@@ -26,10 +26,10 @@ func NewAuthRouter(oidc *authhandler.OIDCHandler, oauthUIAssetHandler func(strin
 	mux.HandleFunc("POST /auth/headless/confirm", oidc.AuthorizeConfirm)
 	mux.HandleFunc("POST /auth/headless/mfa", oidc.AuthorizeMFA)
 	mux.HandleFunc("POST /auth/headless/mfa/challenge/generator", oidc.AuthorizeChallenge)
-	mux.HandleFunc("POST /auth/headless/login/passkey/begin", oidc.AuthorizePasskeyLoginBegin)
-	mux.HandleFunc("POST /auth/headless/login/passkey/finish", oidc.AuthorizePasskeyLoginFinish)
-	mux.HandleFunc("POST /auth/headless/mfa/u2f/begin", oidc.AuthorizeSessionPasskeyBegin)
-	mux.HandleFunc("POST /auth/headless/mfa/u2f/finish", oidc.AuthorizeSessionPasskeyFinish)
+	mux.HandleFunc("POST /auth/headless/login/webauthn/begin", oidc.AuthorizeWebAuthnLoginBegin)
+	mux.HandleFunc("POST /auth/headless/login/webauthn/finish", oidc.AuthorizeWebAuthnLoginFinish)
+	mux.HandleFunc("POST /auth/headless/mfa/u2f/begin", oidc.AuthorizeSessionU2FBegin)
+	mux.HandleFunc("POST /auth/headless/mfa/u2f/finish", oidc.AuthorizeSessionU2FFinish)
 	mux.HandleFunc("POST /auth/token", oidc.Token)
 	mux.HandleFunc("GET /auth/userinfo", oidc.UserInfo)
 	mux.HandleFunc("POST /auth/revoke", oauth.Revoke)

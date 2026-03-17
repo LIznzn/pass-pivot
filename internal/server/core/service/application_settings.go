@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 
+	"gorm.io/gorm"
+
 	"pass-pivot/internal/config"
 	"pass-pivot/internal/model"
-
-	"gorm.io/gorm"
 )
 
 const (
@@ -55,6 +55,10 @@ func resolveApplicationSettingsByClientID(ctx context.Context, db *gorm.DB, cfg 
 		return app, settings, err
 	}
 	return app, mergeApplicationSettings(app, settings), nil
+}
+
+func ResolveApplicationSettingsByClientID(ctx context.Context, db *gorm.DB, cfg config.Config, clientID string) (model.Application, ApplicationSettings, error) {
+	return resolveApplicationSettingsByClientID(ctx, db, cfg, clientID)
 }
 
 func mergeApplicationSettings(app model.Application, fallback ApplicationSettings) ApplicationSettings {

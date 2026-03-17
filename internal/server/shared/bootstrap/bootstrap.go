@@ -18,6 +18,7 @@ import (
 	apisystem "pass-pivot/internal/server/core/api/system"
 	apiuser "pass-pivot/internal/server/core/api/user"
 	coreservice "pass-pivot/internal/server/core/service"
+	sharedfido "pass-pivot/internal/server/shared/fido"
 )
 
 type App struct {
@@ -29,16 +30,16 @@ type App struct {
 }
 
 type Dependencies struct {
-	Audit      *coreservice.AuditService
-	Manage     *apimanage.Service
-	System     *apisystem.Service
-	User       *apiuser.Service
-	MFA        *authservice.MFAService
-	Authn      *apiauthn.AuthnService
-	Authz      *apiauthz.AuthzService
-	OIDC       *authservice.OIDCService
-	Federation *authservice.FederationService
-	Passkey    *authservice.PasskeyService
+	Audit       *coreservice.AuditService
+	Manage      *apimanage.Service
+	System      *apisystem.Service
+	User        *apiuser.Service
+	MFA         *authservice.MFAService
+	Authn       *apiauthn.AuthnService
+	Authz       *apiauthz.AuthzService
+	OIDC        *authservice.OIDCService
+	ExternalIDP *authservice.ExternalIDPService
+	FIDO        *sharedfido.Service
 }
 
 func OpenBase(cfg config.Config) (*App, *Dependencies, error) {
@@ -65,6 +66,7 @@ func OpenBase(cfg config.Config) (*App, *Dependencies, error) {
 	authService := apiauthn.NewAuthnService(database, cfg, auditService, mfaService)
 	authzService := apiauthz.NewAuthzService(database, auditService)
 	manageService := apimanage.NewService(database, cfg, auditService)
+	manageService.SetAuthStateCleanup(authservice.DeleteAuthorizationCodesByUser, authservice.DeleteMFAChallengesByUser)
 	systemService := apisystem.NewService(manageService)
 	userService := apiuser.NewService(manageService)
 	keyStore := authservice.NewProviderKeyStore(map[string]string{
@@ -74,11 +76,26 @@ func OpenBase(cfg config.Config) (*App, *Dependencies, error) {
 		cfg.AuthzAPIApplicationID:  cfg.APIAuthzPrivateSeed,
 	})
 	oidcService := authservice.NewOIDCService(database, cfg, authAuditService, authService, keyStore)
-	federationService := authservice.NewFederationService(database, cfg, authAuditService, authService)
-	passkeyService, err := authservice.NewPasskeyService(database, cfg, authAuditService, authService)
+	externalIDPService := authservice.NewExternalIDPService(database, cfg, authAuditService, authService)
+	fidoService, err := sharedfido.NewService(database, cfg, func(ctx context.Context, record sharedfido.RegistrationAuditRecord) error {
+		return auditService.Record(ctx, coreservice.AuditEvent{
+			OrganizationID: record.OrganizationID,
+			ActorType:      "user",
+			ActorID:        record.UserID,
+			EventType:      "user.securekey.registered",
+			Result:         "success",
+			TargetType:     "credential",
+			TargetID:       record.CredentialID,
+			Detail:         map[string]any{"purpose": record.Purpose},
+		})
+	})
 	if err != nil {
 		return nil, nil, err
 	}
+	authService.SetFIDOService(fidoService)
+	mfaService.SetFIDOService(fidoService)
+	mfaService.SetWebAuthnMFARuntime(authService)
+	manageService.SetFIDOService(fidoService)
 
 	return &App{
 			Config: cfg,
@@ -86,15 +103,15 @@ func OpenBase(cfg config.Config) (*App, *Dependencies, error) {
 			DB:     database,
 			Redis:  redisClient,
 		}, &Dependencies{
-			Audit:      auditService,
-			MFA:        mfaService,
-			Authn:      authService,
-			Authz:      authzService,
-			OIDC:       oidcService,
-			Federation: federationService,
-			Passkey:    passkeyService,
-			Manage:     manageService,
-			System:     systemService,
-			User:       userService,
+			Audit:       auditService,
+			MFA:         mfaService,
+			Authn:       authService,
+			Authz:       authzService,
+			OIDC:        oidcService,
+			ExternalIDP: externalIDPService,
+			FIDO:        fidoService,
+			Manage:      manageService,
+			System:      systemService,
+			User:        userService,
 		}, nil
 }

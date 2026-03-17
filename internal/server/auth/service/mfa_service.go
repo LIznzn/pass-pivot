@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand/v2"
@@ -18,16 +19,29 @@ import (
 
 	"pass-pivot/internal/model"
 	"pass-pivot/internal/notify"
+	coreservice "pass-pivot/internal/server/core/service"
 	sharedauthn "pass-pivot/internal/server/shared/authn"
+	sharedfido "pass-pivot/internal/server/shared/fido"
 	"pass-pivot/util"
 )
 
 type MFAService struct {
-	db    *gorm.DB
-	cfg   config.Config
-	audit *AuditService
-	mu    sync.Mutex
-	totp  map[string]pendingTOTPEnrollment
+	db              *gorm.DB
+	cfg             config.Config
+	audit           *AuditService
+	mu              sync.Mutex
+	totp            map[string]pendingTOTPEnrollment
+	u2fFIDO         u2fFIDOService
+	webAuthnRuntime webAuthnMFARuntime
+}
+
+type u2fFIDOService interface {
+	BeginAssertionForSession(ctx context.Context, sessionID, usage string) (string, any, error)
+	FinishAssertion(ctx context.Context, challengeID string, payload json.RawMessage) (*sharedfido.AssertionResult, error)
+}
+
+type webAuthnMFARuntime interface {
+	CompleteWebAuthnMFA(ctx context.Context, sessionID, method string, trustDevice bool) (*sharedauthn.LoginResult, error)
 }
 
 func NewMFAService(db *gorm.DB, cfg config.Config, audit *AuditService) *MFAService {
@@ -37,6 +51,38 @@ func NewMFAService(db *gorm.DB, cfg config.Config, audit *AuditService) *MFAServ
 		audit: audit,
 		totp:  map[string]pendingTOTPEnrollment{},
 	}
+}
+
+func (s *MFAService) SetFIDOService(fido u2fFIDOService) {
+	s.u2fFIDO = fido
+}
+
+func (s *MFAService) SetWebAuthnMFARuntime(runtime webAuthnMFARuntime) {
+	s.webAuthnRuntime = runtime
+}
+
+func (s *MFAService) BeginU2FAssertion(ctx context.Context, sessionID string) (string, any, error) {
+	if s.u2fFIDO == nil {
+		return "", nil, errors.New("fido service is not configured")
+	}
+	return s.u2fFIDO.BeginAssertionForSession(ctx, sessionID, "u2f")
+}
+
+func (s *MFAService) FinishU2FAssertion(ctx context.Context, challengeID string, payload json.RawMessage, trustDevice bool) (*sharedauthn.LoginResult, error) {
+	if s.u2fFIDO == nil {
+		return nil, errors.New("fido service is not configured")
+	}
+	if s.webAuthnRuntime == nil {
+		return nil, errors.New("webauthn mfa runtime is not configured")
+	}
+	assertion, err := s.u2fFIDO.FinishAssertion(ctx, challengeID, payload)
+	if err != nil {
+		return nil, err
+	}
+	if assertion.Usage != "u2f" {
+		return nil, errors.New("fido assertion usage mismatch")
+	}
+	return s.webAuthnRuntime.CompleteWebAuthnMFA(ctx, assertion.SessionID, "u2f", trustDevice)
 }
 
 type TOTPEnrollmentResult struct {
@@ -63,7 +109,7 @@ func (s *MFAService) EnrollTOTPForApplication(ctx context.Context, userID, appli
 	if err := s.db.WithContext(ctx).First(&user, "id = ?", userID).Error; err != nil {
 		return nil, err
 	}
-	settings, err := resolveApplicationSettingsByID(ctx, s.db, s.cfg, applicationID)
+	settings, err := coreservice.ResolveApplicationSettingsByID(ctx, s.db, s.cfg, applicationID)
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +290,7 @@ func (s *MFAService) CreateDeliveryChallenge(ctx context.Context, sessionID, met
 }
 
 func (s *MFAService) mailerForOrganization(ctx context.Context, organizationID string) (notify.Mailer, error) {
-	_, settings, err := loadOrganizationConsoleSettings(ctx, s.db, organizationID)
+	_, settings, err := coreservice.LoadOrganizationConsoleSettings(ctx, s.db, organizationID)
 	if err != nil {
 		return nil, err
 	}

@@ -8,7 +8,7 @@ import (
 	"pass-pivot/internal/model"
 	coreservice "pass-pivot/internal/server/core/service"
 	sharedhandler "pass-pivot/internal/server/shared/handler"
-	sharedhttp "pass-pivot/internal/server/shared/web"
+	sharedweb "pass-pivot/internal/server/shared/web"
 )
 
 type AccessTokenAuthenticator interface {
@@ -37,16 +37,16 @@ func handleAccessTokenClientAuthentication(platform AccessTokenAuthenticator, re
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		accessToken := sharedhandler.BearerTokenFromRequest(r)
 		if accessToken == "" {
-			sharedhttp.Error(w, http.StatusUnauthorized, "access token is required")
+			sharedweb.Error(w, http.StatusUnauthorized, "access token is required")
 			return
 		}
 		identity, err := platform.AuthenticateAccessToken(r.Context(), accessToken)
 		if err != nil {
-			sharedhttp.Error(w, http.StatusUnauthorized, err.Error())
+			sharedweb.Error(w, http.StatusUnauthorized, err.Error())
 			return
 		}
 		if requirement.requireUser && identity.User == nil {
-			sharedhttp.Error(w, http.StatusForbidden, "user context is required")
+			sharedweb.Error(w, http.StatusForbidden, "user context is required")
 			return
 		}
 		ctx := sharedhandler.WithAccessTokenIdentity(r.Context(), identity)
@@ -68,7 +68,7 @@ func handlePrivateKeyJWTClientAuthentication(oidc PrivateKeyJWTAuthenticator, re
 			requestServerIssuer(r)+requirement.privateJWTAud,
 		)
 		if err != nil {
-			sharedhttp.Error(w, http.StatusUnauthorized, err.Error())
+			sharedweb.Error(w, http.StatusUnauthorized, err.Error())
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(withAPIApplication(r.Context(), app)))

@@ -9,8 +9,7 @@ import (
 	"pass-pivot/internal/model"
 	authservice "pass-pivot/internal/server/auth/service"
 	coreservice "pass-pivot/internal/server/core/service"
-	sharedauthn "pass-pivot/internal/server/shared/authn"
-	sharedhttp "pass-pivot/internal/server/shared/web"
+	sharedweb "pass-pivot/internal/server/shared/web"
 )
 
 type OIDCHandler struct {
@@ -21,9 +20,9 @@ type OIDCHandler struct {
 }
 
 type oidcAuthClient interface {
-	IssueClientCredentialToken(ctx context.Context, clientID, clientSecret, scope string) (*sharedauthn.TokenPair, error)
-	IssueClientCredentialTokenForApplication(ctx context.Context, app model.Application, scope string) (*sharedauthn.TokenPair, error)
-	IssuePasswordGrantTokenForApplication(ctx context.Context, app model.Application, identifier, password, scope, ipAddress, userAgent string) (*sharedauthn.TokenPair, *model.User, *model.Session, error)
+	IssueClientCredentialToken(ctx context.Context, clientID, clientSecret, scope string) ([]model.Token, error)
+	IssueClientCredentialTokenForApplication(ctx context.Context, app model.Application, scope string) ([]model.Token, error)
+	IssuePasswordGrantTokenForApplication(ctx context.Context, app model.Application, identifier, password, scope, ipAddress, userAgent string) ([]model.Token, *model.User, *model.Session, error)
 	RevokeToken(ctx context.Context, tokenValue, reason string) error
 }
 
@@ -59,19 +58,19 @@ func (h *OIDCHandler) BuildNamedClientAssertion(ctx context.Context, application
 func (h *OIDCHandler) Metadata(w http.ResponseWriter, r *http.Request) {
 	result, err := h.oidc.MetadataByIssuer(r.Context())
 	if err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, result)
+	sharedweb.JSON(w, http.StatusOK, result)
 }
 
 func (h *OIDCHandler) JWKS(w http.ResponseWriter, r *http.Request) {
 	keys, err := h.oidc.JWKSByIssuer(r.Context())
 	if err != nil {
-		sharedhttp.Error(w, http.StatusInternalServerError, err.Error())
+		sharedweb.Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, keys)
+	sharedweb.JSON(w, http.StatusOK, keys)
 }
 
 func (h *OIDCHandler) Authorize(w http.ResponseWriter, r *http.Request) {
@@ -80,7 +79,7 @@ func (h *OIDCHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 
 func (h *OIDCHandler) Token(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid form body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid form body")
 		return
 	}
 	clientID, clientSecret, _ := authservice.ParseBasicClientAuthorization(r.Header.Get("Authorization"))
@@ -105,7 +104,7 @@ func (h *OIDCHandler) Token(w http.ResponseWriter, r *http.Request) {
 		"scope":               strings.TrimSpace(r.Form.Get("scope")),
 	})
 	if err != nil {
-		sharedhttp.Error(w, http.StatusBadGateway, err.Error())
+		sharedweb.Error(w, http.StatusBadGateway, err.Error())
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -115,14 +114,14 @@ func (h *OIDCHandler) Token(w http.ResponseWriter, r *http.Request) {
 func (h *OIDCHandler) UserInfo(w http.ResponseWriter, r *http.Request) {
 	auth := r.Header.Get("Authorization")
 	if !strings.HasPrefix(auth, "Bearer ") {
-		sharedhttp.Error(w, http.StatusUnauthorized, "missing bearer token")
+		sharedweb.Error(w, http.StatusUnauthorized, "missing bearer token")
 		return
 	}
 	body, err := h.callAuthnAPIWithHeaders(w, r, "/api/authn/v1/userinfo/query", map[string]any{}, map[string]string{
 		"Authorization": auth,
 	})
 	if err != nil {
-		sharedhttp.Error(w, http.StatusBadGateway, err.Error())
+		sharedweb.Error(w, http.StatusBadGateway, err.Error())
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -144,14 +143,14 @@ func (h *OIDCHandler) EndSession(w http.ResponseWriter, r *http.Request) {
 		"refreshToken": strings.TrimSpace(r.Form.Get("refresh_token")),
 		"reason":       "oidc_end_session",
 	}); err != nil {
-		sharedhttp.Error(w, http.StatusBadGateway, err.Error())
+		sharedweb.Error(w, http.StatusBadGateway, err.Error())
 		return
 	}
 	if postLogoutRedirectURI != "" {
 		http.Redirect(w, r, postLogoutRedirectURI, http.StatusFound)
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, map[string]any{"logout": true})
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"logout": true})
 }
 
 func bearerTokenFromAuthorization(value string) string {

@@ -18,7 +18,7 @@ func defaultOrganizationConsoleSettings() model.OrganizationSetting {
 		Domains:          []model.OrganizationDomain{},
 		LoginPolicy: model.OrganizationLoginPolicy{
 			PasswordLoginEnabled: true,
-			PasskeyLoginEnabled:  true,
+			WebAuthnLoginEnabled: true,
 			AllowUsername:        true,
 			AllowEmail:           true,
 			AllowPhone:           true,
@@ -37,7 +37,7 @@ func defaultOrganizationConsoleSettings() model.OrganizationSetting {
 		},
 		MFAPolicy: model.OrganizationMFAPolicy{
 			RequireForAllUsers: false,
-			AllowPasskey:       true,
+			AllowWebAuthn:      true,
 			AllowTotp:          true,
 			AllowEmailCode:     true,
 			AllowSmsCode:       false,
@@ -99,4 +99,16 @@ func loadOrganizationConsoleSettings(ctx context.Context, db *gorm.DB, organizat
 		MFAPolicy:        organization.MFAPolicy,
 	})
 	return organization, settings, nil
+}
+
+func LoadOrganizationConsoleSettings(ctx context.Context, db *gorm.DB, organizationID string) (model.Organization, model.OrganizationSetting, error) {
+	return loadOrganizationConsoleSettings(ctx, db, organizationID)
+}
+
+func NormalizeOrganizationConsoleSettings(input *model.OrganizationSetting) model.OrganizationSetting {
+	return normalizeOrganizationConsoleSettings(input)
+}
+
+func ParseLegacyOrganizationConsoleSettings(organization model.Organization) *model.OrganizationSetting {
+	return parseLegacyOrganizationConsoleSettings(organization)
 }

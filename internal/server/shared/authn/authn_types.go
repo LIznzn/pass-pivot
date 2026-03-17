@@ -21,8 +21,3 @@ type LoginResult struct {
 	Tokens              []model.Token `json:"tokens,omitempty"`
 	Fingerprint         string        `json:"-"`
 }
-
-type TokenPair struct {
-	AccessToken  *model.Token `json:"accessToken,omitempty"`
-	RefreshToken *model.Token `json:"refreshToken,omitempty"`
-}

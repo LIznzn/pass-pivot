@@ -12,7 +12,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"pass-pivot/internal/model"
-	sharedauthn "pass-pivot/internal/server/shared/authn"
 	"pass-pivot/util"
 )
 
@@ -112,7 +111,7 @@ func (s *OIDCService) BuildAuthorizationRedirect(ctx context.Context, in Standar
 	return redirect.String(), nil
 }
 
-func (s *OIDCService) ExchangeRefreshToken(ctx context.Context, audience, clientID, clientSecret, clientAssertionType, clientAssertion, refreshTokenValue, scope string) (*sharedauthn.TokenPair, string, error) {
+func (s *OIDCService) ExchangeRefreshToken(ctx context.Context, audience, clientID, clientSecret, clientAssertionType, clientAssertion, refreshTokenValue, scope string) ([]model.Token, string, error) {
 	app, err := s.validateClientAuthentication(ctx, audience, clientID, clientSecret, clientAssertionType, clientAssertion)
 	if err != nil {
 		return nil, "", err
@@ -154,7 +153,7 @@ func (s *OIDCService) ExchangeRefreshToken(ctx context.Context, audience, client
 	if tokenScope == "" {
 		tokenScope = refresh.Scope
 	}
-	pair, err := s.auth.IssueTokenPairForApplication(ctx, user, session, app.ID, tokenScope)
+	tokens, err := s.auth.IssueTokensForApplication(ctx, user, session, app.ID, tokenScope)
 	if err != nil {
 		return nil, "", err
 	}
@@ -166,7 +165,7 @@ func (s *OIDCService) ExchangeRefreshToken(ctx context.Context, audience, client
 			return nil, "", err
 		}
 	}
-	return pair, idToken, nil
+	return tokens, idToken, nil
 }
 
 func (s *OIDCService) IntrospectToken(ctx context.Context, audience, clientID, clientSecret, clientAssertionType, clientAssertion, tokenValue string) (map[string]any, error) {
@@ -403,19 +402,22 @@ func ParseBasicClientAuthorization(value string) (string, string, bool) {
 	return parts[0], parts[1], true
 }
 
-func BuildStandardTokenResponse(pair *sharedauthn.TokenPair, idToken string) map[string]any {
+func BuildStandardTokenResponse(tokens []model.Token, idToken string) map[string]any {
 	result := map[string]any{
 		"token_type": "Bearer",
 	}
-	if pair != nil && pair.AccessToken != nil {
-		result["access_token"] = pair.AccessToken.Token
-		result["expires_in"] = tokenExpirySeconds(pair.AccessToken)
-		if pair.AccessToken.Scope != "" {
-			result["scope"] = pair.AccessToken.Scope
+	for i := range tokens {
+		token := &tokens[i]
+		switch token.Type {
+		case "access_token":
+			result["access_token"] = token.Token
+			result["expires_in"] = tokenExpirySeconds(token)
+			if token.Scope != "" {
+				result["scope"] = token.Scope
+			}
+		case "refresh_token":
+			result["refresh_token"] = token.Token
 		}
-	}
-	if pair != nil && pair.RefreshToken != nil {
-		result["refresh_token"] = pair.RefreshToken.Token
 	}
 	if idToken != "" {
 		result["id_token"] = idToken

@@ -2,6 +2,7 @@ package authn
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 	authservice "pass-pivot/internal/server/auth/service"
 	coreservice "pass-pivot/internal/server/core/service"
 	sharedauthn "pass-pivot/internal/server/shared/authn"
+	sharedfido "pass-pivot/internal/server/shared/fido"
 	"pass-pivot/util"
 
 	"gorm.io/gorm"
@@ -21,10 +23,72 @@ type AuthnService struct {
 	cfg   config.Config
 	audit *coreservice.AuditService
 	mfa   *authservice.MFAService
+	fido  webAuthnFIDOService
+}
+
+type webAuthnFIDOService interface {
+	BeginAssertionForIdentifier(ctx context.Context, identifier, usage string) (string, any, error)
+	FinishAssertion(ctx context.Context, challengeID string, payload json.RawMessage) (*sharedfido.AssertionResult, error)
 }
 
 func NewAuthnService(db *gorm.DB, cfg config.Config, audit *coreservice.AuditService, mfa *authservice.MFAService) *AuthnService {
 	return &AuthnService{db: db, cfg: cfg, audit: audit, mfa: mfa}
+}
+
+func (s *AuthnService) SetFIDOService(fido webAuthnFIDOService) {
+	s.fido = fido
+}
+
+func (s *AuthnService) BeginWebAuthnLogin(ctx context.Context, identifier string) (string, any, error) {
+	if s.fido == nil {
+		return "", nil, errors.New("fido service is not configured")
+	}
+	return s.fido.BeginAssertionForIdentifier(ctx, identifier, "webauthn")
+}
+
+func (s *AuthnService) FinishWebAuthnLogin(ctx context.Context, challengeID string, payload json.RawMessage, applicationID, deviceKey string) (*sharedauthn.LoginResult, error) {
+	if s.fido == nil {
+		return nil, errors.New("fido service is not configured")
+	}
+	assertion, err := s.fido.FinishAssertion(ctx, challengeID, payload)
+	if err != nil {
+		return nil, err
+	}
+	if assertion.Usage != "webauthn" {
+		return nil, errors.New("fido assertion usage mismatch")
+	}
+	var user model.User
+	if err := s.db.WithContext(ctx).First(&user, "id = ?", assertion.UserID).Error; err != nil {
+		return nil, err
+	}
+	device, err := s.upsertDevice(ctx, user, deviceKey, "", "", false)
+	if err != nil {
+		return nil, err
+	}
+	session := model.Session{
+		OrganizationID:        assertion.OrganizationID,
+		UserID:                user.ID,
+		ApplicationID:         applicationID,
+		TrustedDeviceEligible: true,
+		State:                 "authenticated",
+		RiskLevel:             "low",
+		SecondFactorMethod:    "",
+	}
+	if device != nil {
+		session.DeviceID = device.ID
+	}
+	if err := s.db.WithContext(ctx).Create(&session).Error; err != nil {
+		return nil, err
+	}
+	tokens, err := s.issueTokens(ctx, user, session, "openid profile email phone")
+	if err != nil {
+		return nil, err
+	}
+	fingerprint, err := s.fingerprintForDevice(device)
+	if err != nil {
+		return nil, err
+	}
+	return &sharedauthn.LoginResult{Session: session, NextStep: "done", Tokens: tokens, Fingerprint: fingerprint}, nil
 }
 
 func (s *AuthnService) LoginWithUserCredential(ctx context.Context, in sharedauthn.LoginInput) (*sharedauthn.LoginResult, error) {
@@ -128,7 +192,7 @@ func (s *AuthnService) LoginWithUserCredential(ctx context.Context, in sharedaut
 	})
 
 	if trusted {
-		pair, err := s.issueTokenPair(ctx, user, session, "openid profile email phone")
+		tokens, err := s.issueTokens(ctx, user, session, "openid profile email phone")
 		if err != nil {
 			return nil, err
 		}
@@ -136,7 +200,7 @@ func (s *AuthnService) LoginWithUserCredential(ctx context.Context, in sharedaut
 		if err != nil {
 			return nil, err
 		}
-		return &sharedauthn.LoginResult{Session: session, NextStep: "done", Tokens: compactTokens(pair), Fingerprint: fingerprint}, nil
+		return &sharedauthn.LoginResult{Session: session, NextStep: "done", Tokens: tokens, Fingerprint: fingerprint}, nil
 	}
 	if session.RequiresConfirmation {
 		fingerprint, err := s.fingerprintForDevice(device)
@@ -161,8 +225,8 @@ func (s *AuthnService) evaluateMFALoginRequirement(ctx context.Context, user mod
 
 	if settings.MFAPolicy.AllowU2F {
 		var u2fCount int64
-		if err := s.db.WithContext(ctx).Model(&model.MFAPasskey{}).
-			Where("user_id = ? AND is_u2f = ? AND deleted_at IS NULL", user.ID, true).
+		if err := s.db.WithContext(ctx).Model(&model.SecureKey{}).
+			Where("user_id = ? AND u2f_enable = ? AND deleted_at IS NULL", user.ID, true).
 			Count(&u2fCount).Error; err != nil {
 			return false, "", err
 		}
@@ -174,6 +238,18 @@ func (s *AuthnService) evaluateMFALoginRequirement(ctx context.Context, user mod
 		}
 		if u2fCount > 0 && u2fEnrollmentCount > 0 {
 			methods = append(methods, "u2f")
+		}
+	}
+
+	if settings.MFAPolicy.AllowWebAuthn {
+		var webauthnEnrollmentCount int64
+		if err := s.db.WithContext(ctx).Model(&model.MFAEnrollment{}).
+			Where("user_id = ? AND method = ? AND status = ? AND deleted_at IS NULL", user.ID, "webauthn", "active").
+			Count(&webauthnEnrollmentCount).Error; err != nil {
+			return false, "", err
+		}
+		if webauthnEnrollmentCount > 0 {
+			methods = append(methods, "webauthn")
 		}
 	}
 
@@ -248,11 +324,11 @@ func (s *AuthnService) ConfirmSession(ctx context.Context, sessionID string, acc
 	if err := s.db.WithContext(ctx).First(&user, "id = ?", session.UserID).Error; err != nil {
 		return nil, err
 	}
-	pair, err := s.issueTokenPair(ctx, user, session, "openid profile email phone")
+	tokens, err := s.issueTokens(ctx, user, session, "openid profile email phone")
 	if err != nil {
 		return nil, err
 	}
-	return &sharedauthn.LoginResult{Session: session, NextStep: "done", Tokens: compactTokens(pair)}, nil
+	return &sharedauthn.LoginResult{Session: session, NextStep: "done", Tokens: tokens}, nil
 }
 
 func (s *AuthnService) VerifyMFA(ctx context.Context, sessionID, method, code string, trustDevice bool) (*sharedauthn.LoginResult, error) {
@@ -268,8 +344,8 @@ func (s *AuthnService) VerifyMFA(ctx context.Context, sessionID, method, code st
 		return nil, err
 	}
 	switch method {
-	case "u2f", "passkey":
-		return nil, errors.New("use WebAuthn completion endpoint for passkey/U2F verification")
+	case "u2f", "webauthn":
+		return nil, errors.New("use WebAuthn completion endpoint for webauthn/u2f verification")
 	default:
 		if err := s.mfa.Verify(ctx, sessionID, method, code); err != nil {
 			return nil, err
@@ -305,7 +381,7 @@ func (s *AuthnService) completeMFASession(ctx context.Context, user model.User, 
 	if err := s.db.WithContext(ctx).Save(session).Error; err != nil {
 		return nil, err
 	}
-	pair, err := s.issueTokenPair(ctx, user, *session, "openid profile email phone")
+	tokens, err := s.issueTokens(ctx, user, *session, "openid profile email phone")
 	if err != nil {
 		return nil, err
 	}
@@ -320,7 +396,7 @@ func (s *AuthnService) completeMFASession(ctx context.Context, user model.User, 
 		TargetID:       session.ID,
 		Detail:         map[string]any{"method": method},
 	})
-	return &sharedauthn.LoginResult{Session: *session, NextStep: "done", Tokens: compactTokens(pair)}, nil
+	return &sharedauthn.LoginResult{Session: *session, NextStep: "done", Tokens: tokens}, nil
 }
 
 func (s *AuthnService) upsertDevice(ctx context.Context, user model.User, fingerprint, userAgent, ipAddress string, trusted bool) (*model.Device, error) {
@@ -450,7 +526,7 @@ func (s *AuthnService) GenerateCurrentUserRecoveryCodes(ctx context.Context, ses
 	return s.GenerateRecoveryCodes(ctx, userID)
 }
 
-func (s *AuthnService) IssueClientCredentialToken(ctx context.Context, clientID, clientSecret, scope string) (*sharedauthn.TokenPair, error) {
+func (s *AuthnService) IssueClientCredentialToken(ctx context.Context, clientID, clientSecret, scope string) ([]model.Token, error) {
 	var app model.Application
 	if err := s.db.WithContext(ctx).Where("id = ?", clientID).First(&app).Error; err != nil {
 		return nil, errors.New("invalid client credentials")
@@ -461,7 +537,7 @@ func (s *AuthnService) IssueClientCredentialToken(ctx context.Context, clientID,
 	return s.IssueClientCredentialTokenForApplication(ctx, app, scope)
 }
 
-func (s *AuthnService) IssueClientCredentialTokenForApplication(ctx context.Context, app model.Application, scope string) (*sharedauthn.TokenPair, error) {
+func (s *AuthnService) IssueClientCredentialTokenForApplication(ctx context.Context, app model.Application, scope string) ([]model.Token, error) {
 	settings, err := coreservice.ResolveApplicationSettingsByID(ctx, s.db, s.cfg, app.ID)
 	if err != nil {
 		return nil, err
@@ -500,10 +576,10 @@ func (s *AuthnService) IssueClientCredentialTokenForApplication(ctx context.Cont
 		TargetID:      accessToken.ID,
 		Detail:        map[string]any{"grant": "client_credentials"},
 	})
-	return &sharedauthn.TokenPair{AccessToken: accessToken}, nil
+	return []model.Token{*accessToken}, nil
 }
 
-func (s *AuthnService) IssuePasswordGrantTokenForApplication(ctx context.Context, app model.Application, identifier, password, scope, ipAddress, userAgent string) (*sharedauthn.TokenPair, *model.User, *model.Session, error) {
+func (s *AuthnService) IssuePasswordGrantTokenForApplication(ctx context.Context, app model.Application, identifier, password, scope, ipAddress, userAgent string) ([]model.Token, *model.User, *model.Session, error) {
 	if strings.TrimSpace(identifier) == "" || strings.TrimSpace(password) == "" {
 		return nil, nil, nil, errors.New("username and password are required")
 	}
@@ -535,7 +611,7 @@ func (s *AuthnService) IssuePasswordGrantTokenForApplication(ctx context.Context
 	if err := s.db.WithContext(ctx).Create(&session).Error; err != nil {
 		return nil, nil, nil, err
 	}
-	pair, err := s.issueTokenPair(ctx, user, session, scope)
+	tokens, err := s.issueTokens(ctx, user, session, scope)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -552,7 +628,7 @@ func (s *AuthnService) IssuePasswordGrantTokenForApplication(ctx context.Context
 		UserAgent:      userAgent,
 		Detail:         map[string]any{"grant": "password"},
 	})
-	return pair, &user, &session, nil
+	return tokens, &user, &session, nil
 }
 
 func (s *AuthnService) findUserByIdentifier(ctx context.Context, organizationID, identifier string) (model.User, error) {
@@ -619,11 +695,11 @@ func (s *AuthnService) ResetUserUKID(ctx context.Context, userID string) (string
 	})
 }
 
-func (s *AuthnService) issueTokenPair(ctx context.Context, user model.User, session model.Session, scope string) (*sharedauthn.TokenPair, error) {
-	return s.issueTokenPairForApplication(ctx, user, session, session.ApplicationID, scope)
+func (s *AuthnService) issueTokens(ctx context.Context, user model.User, session model.Session, scope string) ([]model.Token, error) {
+	return s.issueTokensForApplication(ctx, user, session, session.ApplicationID, scope)
 }
 
-func (s *AuthnService) issueTokenPairForApplication(ctx context.Context, user model.User, session model.Session, applicationID, scope string) (*sharedauthn.TokenPair, error) {
+func (s *AuthnService) issueTokensForApplication(ctx context.Context, user model.User, session model.Session, applicationID, scope string) ([]model.Token, error) {
 	settings, err := coreservice.ResolveApplicationSettingsByID(ctx, s.db, s.cfg, applicationID)
 	if err != nil {
 		return nil, err
@@ -632,7 +708,7 @@ func (s *AuthnService) issueTokenPairForApplication(ctx context.Context, user mo
 	if err := s.db.WithContext(ctx).First(&app, "id = ?", applicationID).Error; err != nil {
 		return nil, err
 	}
-	pair := &sharedauthn.TokenPair{}
+	tokens := make([]model.Token, 0, 2)
 	if applicationIssuesAccessToken(app.TokenType) {
 		accessValue, err := util.RandomToken(32)
 		if err != nil {
@@ -651,7 +727,7 @@ func (s *AuthnService) issueTokenPairForApplication(ctx context.Context, user mo
 		if err := s.db.WithContext(ctx).Create(access).Error; err != nil {
 			return nil, err
 		}
-		pair.AccessToken = access
+		tokens = append(tokens, *access)
 	}
 	if scope != "" && app.EnableRefreshToken && applicationIssuesAccessToken(app.TokenType) {
 		refreshValue, err := util.RandomToken(32)
@@ -671,7 +747,7 @@ func (s *AuthnService) issueTokenPairForApplication(ctx context.Context, user mo
 		if err := s.db.WithContext(ctx).Create(refresh).Error; err != nil {
 			return nil, err
 		}
-		pair.RefreshToken = refresh
+		tokens = append(tokens, *refresh)
 	}
 	_ = s.audit.Record(ctx, coreservice.AuditEvent{
 		OrganizationID: user.OrganizationID,
@@ -684,23 +760,19 @@ func (s *AuthnService) issueTokenPairForApplication(ctx context.Context, user mo
 		TargetID:       session.ID,
 		Detail:         map[string]any{"scope": scope},
 	})
-	return pair, nil
+	return tokens, nil
 }
 
 func applicationIssuesAccessToken(tokenType []string) bool {
 	return coreservice.TokenTypesContain(tokenType, "access_token")
 }
 
-func compactTokens(pair *sharedauthn.TokenPair) []model.Token {
-	return sharedauthn.CompactTokens(pair)
+func (s *AuthnService) IssueTokens(ctx context.Context, user model.User, session model.Session, scope string) ([]model.Token, error) {
+	return s.issueTokens(ctx, user, session, scope)
 }
 
-func (s *AuthnService) IssueTokenPair(ctx context.Context, user model.User, session model.Session, scope string) (*sharedauthn.TokenPair, error) {
-	return s.issueTokenPair(ctx, user, session, scope)
-}
-
-func (s *AuthnService) IssueTokenPairForApplication(ctx context.Context, user model.User, session model.Session, applicationID, scope string) (*sharedauthn.TokenPair, error) {
-	return s.issueTokenPairForApplication(ctx, user, session, applicationID, scope)
+func (s *AuthnService) IssueTokensForApplication(ctx context.Context, user model.User, session model.Session, applicationID, scope string) ([]model.Token, error) {
+	return s.issueTokensForApplication(ctx, user, session, applicationID, scope)
 }
 
 func (s *AuthnService) UpsertDevice(ctx context.Context, user model.User, fingerprint, userAgent, ipAddress string, trusted bool) (*model.Device, error) {

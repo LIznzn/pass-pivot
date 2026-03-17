@@ -15,8 +15,8 @@ type OAuthBootstrapMethodOption = {
 }
 
 type OAuthBootstrapAPIConfig = {
-  passkeyLoginBegin: string
-  passkeyLoginEnd: string
+  webauthnLoginBegin: string
+  webauthnLoginEnd: string
   sessionU2fBegin: string
   sessionU2fFinish: string
   mfaChallenge: string

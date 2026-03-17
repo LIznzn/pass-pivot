@@ -6,7 +6,7 @@ import (
 
 	sharedauthn "pass-pivot/internal/server/shared/authn"
 	sharedhandler "pass-pivot/internal/server/shared/handler"
-	sharedhttp "pass-pivot/internal/server/shared/web"
+	sharedweb "pass-pivot/internal/server/shared/web"
 )
 
 type Handler struct {
@@ -27,7 +27,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		RequireAnnouncement bool   `json:"requireAnnouncement"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid JSON body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	deviceKey := h.service.ParseFingerprint(sharedhandler.ReadFingerprintCookie(r))
@@ -44,12 +44,12 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		RequireAnnouncement: payload.RequireAnnouncement,
 	})
 	if err != nil {
-		sharedhttp.Error(w, http.StatusUnauthorized, err.Error())
+		sharedweb.Error(w, http.StatusUnauthorized, err.Error())
 		return
 	}
 	sharedhandler.WriteFingerprintCookie(w, r, result.Fingerprint)
 	sharedhandler.WritePortalSessionCookie(w, r, result.Session.ID)
-	sharedhttp.JSON(w, http.StatusOK, result)
+	sharedweb.JSON(w, http.StatusOK, result)
 }
 
 func (h *Handler) Confirm(w http.ResponseWriter, r *http.Request) {
@@ -58,7 +58,7 @@ func (h *Handler) Confirm(w http.ResponseWriter, r *http.Request) {
 		Accept    bool   `json:"accept"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid JSON body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	sessionID := payload.SessionID
@@ -67,7 +67,7 @@ func (h *Handler) Confirm(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.service.ConfirmSession(r.Context(), sessionID, payload.Accept)
 	if err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if !payload.Accept {
@@ -75,7 +75,7 @@ func (h *Handler) Confirm(w http.ResponseWriter, r *http.Request) {
 	} else {
 		sharedhandler.WritePortalSessionCookie(w, r, result.Session.ID)
 	}
-	sharedhttp.JSON(w, http.StatusOK, result)
+	sharedweb.JSON(w, http.StatusOK, result)
 }
 
 func (h *Handler) VerifyMFA(w http.ResponseWriter, r *http.Request) {
@@ -86,7 +86,7 @@ func (h *Handler) VerifyMFA(w http.ResponseWriter, r *http.Request) {
 		TrustDevice bool   `json:"trustDevice"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid JSON body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	sessionID := payload.SessionID
@@ -95,11 +95,11 @@ func (h *Handler) VerifyMFA(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.service.VerifyMFA(r.Context(), sessionID, payload.Method, payload.Code, payload.TrustDevice)
 	if err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	sharedhandler.WritePortalSessionCookie(w, r, result.Session.ID)
-	sharedhttp.JSON(w, http.StatusOK, result)
+	sharedweb.JSON(w, http.StatusOK, result)
 }
 
 func (h *Handler) CreateMFAChallenge(w http.ResponseWriter, r *http.Request) {
@@ -108,7 +108,7 @@ func (h *Handler) CreateMFAChallenge(w http.ResponseWriter, r *http.Request) {
 		Method    string `json:"method"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid JSON body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	sessionID := payload.SessionID
@@ -117,10 +117,10 @@ func (h *Handler) CreateMFAChallenge(w http.ResponseWriter, r *http.Request) {
 	}
 	challenge, demoCode, err := h.service.RequestMFAChallenge(r.Context(), sessionID, payload.Method)
 	if err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, map[string]any{
+	sharedweb.JSON(w, http.StatusOK, map[string]any{
 		"challenge": challenge,
 		"demoCode":  demoCode,
 	})
@@ -132,7 +132,7 @@ func (h *Handler) EnrollTOTP(w http.ResponseWriter, r *http.Request) {
 		ApplicationID string `json:"applicationId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid JSON body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	var (
@@ -142,7 +142,7 @@ func (h *Handler) EnrollTOTP(w http.ResponseWriter, r *http.Request) {
 	if identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r); ok && identity.User != nil {
 		targetUserID, allowed := sharedhandler.CurrentUserIDOrTarget(identity, payload.UserID)
 		if !allowed {
-			sharedhttp.Error(w, http.StatusForbidden, "console:admin role is required")
+			sharedweb.Error(w, http.StatusForbidden, "console:admin role is required")
 			return
 		}
 		result, err = h.service.EnrollTOTP(r.Context(), targetUserID, payload.ApplicationID)
@@ -150,10 +150,10 @@ func (h *Handler) EnrollTOTP(w http.ResponseWriter, r *http.Request) {
 		result, err = h.service.EnrollTOTP(r.Context(), payload.UserID, payload.ApplicationID)
 	}
 	if err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, result)
+	sharedweb.JSON(w, http.StatusOK, result)
 }
 
 func (h *Handler) EnrollPortalTOTP(w http.ResponseWriter, r *http.Request) {
@@ -161,15 +161,15 @@ func (h *Handler) EnrollPortalTOTP(w http.ResponseWriter, r *http.Request) {
 		ApplicationID string `json:"applicationId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid JSON body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	result, err := h.service.EnrollCurrentUserTOTP(r.Context(), sharedhandler.ReadPortalSessionCookie(r), payload.ApplicationID)
 	if err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, result)
+	sharedweb.JSON(w, http.StatusOK, result)
 }
 
 func (h *Handler) VerifyTOTPEnrollment(w http.ResponseWriter, r *http.Request) {
@@ -179,14 +179,14 @@ func (h *Handler) VerifyTOTPEnrollment(w http.ResponseWriter, r *http.Request) {
 		Code         string `json:"code"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid JSON body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	var err error
 	if identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r); ok && identity.User != nil {
 		targetUserID, allowed := sharedhandler.CurrentUserIDOrTarget(identity, payload.UserID)
 		if !allowed {
-			sharedhttp.Error(w, http.StatusForbidden, "console:admin role is required")
+			sharedweb.Error(w, http.StatusForbidden, "console:admin role is required")
 			return
 		}
 		err = h.service.VerifyTOTPEnrollment(r.Context(), targetUserID, payload.EnrollmentID, payload.Code)
@@ -194,10 +194,10 @@ func (h *Handler) VerifyTOTPEnrollment(w http.ResponseWriter, r *http.Request) {
 		err = h.service.VerifyTOTPEnrollment(r.Context(), payload.UserID, payload.EnrollmentID, payload.Code)
 	}
 	if err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, map[string]any{"verified": true})
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"verified": true})
 }
 
 func (h *Handler) VerifyPortalTOTPEnrollment(w http.ResponseWriter, r *http.Request) {
@@ -206,14 +206,14 @@ func (h *Handler) VerifyPortalTOTPEnrollment(w http.ResponseWriter, r *http.Requ
 		Code         string `json:"code"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid JSON body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	if err := h.service.VerifyCurrentUserTOTPEnrollment(r.Context(), sharedhandler.ReadPortalSessionCookie(r), payload.EnrollmentID, payload.Code); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, map[string]any{"verified": true})
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"verified": true})
 }
 
 func (h *Handler) GenerateRecoveryCodes(w http.ResponseWriter, r *http.Request) {
@@ -221,7 +221,7 @@ func (h *Handler) GenerateRecoveryCodes(w http.ResponseWriter, r *http.Request) 
 		UserID string `json:"userId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid JSON body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	var (
@@ -231,7 +231,7 @@ func (h *Handler) GenerateRecoveryCodes(w http.ResponseWriter, r *http.Request) 
 	if identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r); ok && identity.User != nil {
 		targetUserID, allowed := sharedhandler.CurrentUserIDOrTarget(identity, payload.UserID)
 		if !allowed {
-			sharedhttp.Error(w, http.StatusForbidden, "console:admin role is required")
+			sharedweb.Error(w, http.StatusForbidden, "console:admin role is required")
 			return
 		}
 		codes, err = h.service.GenerateRecoveryCodes(r.Context(), targetUserID)
@@ -239,30 +239,30 @@ func (h *Handler) GenerateRecoveryCodes(w http.ResponseWriter, r *http.Request) 
 		codes, err = h.service.GenerateRecoveryCodes(r.Context(), payload.UserID)
 	}
 	if err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, map[string]any{"codes": codes})
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"codes": codes})
 }
 
 func (h *Handler) GeneratePortalRecoveryCodes(w http.ResponseWriter, r *http.Request) {
 	codes, err := h.service.GenerateCurrentUserRecoveryCodes(r.Context(), sharedhandler.ReadPortalSessionCookie(r))
 	if err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, map[string]any{"codes": codes})
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"codes": codes})
 }
 
 func (h *Handler) ResetUKID(w http.ResponseWriter, r *http.Request) {
 	if identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r); ok && identity.User != nil {
 		ukid, err := h.service.ResetUserUKID(r.Context(), identity.User.ID)
 		if err != nil {
-			sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+			sharedweb.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		sharedhttp.JSON(w, http.StatusOK, map[string]any{"reset": true, "ukid": ukid})
+		sharedweb.JSON(w, http.StatusOK, map[string]any{"reset": true, "ukid": ukid})
 		return
 	}
-	sharedhttp.Error(w, http.StatusForbidden, "user context is required")
+	sharedweb.Error(w, http.StatusForbidden, "user context is required")
 }

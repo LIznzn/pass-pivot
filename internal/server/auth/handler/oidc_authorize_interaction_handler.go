@@ -34,11 +34,11 @@ type authorizeUIMethodOption struct {
 }
 
 type authorizeUIAPIConfig struct {
-	PasskeyLoginBegin string `json:"passkeyLoginBegin"`
-	PasskeyLoginEnd   string `json:"passkeyLoginEnd"`
-	SessionU2FBegin   string `json:"sessionU2fBegin"`
-	SessionU2FFinish  string `json:"sessionU2fFinish"`
-	MFAChallenge      string `json:"mfaChallenge"`
+	WebAuthnLoginBegin string `json:"webauthnLoginBegin"`
+	WebAuthnLoginEnd   string `json:"webauthnLoginEnd"`
+	SessionU2FBegin    string `json:"sessionU2fBegin"`
+	SessionU2FFinish   string `json:"sessionU2fFinish"`
+	MFAChallenge       string `json:"mfaChallenge"`
 }
 
 type authnAPIError struct {
@@ -162,8 +162,8 @@ func (h *OIDCHandler) AuthorizeChallenge(w http.ResponseWriter, r *http.Request)
 	_, _ = w.Write(body)
 }
 
-func (h *OIDCHandler) AuthorizePasskeyLoginBegin(w http.ResponseWriter, r *http.Request) {
-	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/passkey/login/begin", map[string]any{
+func (h *OIDCHandler) AuthorizeWebAuthnLoginBegin(w http.ResponseWriter, r *http.Request) {
+	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/webauthn/login/begin", map[string]any{
 		"identifier": strings.TrimSpace(r.FormValue("identifier")),
 	})
 	if err != nil {
@@ -174,7 +174,7 @@ func (h *OIDCHandler) AuthorizePasskeyLoginBegin(w http.ResponseWriter, r *http.
 	_, _ = w.Write(body)
 }
 
-func (h *OIDCHandler) AuthorizePasskeyLoginFinish(w http.ResponseWriter, r *http.Request) {
+func (h *OIDCHandler) AuthorizeWebAuthnLoginFinish(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		ChallengeID   string          `json:"challengeId"`
 		Response      json.RawMessage `json:"response"`
@@ -184,7 +184,7 @@ func (h *OIDCHandler) AuthorizePasskeyLoginFinish(w http.ResponseWriter, r *http
 		http.Error(w, "invalid JSON body", http.StatusBadRequest)
 		return
 	}
-	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/passkey/login/finish", map[string]any{
+	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/webauthn/login/finish", map[string]any{
 		"challengeId":   payload.ChallengeID,
 		"response":      payload.Response,
 		"applicationId": payload.ApplicationID,
@@ -197,7 +197,7 @@ func (h *OIDCHandler) AuthorizePasskeyLoginFinish(w http.ResponseWriter, r *http
 	_, _ = w.Write(body)
 }
 
-func (h *OIDCHandler) AuthorizeSessionPasskeyBegin(w http.ResponseWriter, r *http.Request) {
+func (h *OIDCHandler) AuthorizeSessionU2FBegin(w http.ResponseWriter, r *http.Request) {
 	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/session/u2f/begin", map[string]any{})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -207,7 +207,7 @@ func (h *OIDCHandler) AuthorizeSessionPasskeyBegin(w http.ResponseWriter, r *htt
 	_, _ = w.Write(body)
 }
 
-func (h *OIDCHandler) AuthorizeSessionPasskeyFinish(w http.ResponseWriter, r *http.Request) {
+func (h *OIDCHandler) AuthorizeSessionU2FFinish(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		ChallengeID string          `json:"challengeId"`
 		Response    json.RawMessage `json:"response"`
@@ -425,11 +425,11 @@ func buildAuthorizeBootstrap(r *http.Request, target *coreservice.LoginTarget, s
 			{Value: "u2f", Label: "安全密钥"},
 		},
 		API: authorizeUIAPIConfig{
-			PasskeyLoginBegin: "/auth/headless/login/passkey/begin?" + r.URL.RawQuery,
-			PasskeyLoginEnd:   "/auth/headless/login/passkey/finish?" + r.URL.RawQuery,
-			SessionU2FBegin:   "/auth/headless/mfa/u2f/begin?" + r.URL.RawQuery,
-			SessionU2FFinish:  "/auth/headless/mfa/u2f/finish?" + r.URL.RawQuery,
-			MFAChallenge:      "/auth/headless/mfa/challenge/generator?" + r.URL.RawQuery,
+			WebAuthnLoginBegin: "/auth/headless/login/webauthn/begin?" + r.URL.RawQuery,
+			WebAuthnLoginEnd:   "/auth/headless/login/webauthn/finish?" + r.URL.RawQuery,
+			SessionU2FBegin:    "/auth/headless/mfa/u2f/begin?" + r.URL.RawQuery,
+			SessionU2FFinish:   "/auth/headless/mfa/u2f/finish?" + r.URL.RawQuery,
+			MFAChallenge:       "/auth/headless/mfa/challenge/generator?" + r.URL.RawQuery,
 		},
 	}
 }

@@ -6,7 +6,7 @@ import (
 	authhandler "pass-pivot/internal/server/auth/handler"
 )
 
-func RegisterRoutes(mux *http.ServeMux, system systemHandler, authn *Handler, oidc *authhandler.OIDCHandler, federation *authhandler.FederationHandler, passkey *authhandler.PasskeyHandler) {
+func RegisterRoutes(mux *http.ServeMux, system systemHandler, authn *Handler, oidc *authhandler.OIDCHandler, externalIDP *authhandler.ExternalIDPHandler, webAuthn *authhandler.WebAuthnHandler, mfaU2F *authhandler.MFAU2FHandler) {
 	mux.HandleFunc("POST /api/authn/v1/login_target/query", system.GetLoginTarget)
 	mux.HandleFunc("POST /api/authn/v1/external_idp/query", system.ListPublicExternalIDPs)
 	mux.HandleFunc("POST /api/authn/v1/authorize/interaction/query", oidc.QueryAuthorizeInteractionAPI)
@@ -20,12 +20,12 @@ func RegisterRoutes(mux *http.ServeMux, system systemHandler, authn *Handler, oi
 	mux.HandleFunc("POST /api/authn/v1/session/confirm", authn.Confirm)
 	mux.HandleFunc("POST /api/authn/v1/session/mfa_challenge/create", authn.CreateMFAChallenge)
 	mux.HandleFunc("POST /api/authn/v1/session/verify_mfa", authn.VerifyMFA)
-	mux.HandleFunc("POST /api/authn/v1/federation/start", federation.StartLogin)
-	mux.HandleFunc("POST /api/authn/v1/federation/callback", federation.CompleteLogin)
-	mux.HandleFunc("POST /api/authn/v1/passkey/login/begin", passkey.BeginLogin)
-	mux.HandleFunc("POST /api/authn/v1/passkey/login/finish", passkey.FinishLogin)
-	mux.HandleFunc("POST /api/authn/v1/session/u2f/begin", passkey.BeginSessionMFA)
-	mux.HandleFunc("POST /api/authn/v1/session/u2f/finish", passkey.FinishSessionMFA)
+	mux.HandleFunc("POST /api/authn/v1/external_idp/start", externalIDP.StartLogin)
+	mux.HandleFunc("POST /api/authn/v1/external_idp/callback", externalIDP.CompleteLogin)
+	mux.HandleFunc("POST /api/authn/v1/webauthn/login/begin", webAuthn.BeginLogin)
+	mux.HandleFunc("POST /api/authn/v1/webauthn/login/finish", webAuthn.FinishLogin)
+	mux.HandleFunc("POST /api/authn/v1/session/u2f/begin", mfaU2F.BeginAssertion)
+	mux.HandleFunc("POST /api/authn/v1/session/u2f/finish", mfaU2F.FinishAssertion)
 }
 
 type systemHandler interface {

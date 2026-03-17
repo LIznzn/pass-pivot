@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"pass-pivot/internal/model"
-	sharedhttp "pass-pivot/internal/server/shared/web"
+	sharedweb "pass-pivot/internal/server/shared/web"
 )
 
 type Handler struct {
@@ -29,38 +29,38 @@ func (h *Handler) ListRoles(w http.ResponseWriter, r *http.Request) {
 	}
 	items, err := h.service.ListRoles(r.Context(), payload.OrganizationID)
 	if err != nil {
-		sharedhttp.Error(w, http.StatusInternalServerError, err.Error())
+		sharedweb.Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, map[string]any{"items": items})
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
 func (h *Handler) CreateRole(w http.ResponseWriter, r *http.Request) {
 	var payload model.Role
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid JSON body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	item, err := h.service.CreateRole(r.Context(), payload)
 	if err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusCreated, item)
+	sharedweb.JSON(w, http.StatusCreated, item)
 }
 
 func (h *Handler) UpdateRole(w http.ResponseWriter, r *http.Request) {
 	var payload model.Role
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid JSON body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	item, err := h.service.UpdateRole(r.Context(), payload)
 	if err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, item)
+	sharedweb.JSON(w, http.StatusOK, item)
 }
 
 func (h *Handler) DeleteRole(w http.ResponseWriter, r *http.Request) {
@@ -69,17 +69,17 @@ func (h *Handler) DeleteRole(w http.ResponseWriter, r *http.Request) {
 		RoleIDs []string `json:"roleIds"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid JSON body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	if payload.RoleID != "" {
 		payload.RoleIDs = append(payload.RoleIDs, payload.RoleID)
 	}
 	if err := h.service.DeleteRoles(r.Context(), payload.RoleIDs); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, map[string]any{"deleted": true})
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"deleted": true})
 }
 
 func (h *Handler) ListPolicies(w http.ResponseWriter, r *http.Request) {
@@ -92,38 +92,38 @@ func (h *Handler) ListPolicies(w http.ResponseWriter, r *http.Request) {
 	}
 	items, err := h.service.ListPolicies(r.Context(), payload.OrganizationID, payload.RoleID)
 	if err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, map[string]any{"items": items})
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
 func (h *Handler) CreatePolicy(w http.ResponseWriter, r *http.Request) {
 	var payload model.Policy
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid JSON body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	item, err := h.service.CreatePolicy(r.Context(), payload)
 	if err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusCreated, item)
+	sharedweb.JSON(w, http.StatusCreated, item)
 }
 
 func (h *Handler) UpdatePolicy(w http.ResponseWriter, r *http.Request) {
 	var payload model.Policy
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid JSON body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	item, err := h.service.UpdatePolicy(r.Context(), payload)
 	if err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, item)
+	sharedweb.JSON(w, http.StatusOK, item)
 }
 
 func (h *Handler) DeletePolicy(w http.ResponseWriter, r *http.Request) {
@@ -132,17 +132,17 @@ func (h *Handler) DeletePolicy(w http.ResponseWriter, r *http.Request) {
 		PolicyIDs []string `json:"policyIds"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid JSON body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	if payload.PolicyID != "" {
 		payload.PolicyIDs = append(payload.PolicyIDs, payload.PolicyID)
 	}
 	if err := h.service.DeletePolicies(r.Context(), payload.PolicyIDs); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, map[string]any{"deleted": true})
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"deleted": true})
 }
 
 func (h *Handler) CheckPolicy(w http.ResponseWriter, r *http.Request) {
@@ -153,19 +153,19 @@ func (h *Handler) CheckPolicy(w http.ResponseWriter, r *http.Request) {
 		Path        string `json:"path"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid JSON body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	result, err := h.service.CheckPolicy(r.Context(), payload.SubjectType, payload.SubjectID, payload.Method, payload.Path)
 	if err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	status := http.StatusOK
 	if !result.Allowed {
 		status = http.StatusForbidden
 	}
-	sharedhttp.JSON(w, status, result)
+	sharedweb.JSON(w, status, result)
 }
 
 func (h *Handler) ListSubjectPolicies(w http.ResponseWriter, r *http.Request) {
@@ -174,13 +174,13 @@ func (h *Handler) ListSubjectPolicies(w http.ResponseWriter, r *http.Request) {
 		SubjectID   string `json:"subjectId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid JSON body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	result, err := h.service.ListSubjectPolicies(r.Context(), payload.SubjectType, payload.SubjectID)
 	if err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, result)
+	sharedweb.JSON(w, http.StatusOK, result)
 }

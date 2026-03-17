@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	sharedhttp "pass-pivot/internal/server/shared/web"
+	sharedweb "pass-pivot/internal/server/shared/web"
 )
 
 type Handler struct {
@@ -20,7 +20,7 @@ func (h *Handler) Service() *Service {
 }
 
 func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
-	sharedhttp.JSON(w, http.StatusOK, map[string]any{
+	sharedweb.JSON(w, http.StatusOK, map[string]any{
 		"status":  "ok",
 		"service": "ppvt",
 	})
@@ -31,15 +31,15 @@ func (h *Handler) IntrospectToken(w http.ResponseWriter, r *http.Request) {
 		Token string `json:"token"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid JSON body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	result, err := h.service.IntrospectToken(r.Context(), payload.Token)
 	if err != nil {
-		sharedhttp.Error(w, http.StatusInternalServerError, err.Error())
+		sharedweb.Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, result)
+	sharedweb.JSON(w, http.StatusOK, result)
 }
 
 func (h *Handler) ListPublicExternalIDPs(w http.ResponseWriter, r *http.Request) {
@@ -51,7 +51,7 @@ func (h *Handler) ListPublicExternalIDPs(w http.ResponseWriter, r *http.Request)
 	}
 	items, err := h.service.ListPublicExternalIDPsByApplication(r.Context(), payload.ApplicationID)
 	if err != nil {
-		sharedhttp.Error(w, http.StatusInternalServerError, err.Error())
+		sharedweb.Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	type publicProvider struct {
@@ -71,7 +71,7 @@ func (h *Handler) ListPublicExternalIDPs(w http.ResponseWriter, r *http.Request)
 			Issuer:         item.Issuer,
 		})
 	}
-	sharedhttp.JSON(w, http.StatusOK, map[string]any{"items": response})
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"items": response})
 }
 
 func (h *Handler) GetLoginTarget(w http.ResponseWriter, r *http.Request) {
@@ -79,13 +79,13 @@ func (h *Handler) GetLoginTarget(w http.ResponseWriter, r *http.Request) {
 		ApplicationID string `json:"applicationId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid JSON body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	item, err := h.service.GetLoginTarget(r.Context(), payload.ApplicationID)
 	if err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, item)
+	sharedweb.JSON(w, http.StatusOK, item)
 }

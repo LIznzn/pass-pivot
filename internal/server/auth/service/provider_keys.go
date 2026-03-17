@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"errors"
+	"pass-pivot/util"
 	"sync"
 
 	"github.com/go-jose/go-jose/v4"
@@ -85,15 +86,11 @@ func (s *ProviderKeyStore) InstancePublicPEM() (string, error) {
 }
 
 func GenerateClientKeyMaterial() (publicKey, privateKey string, err error) {
-	public, private, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		return "", "", err
-	}
-	return EncodeEd25519PublicKey(public), EncodeEd25519PrivateSeed(private.Seed()), nil
+	return util.GenerateEd25519KeyMaterial()
 }
 
 func (s *ProviderKeyStore) LoadClientVerificationKey(publicKey string) (*ClientAssertionKeys, error) {
-	key, err := ParseEd25519PublicKey(publicKey)
+	key, err := util.ParseEd25519PublicKey(publicKey)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +110,7 @@ func (s *ProviderKeyStore) LoadInternalClientSigningKey(applicationID, publicKey
 	}
 	privateKey := ed25519.NewKeyFromSeed(seed)
 	derivedPublicKey := privateKey.Public().(ed25519.PublicKey)
-	if publicKey != "" && publicKey != EncodeEd25519PublicKey(derivedPublicKey) {
+	if publicKey != "" && publicKey != util.EncodeEd25519PublicKey(derivedPublicKey) {
 		return nil, errors.New("internal client public key does not match derived key")
 	}
 	return &ClientAssertionKeys{
@@ -124,20 +121,11 @@ func (s *ProviderKeyStore) LoadInternalClientSigningKey(applicationID, publicKey
 }
 
 func GenerateInternalClientPublicKey(seed string) (string, error) {
-	rawSeed, err := DecodeEd25519PrivateSeed(seed)
-	if err != nil {
-		return "", err
-	}
-	privateKey := ed25519.NewKeyFromSeed(rawSeed)
-	return EncodeEd25519PublicKey(privateKey.Public().(ed25519.PublicKey)), nil
+	return util.DeriveEd25519PublicKey(seed)
 }
 
 func GenerateEd25519PrivateSeed() (string, error) {
-	seed := make([]byte, ed25519.SeedSize)
-	if _, err := rand.Read(seed); err != nil {
-		return "", err
-	}
-	return EncodeEd25519PrivateSeed(seed), nil
+	return util.GenerateEd25519PrivateSeed()
 }
 
 func EncodeRSAPublicKeyPEM(publicKey *rsa.PublicKey) (string, error) {
@@ -149,36 +137,6 @@ func EncodeRSAPublicKeyPEM(publicKey *rsa.PublicKey) (string, error) {
 		return "", err
 	}
 	return string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: raw})), nil
-}
-
-func EncodeEd25519PublicKey(publicKey ed25519.PublicKey) string {
-	return hex.EncodeToString(publicKey)
-}
-
-func EncodeEd25519PrivateSeed(seed []byte) string {
-	return hex.EncodeToString(seed)
-}
-
-func ParseEd25519PublicKey(value string) (ed25519.PublicKey, error) {
-	raw, err := hex.DecodeString(value)
-	if err != nil {
-		return nil, errors.New("invalid ed25519 public key")
-	}
-	if len(raw) != ed25519.PublicKeySize {
-		return nil, errors.New("invalid ed25519 public key length")
-	}
-	return ed25519.PublicKey(raw), nil
-}
-
-func DecodeEd25519PrivateSeed(value string) ([]byte, error) {
-	raw, err := hex.DecodeString(value)
-	if err != nil {
-		return nil, errors.New("invalid ed25519 private seed")
-	}
-	if len(raw) != ed25519.SeedSize {
-		return nil, errors.New("invalid ed25519 private seed length")
-	}
-	return raw, nil
 }
 
 func (p *ProviderKeys) JWKS() (map[string]any, error) {
@@ -232,5 +190,5 @@ func (s *ProviderKeyStore) internalClientSeed(applicationID string) ([]byte, err
 	if !ok {
 		return nil, errors.New("internal client private key is not configured in code")
 	}
-	return DecodeEd25519PrivateSeed(value)
+	return util.DecodeEd25519PrivateSeed(value)
 }

@@ -36,10 +36,10 @@
         <div class="d-flex flex-wrap gap-2 pt-2">
           <button type="submit" class="btn btn-primary">登录</button>
           <button
-            v-if="supportsPasskeyLogin"
+            v-if="supportsWebAuthnLogin"
             type="button"
             class="btn btn-outline-primary"
-            @click="loginWithPasskey"
+            @click="loginWithWebAuthn"
           >
             使用通行密钥登录
           </button>
@@ -127,7 +127,7 @@ const bootstrap = bootstrapPayload
 
 const selectedMethod = ref(bootstrap.secondFactorMethod || 'totp')
 const challengeFeedback = ref('')
-const supportsPasskeyLogin = Boolean(bootstrap.api.passkeyLoginBegin && bootstrap.api.passkeyLoginEnd)
+const supportsWebAuthnLogin = Boolean(bootstrap.api.webauthnLoginBegin && bootstrap.api.webauthnLoginEnd)
 const supportsSessionU2F = Boolean(bootstrap.api.sessionU2fBegin && bootstrap.api.sessionU2fFinish)
 const supportsEmailChallenge = Boolean(bootstrap.api.mfaChallenge)
 
@@ -138,7 +138,7 @@ async function readJSON<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>
 }
 
-async function loginWithPasskey() {
+async function loginWithWebAuthn() {
   try {
     const identifierInput = document.querySelector<HTMLInputElement>('input[name="identifier"]')
     const identifier = identifierInput?.value.trim() ?? ''
@@ -147,7 +147,7 @@ async function loginWithPasskey() {
       return
     }
     const begin = await readJSON<{ challengeId: string; options: any }>(
-      await fetch(bootstrap.api.passkeyLoginBegin, {
+      await fetch(bootstrap.api.webauthnLoginBegin, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -161,7 +161,7 @@ async function loginWithPasskey() {
       return
     }
     await readJSON(
-      await fetch(bootstrap.api.passkeyLoginEnd, {
+      await fetch(bootstrap.api.webauthnLoginEnd, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

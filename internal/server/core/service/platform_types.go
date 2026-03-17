@@ -18,15 +18,15 @@ type AccessTokenIdentity struct {
 	Application model.Application
 }
 
-type UserDetailPasskey struct {
-	ID          string    `json:"id"`
-	PublicKeyID string    `json:"publicKeyId"`
-	Identifier  string    `json:"identifier"`
-	SignCount   uint32    `json:"signCount"`
-	IsPasskey   bool      `json:"isPasskey"`
-	IsU2f       bool      `json:"isU2f"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+type UserDetailSecureKey struct {
+	ID             string    `json:"id"`
+	PublicKeyID    string    `json:"publicKeyId"`
+	Identifier     string    `json:"identifier"`
+	SignCount      uint32    `json:"signCount"`
+	WebAuthnEnable bool      `json:"webauthnEnable"`
+	U2FEnable      bool      `json:"u2fEnable"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
 type UserDetailBinding struct {
@@ -66,7 +66,7 @@ type AuditLogView struct {
 type UserDetailData struct {
 	User               model.User                `json:"user"`
 	PasswordCredential bool                      `json:"passwordCredential"`
-	Passkeys           []UserDetailPasskey       `json:"passkeys"`
+	SecureKeys         []UserDetailSecureKey     `json:"secureKeys"`
 	Bindings           []UserDetailBinding       `json:"bindings"`
 	ExternalIDPs       []model.ExternalIDP       `json:"externalIdps"`
 	MFAEnrollments     []model.MFAEnrollment     `json:"mfaEnrollments"`

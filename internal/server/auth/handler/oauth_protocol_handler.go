@@ -9,7 +9,7 @@ import (
 
 	"pass-pivot/internal/config"
 	authservice "pass-pivot/internal/server/auth/service"
-	sharedhttp "pass-pivot/internal/server/shared/web"
+	sharedweb "pass-pivot/internal/server/shared/web"
 )
 
 type OAuthHandler struct {
@@ -23,7 +23,7 @@ func NewOAuthHandler(cfg config.Config, oidc *authservice.OIDCService) *OAuthHan
 
 func (h *OAuthHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid form body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid form body")
 		return
 	}
 	clientID, clientSecret, _ := authservice.ParseBasicClientAuthorization(r.Header.Get("Authorization"))
@@ -44,7 +44,7 @@ func (h *OAuthHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 		"reason":              "oauth_revoke",
 	})
 	if err != nil {
-		sharedhttp.Error(w, http.StatusBadGateway, err.Error())
+		sharedweb.Error(w, http.StatusBadGateway, err.Error())
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -53,7 +53,7 @@ func (h *OAuthHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 
 func (h *OAuthHandler) Introspect(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid form body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid form body")
 		return
 	}
 	clientID, clientSecret, _ := authservice.ParseBasicClientAuthorization(r.Header.Get("Authorization"))
@@ -66,12 +66,12 @@ func (h *OAuthHandler) Introspect(w http.ResponseWriter, r *http.Request) {
 	clientAssertionType := strings.TrimSpace(r.Form.Get("client_assertion_type"))
 	clientAssertion := strings.TrimSpace(r.Form.Get("client_assertion"))
 	if err := h.callAuthnValidateClient(r, clientID, clientSecret, clientAssertionType, clientAssertion, requestIssuer(r)+"/auth/introspect"); err != nil {
-		sharedhttp.Error(w, http.StatusBadGateway, err.Error())
+		sharedweb.Error(w, http.StatusBadGateway, err.Error())
 		return
 	}
 	result, err := h.callAuthnIntrospect(r, r.Form.Get("token"))
 	if err != nil {
-		sharedhttp.Error(w, http.StatusBadGateway, err.Error())
+		sharedweb.Error(w, http.StatusBadGateway, err.Error())
 		return
 	}
 	if active, _ := result["active"].(bool); active {
@@ -79,14 +79,14 @@ func (h *OAuthHandler) Introspect(w http.ResponseWriter, r *http.Request) {
 		if subjectID != "" {
 			matchedRoles, policies, err := h.callAuthzSubjectPolicyQuery(r, "user", subjectID)
 			if err != nil {
-				sharedhttp.Error(w, http.StatusBadGateway, err.Error())
+				sharedweb.Error(w, http.StatusBadGateway, err.Error())
 				return
 			}
 			result["matched_roles"] = matchedRoles
 			result["policies"] = policies
 		}
 	}
-	sharedhttp.JSON(w, http.StatusOK, result)
+	sharedweb.JSON(w, http.StatusOK, result)
 }
 
 func (h *OAuthHandler) callAuthnIntrospect(r *http.Request, token string) (map[string]any, error) {

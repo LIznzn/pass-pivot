@@ -25,27 +25,27 @@ func (b *BaseModel) BeforeCreate(tx *gorm.DB) error {
 
 type Organization struct {
 	BaseModel
-	Name              string               `gorm:"size:128" json:"name"`
-	Metadata          map[string]string    `gorm:"serializer:json;type:json" json:"metadata"`
-	AllowJWTAccess    bool                 `json:"allowJwtAccess"`
-	AllowBasicAccess  bool                 `json:"allowBasicAccess"`
-	AllowNoAuthAccess bool                 `json:"allowNoAuthAccess"`
-	AllowRefreshToken bool                 `json:"allowRefreshToken"`
-	AllowAuthCode     bool                 `json:"allowAuthorizationCode"`
-	AllowPKCE         bool                 `json:"allowPKCE"`
-	TOSURL            string               `gorm:"size:255" json:"-"`
-	PrivacyPolicyURL  string               `gorm:"size:255" json:"-"`
-	SupportEmail      string               `gorm:"size:255" json:"-"`
-	LogoURL           string               `gorm:"size:255" json:"-"`
-	Domains           []OrganizationDomain `gorm:"serializer:json;type:json" json:"-"`
-	LoginPolicy       OrganizationLoginPolicy `gorm:"serializer:json;type:json" json:"-"`
+	Name              string                     `gorm:"size:128" json:"name"`
+	Metadata          map[string]string          `gorm:"serializer:json;type:json" json:"metadata"`
+	AllowJWTAccess    bool                       `json:"allowJwtAccess"`
+	AllowBasicAccess  bool                       `json:"allowBasicAccess"`
+	AllowNoAuthAccess bool                       `json:"allowNoAuthAccess"`
+	AllowRefreshToken bool                       `json:"allowRefreshToken"`
+	AllowAuthCode     bool                       `json:"allowAuthorizationCode"`
+	AllowPKCE         bool                       `json:"allowPKCE"`
+	TOSURL            string                     `gorm:"size:255" json:"-"`
+	PrivacyPolicyURL  string                     `gorm:"size:255" json:"-"`
+	SupportEmail      string                     `gorm:"size:255" json:"-"`
+	LogoURL           string                     `gorm:"size:255" json:"-"`
+	Domains           []OrganizationDomain       `gorm:"serializer:json;type:json" json:"-"`
+	LoginPolicy       OrganizationLoginPolicy    `gorm:"serializer:json;type:json" json:"-"`
 	PasswordPolicy    OrganizationPasswordPolicy `gorm:"serializer:json;type:json" json:"-"`
-	MFAPolicy         OrganizationMFAPolicy `gorm:"serializer:json;type:json" json:"-"`
-	ConsoleSettings   *OrganizationSetting `gorm:"-" json:"consoleSettings,omitempty"`
-	Projects          []Project            `json:"projects,omitempty"`
-	Users             []User               `json:"users,omitempty"`
-	Roles             []Role               `json:"roles,omitempty"`
-	ExternalIDPs      []ExternalIDP        `json:"externalIdps,omitempty"`
+	MFAPolicy         OrganizationMFAPolicy      `gorm:"serializer:json;type:json" json:"-"`
+	ConsoleSettings   *OrganizationSetting       `gorm:"-" json:"consoleSettings,omitempty"`
+	Projects          []Project                  `json:"projects,omitempty"`
+	Users             []User                     `json:"users,omitempty"`
+	Roles             []Role                     `json:"roles,omitempty"`
+	ExternalIDPs      []ExternalIDP              `json:"externalIdps,omitempty"`
 }
 
 func (Organization) TableName() string {
@@ -59,7 +59,7 @@ type OrganizationDomain struct {
 
 type OrganizationLoginPolicy struct {
 	PasswordLoginEnabled bool   `json:"passwordLoginEnabled"`
-	PasskeyLoginEnabled  bool   `json:"passkeyLoginEnabled"`
+	WebAuthnLoginEnabled bool   `json:"webauthnLoginEnabled"`
 	AllowUsername        bool   `json:"allowUsername"`
 	AllowEmail           bool   `json:"allowEmail"`
 	AllowPhone           bool   `json:"allowPhone"`
@@ -89,7 +89,7 @@ type OrganizationEmailChannel struct {
 
 type OrganizationMFAPolicy struct {
 	RequireForAllUsers bool                     `json:"requireForAllUsers"`
-	AllowPasskey       bool                     `json:"allowPasskey"`
+	AllowWebAuthn      bool                     `json:"allowWebauthn"`
 	AllowTotp          bool                     `json:"allowTotp"`
 	AllowEmailCode     bool                     `json:"allowEmailCode"`
 	AllowSmsCode       bool                     `json:"allowSmsCode"`
@@ -145,25 +145,25 @@ func (Application) TableName() string {
 
 type User struct {
 	BaseModel
-	OrganizationID string       `gorm:"index;size:36" json:"organizationId"`
-	Username       string       `gorm:"index;size:128" json:"username"`
-	Name           string       `gorm:"size:128" json:"name"`
-	Email          string       `gorm:"index;size:128" json:"email"`
-	PhoneNumber    string       `gorm:"index;size:64" json:"phoneNumber"`
-	Roles          []string     `gorm:"serializer:json;type:json" json:"roles"`
-	Status         string       `gorm:"size:32;default:active" json:"status"`
-	PasswordHash   string       `gorm:"size:255" json:"-"`
-	CurrentUKID    string       `gorm:"column:current_ukid;size:64;index" json:"currentUkid"`
-	IsTrusted      bool         `json:"isTrusted"`
-	MFAPasskeys    []MFAPasskey `json:"mfaPasskeys,omitempty"`
-	Sessions       []Session    `json:"sessions,omitempty"`
+	OrganizationID string      `gorm:"index;size:36" json:"organizationId"`
+	Username       string      `gorm:"index;size:128" json:"username"`
+	Name           string      `gorm:"size:128" json:"name"`
+	Email          string      `gorm:"index;size:128" json:"email"`
+	PhoneNumber    string      `gorm:"index;size:64" json:"phoneNumber"`
+	Roles          []string    `gorm:"serializer:json;type:json" json:"roles"`
+	Status         string      `gorm:"size:32;default:active" json:"status"`
+	PasswordHash   string      `gorm:"size:255" json:"-"`
+	CurrentUKID    string      `gorm:"column:current_ukid;size:64;index" json:"currentUkid"`
+	IsTrusted      bool        `json:"isTrusted"`
+	SecureKeys     []SecureKey `gorm:"foreignKey:UserID" json:"secureKeys,omitempty"`
+	Sessions       []Session   `json:"sessions,omitempty"`
 }
 
 func (User) TableName() string {
 	return "user"
 }
 
-type MFAPasskey struct {
+type SecureKey struct {
 	BaseModel
 	OrganizationID string `gorm:"index;size:36" json:"organizationId"`
 	UserID         string `gorm:"index;size:36" json:"userId"`
@@ -172,15 +172,15 @@ type MFAPasskey struct {
 	PublicKey      string `gorm:"type:text" json:"publicKey"`
 	PublicKeyID    string `gorm:"size:128;index" json:"publicKeyId"`
 	SignCount      uint32 `json:"signCount"`
-	IsPasskey      bool   `json:"isPasskey"`
-	IsU2f          bool   `json:"isU2f"`
+	WebAuthnEnable bool   `gorm:"column:webauthn_enable" json:"webauthnEnable"`
+	U2FEnable      bool   `gorm:"column:u2f_enable" json:"u2fEnable"`
 	BackupEligible bool   `json:"backupEligible"`
 	BackupState    bool   `json:"backupState"`
 	Transports     string `gorm:"size:255" json:"transports"`
 }
 
-func (MFAPasskey) TableName() string {
-	return "mfa_passkey"
+func (SecureKey) TableName() string {
+	return "secure_key"
 }
 
 type MFAEnrollment struct {

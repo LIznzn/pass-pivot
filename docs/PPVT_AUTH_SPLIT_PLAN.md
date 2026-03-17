@@ -130,7 +130,7 @@
 
 ### 必须留在 ppvt-core 的能力
 
-- 登录、确认、MFA、Passkey、联邦
+- 登录、确认、MFA、WebAuthn、external_idp
 - Policy Check
 - 用户/应用/组织/角色/策略/审计 CRUD
 - token introspection 的真实数据查询

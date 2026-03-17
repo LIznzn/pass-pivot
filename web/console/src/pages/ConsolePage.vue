@@ -124,23 +124,23 @@
                 <div class="col-lg-6">
                   <div class="detail-card h-100">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                    <div class="record-meta mb-0">通行密钥数：{{ loginPasskeys.length }} · {{ passkeyLoginEnabled ? '已启用登录' : '已关闭登录' }}</div>
+                    <div class="record-meta mb-0">通行密钥数：{{ loginSecureKeys.length }} · {{ webauthnLoginEnabled ? '已启用登录' : '已关闭登录' }}</div>
                     <div class="d-flex gap-2">
-                      <BButton size="sm" :variant="passkeyLoginEnabled ? 'outline-danger' : 'outline-secondary'" :disabled="!loginPasskeys.length" @click="togglePasskeyLogin(!passkeyLoginEnabled)">
-                        {{ passkeyLoginEnabled ? '关闭登录' : '启用登录' }}
+                      <BButton size="sm" :variant="webauthnLoginEnabled ? 'outline-danger' : 'outline-secondary'" :disabled="!loginSecureKeys.length" @click="toggleWebAuthnLogin(!webauthnLoginEnabled)">
+                        {{ webauthnLoginEnabled ? '关闭登录' : '启用登录' }}
                       </BButton>
-                      <BButton size="sm" variant="outline-primary" @click="registerPasskey('passkey')">注册通行密钥</BButton>
+                      <BButton size="sm" variant="outline-primary" @click="registerSecureKey('webauthn')">注册通行密钥</BButton>
                     </div>
                     </div>
-                  <div v-if="!loginPasskeys.length" class="record-meta">当前没有通行密钥，注册后才可启用通行密钥登录。</div>
-                  <div v-for="passkey in loginPasskeys" :key="passkey.id" class="record-row">
+                  <div v-if="!loginSecureKeys.length" class="record-meta">当前没有通行密钥，注册后才可启用通行密钥登录。</div>
+                  <div v-for="secureKey in loginSecureKeys" :key="secureKey.id" class="record-row">
                     <div>
-                      <strong>{{ passkey.identifier || '通行密钥' }}</strong>
-                      <div class="record-meta">{{ passkey.publicKeyId }}</div>
+                      <strong>{{ secureKey.identifier || '通行密钥' }}</strong>
+                      <div class="record-meta">{{ secureKey.publicKeyId }}</div>
                     </div>
                     <div class="d-flex align-items-center gap-2">
-                      <code>{{ formatDateTime(passkey.createdAt) }}</code>
-                      <BButton size="sm" variant="outline-danger" @click="deletePasskey(passkey.id)">删除</BButton>
+                      <code>{{ formatDateTime(secureKey.createdAt) }}</code>
+                      <BButton size="sm" variant="outline-danger" @click="deleteSecureKey(secureKey.id)">删除</BButton>
                     </div>
                   </div>
                 </div>
@@ -1119,21 +1119,21 @@
                 <div class="col-lg-6">
                   <div class="detail-card h-100">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                      <div class="record-meta mb-0">通行密钥数：{{ loginPasskeys.length }} · {{ passkeyLoginEnabled ? '已启用登录' : '已关闭登录' }}</div>
+                      <div class="record-meta mb-0">通行密钥数：{{ loginSecureKeys.length }} · {{ webauthnLoginEnabled ? '已启用登录' : '已关闭登录' }}</div>
                       <div class="d-flex gap-2">
-                        <BButton size="sm" :variant="passkeyLoginEnabled ? 'outline-danger' : 'outline-secondary'" :disabled="!loginPasskeys.length" @click="togglePasskeyLogin(!passkeyLoginEnabled)">
-                          {{ passkeyLoginEnabled ? '关闭登录' : '启用登录' }}
+                        <BButton size="sm" :variant="webauthnLoginEnabled ? 'outline-danger' : 'outline-secondary'" :disabled="!loginSecureKeys.length" @click="toggleWebAuthnLogin(!webauthnLoginEnabled)">
+                          {{ webauthnLoginEnabled ? '关闭登录' : '启用登录' }}
                         </BButton>
-                        <BButton size="sm" variant="outline-primary" @click="registerPasskey('passkey')">注册通行密钥</BButton>
+                        <BButton size="sm" variant="outline-primary" @click="registerSecureKey('webauthn')">注册通行密钥</BButton>
                       </div>
                     </div>
-                    <div v-if="!loginPasskeys.length" class="record-meta">当前没有通行密钥，注册后才可启用通行密钥登录。</div>
-                    <div v-for="passkey in loginPasskeys" :key="passkey.id" class="record-row">
+                    <div v-if="!loginSecureKeys.length" class="record-meta">当前没有通行密钥，注册后才可启用通行密钥登录。</div>
+                    <div v-for="secureKey in loginSecureKeys" :key="secureKey.id" class="record-row">
                       <div>
-                        <strong>{{ passkey.identifier || '通行密钥' }}</strong>
-                        <div class="record-meta">{{ passkey.publicKeyId }}</div>
+                        <strong>{{ secureKey.identifier || '通行密钥' }}</strong>
+                        <div class="record-meta">{{ secureKey.publicKeyId }}</div>
                       </div>
-                      <code>{{ formatDateTime(passkey.createdAt) }}</code>
+                      <code>{{ formatDateTime(secureKey.createdAt) }}</code>
                     </div>
                   </div>
                 </div>
@@ -1566,8 +1566,8 @@
                 </div>
                 <div class="col-md-6">
                   <div class="form-check">
-                    <input id="setting-passkey-login-enabled" v-model="organizationLoginPolicyForm.passkeyLoginEnabled" class="form-check-input" type="checkbox" />
-                    <label class="form-check-label" for="setting-passkey-login-enabled">启用通行密钥登录</label>
+                    <input id="setting-webauthn-login-enabled" v-model="organizationLoginPolicyForm.webauthnLoginEnabled" class="form-check-input" type="checkbox" />
+                    <label class="form-check-label" for="setting-webauthn-login-enabled">启用通行密钥登录</label>
                   </div>
                 </div>
                 <div class="col-md-4">
@@ -1657,7 +1657,7 @@
                     <label class="form-check-label" for="setting-mfa-required">强制所有用户启用两步验证</label>
                   </div>
                 </div>
-                <div class="col-md-4"><div class="form-check"><input id="setting-mfa-passkey" v-model="organizationMFAPolicyForm.allowPasskey" class="form-check-input" type="checkbox" /><label class="form-check-label" for="setting-mfa-passkey">通行密钥</label></div></div>
+                <div class="col-md-4"><div class="form-check"><input id="setting-mfa-webauthn" v-model="organizationMFAPolicyForm.allowWebauthn" class="form-check-input" type="checkbox" /><label class="form-check-label" for="setting-mfa-webauthn">通行密钥</label></div></div>
                 <div class="col-md-4"><div class="form-check"><input id="setting-mfa-totp" v-model="organizationMFAPolicyForm.allowTotp" class="form-check-input" type="checkbox" /><label class="form-check-label" for="setting-mfa-totp">身份验证器（TOTP）</label></div></div>
                 <div class="col-md-4"><div class="form-check"><input id="setting-mfa-email" v-model="organizationMFAPolicyForm.allowEmailCode" class="form-check-input" type="checkbox" /><label class="form-check-label" for="setting-mfa-email">邮箱验证码</label></div></div>
                 <div class="col-md-4"><div class="form-check"><input id="setting-mfa-sms" v-model="organizationMFAPolicyForm.allowSmsCode" class="form-check-input" type="checkbox" /><label class="form-check-label" for="setting-mfa-sms">手机验证码</label></div></div>
@@ -1706,7 +1706,7 @@
             </BForm>
           </div>
 
-          <div id="setting-federation" class="info-card">
+          <div id="setting-external-idp" class="info-card">
             <div class="section-title">外部 IdP 设置</div>
             <div class="record-meta mb-3">采用预置 Provider 模板，点击启用后在弹窗中配置应用参数。</div>
             <div class="record-list">
@@ -1751,27 +1751,27 @@
               <label class="form-label">Issuer</label>
               <BFormInput v-model="externalIDPForm.issuer" />
             </div>
-            <div v-if="currentExternalIDPProtocol !== 'saml'" class="col-md-6">
+            <div class="col-md-6">
               <label class="form-label">Client ID / App Key</label>
               <BFormInput v-model="externalIDPForm.clientId" />
             </div>
-            <div v-if="currentExternalIDPProtocol !== 'saml'" class="col-md-6">
+            <div class="col-md-6">
               <label class="form-label">Client Secret / App Secret</label>
               <BFormInput v-model="externalIDPForm.clientSecret" type="password" placeholder="留空则保持原值" />
             </div>
-            <div v-if="currentExternalIDPProtocol !== 'saml'" class="col-md-12">
+            <div class="col-md-12">
               <label class="form-label">Scopes</label>
               <BFormInput v-model="externalIDPForm.scopes" />
             </div>
-            <div v-if="currentExternalIDPProtocol !== 'saml'" class="col-md-6">
+            <div class="col-md-6">
               <label class="form-label">Authorization URL</label>
               <BFormInput v-model="externalIDPForm.authorizationUrl" />
             </div>
-            <div v-if="currentExternalIDPProtocol !== 'saml'" class="col-md-6">
+            <div class="col-md-6">
               <label class="form-label">Token URL</label>
               <BFormInput v-model="externalIDPForm.tokenUrl" />
             </div>
-            <div v-if="currentExternalIDPProtocol !== 'saml'" class="col-md-6">
+            <div class="col-md-6">
               <label class="form-label">UserInfo URL</label>
               <BFormInput v-model="externalIDPForm.userInfoUrl" />
             </div>
@@ -1779,24 +1779,6 @@
               <label class="form-label">JWKS URL</label>
               <BFormInput v-model="externalIDPForm.jwksUrl" />
             </div>
-            <template v-if="currentExternalIDPProtocol === 'saml'">
-              <div class="col-md-6">
-                <label class="form-label">Metadata URL</label>
-                <BFormInput v-model="externalIDPForm.metadataUrl" />
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">Entity ID</label>
-                <BFormInput v-model="externalIDPForm.entityId" />
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">Entry Point</label>
-                <BFormInput v-model="externalIDPForm.entryPoint" />
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">Certificate</label>
-                <BFormInput v-model="externalIDPForm.certificate" />
-              </div>
-            </template>
           </div>
         </BForm>
         <template #footer>
@@ -1852,18 +1834,18 @@
         </template>
 
         <template v-else-if="currentMFAMethod === 'u2f'">
-          <div class="record-meta mb-3">当前已注册 {{ u2fPasskeys.length }} 个安全密钥。</div>
-          <div v-for="passkey in u2fPasskeys" :key="passkey.id" class="record-row mb-2">
+          <div class="record-meta mb-3">当前已注册 {{ u2fSecureKeys.length }} 个安全密钥。</div>
+          <div v-for="secureKey in u2fSecureKeys" :key="secureKey.id" class="record-row mb-2">
             <div>
-              <strong>{{ passkey.identifier || '安全密钥' }}</strong>
-              <div class="record-meta">{{ passkey.publicKeyId }}</div>
+              <strong>{{ secureKey.identifier || '安全密钥' }}</strong>
+              <div class="record-meta">{{ secureKey.publicKeyId }}</div>
             </div>
             <div class="d-flex align-items-center gap-2">
-              <code>{{ formatDateTime(passkey.createdAt) }}</code>
-              <BButton size="sm" variant="outline-danger" @click="deletePasskey(passkey.id)">删除</BButton>
+              <code>{{ formatDateTime(secureKey.createdAt) }}</code>
+              <BButton size="sm" variant="outline-danger" @click="deleteSecureKey(secureKey.id)">删除</BButton>
             </div>
           </div>
-          <div v-if="!u2fPasskeys.length" class="record-meta mb-3">当前没有已注册的安全密钥。</div>
+          <div v-if="!u2fSecureKeys.length" class="record-meta mb-3">当前没有已注册的安全密钥。</div>
         </template>
 
         <template v-else-if="currentMFAMethod === 'recovery_code'">
@@ -1929,7 +1911,7 @@ const userDetail = ref<any | null>(null)
 const mfaConfigModalVisible = ref(false)
 const currentMFAMethod = ref<MFAMethod>('totp')
 const externalIDPConfigModalVisible = ref(false)
-const currentExternalIDPKind = ref<'google' | 'github' | 'apple' | 'qq' | 'weibo' | 'custom_oauth' | 'custom_oidc' | 'custom_saml'>('google')
+const currentExternalIDPKind = ref<'google' | 'github' | 'apple' | 'qq' | 'weibo' | 'custom_oauth' | 'custom_oidc'>('google')
 const applicationKeyModalVisible = ref(false)
 const applicationKeyModalTitle = ref('应用私钥')
 const applicationPrivateKeySnapshot = ref('')
@@ -1977,7 +1959,7 @@ type OrganizationConsoleSettings = {
   domains: Array<{ host: string; verified: boolean }>
   loginPolicy: {
     passwordLoginEnabled: boolean
-    passkeyLoginEnabled: boolean
+    webauthnLoginEnabled: boolean
     allowUsername: boolean
     allowEmail: boolean
     allowPhone: boolean
@@ -1996,7 +1978,7 @@ type OrganizationConsoleSettings = {
   }
   mfaPolicy: {
     requireForAllUsers: boolean
-    allowPasskey: boolean
+    allowWebauthn: boolean
     allowTotp: boolean
     allowEmailCode: boolean
     allowSmsCode: boolean
@@ -2184,11 +2166,7 @@ const externalIDPForm = reactive({
   authorizationUrl: '',
   tokenUrl: '',
   userInfoUrl: '',
-  jwksUrl: '',
-  metadataUrl: '',
-  entityId: '',
-  entryPoint: '',
-  certificate: ''
+  jwksUrl: ''
 })
 const externalBindingForm = reactive({ organizationId: '', userId: '', externalIdpId: '', issuer: '', subject: '' })
 const organizationBasicSettingForm = reactive({
@@ -2200,7 +2178,7 @@ const organizationBasicSettingForm = reactive({
 })
 const organizationLoginPolicyForm = reactive({
   passwordLoginEnabled: true,
-  passkeyLoginEnabled: true,
+      webauthnLoginEnabled: true,
   allowUsername: true,
   allowEmail: true,
   allowPhone: true,
@@ -2219,7 +2197,7 @@ const organizationPasswordPolicyForm = reactive({
 })
 const organizationMFAPolicyForm = reactive({
   requireForAllUsers: false,
-  allowPasskey: true,
+      allowWebauthn: true,
   allowTotp: true,
   allowEmailCode: true,
   allowSmsCode: false,
@@ -2349,11 +2327,11 @@ const generatedRecoveryCodeList = computed(() => (recoveryCodes.value as { codes
 const activeTOTPEnrollments = computed(() => (userDetail.value?.mfaEnrollments || []).filter((item: any) => item.method === 'totp'))
 const emailCodeEnrollment = computed(() => (userDetail.value?.mfaEnrollments || []).find((item: any) => item.method === 'email_code'))
 const smsCodeEnrollment = computed(() => (userDetail.value?.mfaEnrollments || []).find((item: any) => item.method === 'sms_code'))
-const passkeyEnrollment = computed(() => (userDetail.value?.mfaEnrollments || []).find((item: any) => item.method === 'passkey'))
-const loginPasskeys = computed(() => (userDetail.value?.passkeys || []).filter((item: any) => item.isPasskey))
-const u2fPasskeys = computed(() => (userDetail.value?.passkeys || []).filter((item: any) => item.isU2f))
+const webauthnEnrollment = computed(() => (userDetail.value?.mfaEnrollments || []).find((item: any) => item.method === 'webauthn'))
+const loginSecureKeys = computed(() => (userDetail.value?.secureKeys || []).filter((item: any) => item.webauthnEnable))
+const u2fSecureKeys = computed(() => (userDetail.value?.secureKeys || []).filter((item: any) => item.u2fEnable))
 const u2fEnrollment = computed(() => (userDetail.value?.mfaEnrollments || []).find((item: any) => item.method === 'u2f'))
-const passkeyLoginEnabled = computed(() => passkeyEnrollment.value?.status === 'active' && loginPasskeys.value.length > 0)
+const webauthnLoginEnabled = computed(() => webauthnEnrollment.value?.status === 'active' && loginSecureKeys.value.length > 0)
 const userMFAMethodRows = computed<Array<{ id: MFAMethod; label: string; summary: string; enabled: boolean; disabled?: boolean }>>(() => [
   {
     id: 'totp',
@@ -2378,8 +2356,8 @@ const userMFAMethodRows = computed<Array<{ id: MFAMethod; label: string; summary
   {
     id: 'u2f',
     label: '安全密钥',
-    summary: u2fEnrollment.value?.status === 'active' && u2fPasskeys.value.length > 0 ? `已注册 ${u2fPasskeys.value.length} 个密钥` : '未开启',
-    enabled: u2fEnrollment.value?.status === 'active' && u2fPasskeys.value.length > 0
+    summary: u2fEnrollment.value?.status === 'active' && u2fSecureKeys.value.length > 0 ? `已注册 ${u2fSecureKeys.value.length} 个密钥` : '未开启',
+    enabled: u2fEnrollment.value?.status === 'active' && u2fSecureKeys.value.length > 0
   },
   {
     id: 'recovery_code',
@@ -2400,7 +2378,7 @@ const currentMFAModalActionLabel = computed(() => {
   if (currentMFAMethod.value === 'recovery_code') return '生成备用验证码'
   return '保存设置'
 })
-const externalIDPProviderRows = computed(() => (['google', 'github', 'apple', 'qq', 'weibo', 'custom_oauth', 'custom_oidc', 'custom_saml'] as const).map((kind) => {
+const externalIDPProviderRows = computed(() => (['google', 'github', 'apple', 'qq', 'weibo', 'custom_oauth', 'custom_oidc'] as const).map((kind) => {
   const provider = findExistingExternalIDP(kind)
   return {
     id: kind,
@@ -2410,8 +2388,7 @@ const externalIDPProviderRows = computed(() => (['google', 'github', 'apple', 'q
       : kind === 'qq' ? 'QQ'
       : kind === 'weibo' ? '新浪微博'
       : kind === 'custom_oauth' ? '自定义 OAuth'
-      : kind === 'custom_oidc' ? '自定义 OIDC'
-      : '自定义 SAML',
+      : '自定义 OIDC',
     summary: provider ? `已配置 · ${provider.clientId || provider.issuer || provider.name}` : '未启用',
     enabled: Boolean(provider)
   }
@@ -2422,13 +2399,12 @@ const currentExternalIDPModalTitle = computed(() => currentExternalIDPKind.value
   : currentExternalIDPKind.value === 'qq' ? '配置 QQ 登录'
   : currentExternalIDPKind.value === 'weibo' ? '配置 新浪微博 登录'
   : currentExternalIDPKind.value === 'custom_oauth' ? '配置自定义 OAuth 提供商'
-  : currentExternalIDPKind.value === 'custom_oidc' ? '配置自定义 OIDC 提供商'
-  : '配置自定义 SAML 提供商')
+  : '配置自定义 OIDC 提供商')
 const currentExternalIDPActionLabel = computed(() => externalIDPForm.id ? '保存配置' : isCustomExternalIDPKind(currentExternalIDPKind.value) ? '添加 Provider' : '启用 Provider')
 const currentExternalIDPProtocol = computed(() => externalIDPForm.protocol)
 const customExternalIDPs = computed(() => externalIDPs.value.filter((item: any) => {
   const providerKind = normalizeProviderKind(item)
-  return providerKind === 'custom_oauth' || providerKind === 'custom_oidc' || providerKind === 'custom_saml'
+  return providerKind === 'custom_oauth' || providerKind === 'custom_oidc'
 }))
 const userDeviceList = computed(() => (userDetail.value?.devices || []).map((device: any) => ({
   id: device.id,
@@ -2581,7 +2557,7 @@ const currentModuleMetrics = computed<MetricItem[]>(() => {
     return [
       { label: '用户 ID', value: currentUserRecord.value?.id || '-', copyable: Boolean(currentUserRecord.value?.id), copyValue: currentUserRecord.value?.id || '' },
       { label: '状态', value: currentUserRecord.value?.status || '-' },
-      { label: '通行密钥', value: String(userDetail.value?.passkeys?.length ?? 0) },
+      { label: '通行密钥', value: String(userDetail.value?.secureKeys?.length ?? 0) },
       { label: '绑定数', value: String(userDetail.value?.bindings?.length ?? 0) },
       { label: '会话数', value: String(userDetail.value?.recentSessions?.length ?? 0) },
       { label: '最近变更', value: formatDateTime(currentUserRecord.value?.updatedAt) }
@@ -2650,7 +2626,7 @@ const currentModulePanels = computed(() => {
     { id: 'setting-login-policy', label: '登录策略设置' },
     { id: 'setting-password-policy', label: '密码策略设置' },
     { id: 'setting-mfa-policy', label: '两步验证策略' },
-    { id: 'setting-federation', label: '外部 IdP 设置' }
+    { id: 'setting-external-idp', label: '外部 IdP 设置' }
   ]
   return [
     { id: 'dashboard-overview', label: '平台概览' },
@@ -3061,7 +3037,7 @@ async function loadAll() {
     loadUsers(),
     loadRoles(),
     loadPolicies(),
-    loadFederation(),
+    loadExternalIDPs(),
     loadAudit(),
     loadProjects(),
     loadApplications()
@@ -3507,10 +3483,10 @@ async function runModuleAction() {
     return
   }
   if (tab.value === 'setting') {
-    await loadFederation()
+    await loadExternalIDPs()
     return
   }
-  await Promise.all([loadOrganizations(), loadUsers(), loadRoles(), loadPolicies(), loadFederation(), loadAudit()])
+  await Promise.all([loadOrganizations(), loadUsers(), loadRoles(), loadPolicies(), loadExternalIDPs(), loadAudit()])
 }
 
 async function setTab(nextTab: 'dashboard' | 'organization' | 'project' | 'user' | 'role' | 'audit' | 'setting') {
@@ -3584,7 +3560,7 @@ async function goSecuritySetting() {
 
 async function logout() {
   sessionStorage.removeItem('ppvt-login-identifier')
-  sessionStorage.removeItem('ppvt-federation-application-id')
+  sessionStorage.removeItem('ppvt-external-idp-application-id')
   startConsoleLogout()
 }
 
@@ -3714,7 +3690,7 @@ async function loadAudit() {
   auditLogs.value = response.items
 }
 
-async function loadFederation() {
+async function loadExternalIDPs() {
   const response = await apiPost<{ items: any[] }>('/api/manage/v1/external_idp/query', {
     organizationId: externalIDPForm.organizationId
   })
@@ -4045,14 +4021,10 @@ async function createExternalIDP() {
       userInfoUrl: externalIDPForm.userInfoUrl,
       jwksUrl: externalIDPForm.jwksUrl,
       metadata: {
-        providerKind: currentExternalIDPKind.value,
-        metadataUrl: externalIDPForm.metadataUrl,
-        entityId: externalIDPForm.entityId,
-        entryPoint: externalIDPForm.entryPoint,
-        certificate: externalIDPForm.certificate
+        providerKind: currentExternalIDPKind.value
       }
     })
-    await loadFederation()
+    await loadExternalIDPs()
   })
 }
 
@@ -4072,14 +4044,10 @@ async function updateExternalIDP() {
       userInfoUrl: externalIDPForm.userInfoUrl,
       jwksUrl: externalIDPForm.jwksUrl,
       metadata: {
-        providerKind: currentExternalIDPKind.value,
-        metadataUrl: externalIDPForm.metadataUrl,
-        entityId: externalIDPForm.entityId,
-        entryPoint: externalIDPForm.entryPoint,
-        certificate: externalIDPForm.certificate
+        providerKind: currentExternalIDPKind.value
       }
     })
-    await loadFederation()
+    await loadExternalIDPs()
   })
 }
 
@@ -4110,23 +4078,23 @@ async function createExternalBinding() {
   })
 }
 
-async function registerPasskey(purpose: 'passkey' | 'u2f' = 'passkey') {
+async function registerSecureKey(purpose: 'webauthn' | 'u2f' = 'webauthn') {
   const userId = selectedUserId.value
   if (currentView.value !== 'my' && !userId) {
     return
   }
   await withFeedback(async () => {
     const begin = await apiPost<{ challengeId: string; options: any }>(
-      currentView.value === 'my' ? '/api/user/v1/passkey/register/begin' : '/api/manage/v1/user/passkey/register/begin',
+      currentView.value === 'my' ? '/api/user/v1/securekey/register/begin' : '/api/manage/v1/user/securekey/register/begin',
       currentView.value === 'my' ? { purpose } : { userId, purpose }
     )
     const credential = await navigator.credentials.create({
       publicKey: normalizeCreationOptions(begin.options)
     })
     if (!credential) {
-      throw new Error('Passkey registration was cancelled')
+      throw new Error('Secure key registration was cancelled')
     }
-    await apiPost(currentView.value === 'my' ? '/api/user/v1/passkey/register/finish' : '/api/manage/v1/user/passkey/register/finish', {
+    await apiPost(currentView.value === 'my' ? '/api/user/v1/securekey/register/finish' : '/api/manage/v1/user/securekey/register/finish', {
       challengeId: begin.challengeId,
       response: serializeCredential(credential as PublicKeyCredential)
     })
@@ -4289,7 +4257,7 @@ async function submitCurrentMFAModal() {
     return
   }
   if (currentMFAMethod.value === 'u2f') {
-    await registerPasskey('u2f')
+    await registerSecureKey('u2f')
     return
   }
   if (currentMFAMethod.value === 'recovery_code') {
@@ -4322,12 +4290,12 @@ async function deleteTotpEnrollments() {
   })
 }
 
-async function deletePasskey(credentialId: string) {
+async function deleteSecureKey(credentialId: string) {
   if (currentView.value !== 'my' && !selectedUserId.value) {
     return
   }
   await withFeedback(async () => {
-    await apiPost(currentView.value === 'my' ? '/api/user/v1/passkey/delete' : '/api/manage/v1/user/passkey/delete', currentView.value === 'my'
+    await apiPost(currentView.value === 'my' ? '/api/user/v1/securekey/delete' : '/api/manage/v1/user/securekey/delete', currentView.value === 'my'
       ? {
           credentialId
         }
@@ -4343,19 +4311,19 @@ async function deletePasskey(credentialId: string) {
   })
 }
 
-async function togglePasskeyLogin(enabled: boolean) {
+async function toggleWebAuthnLogin(enabled: boolean) {
   if (currentView.value !== 'my' && !selectedUserId.value) {
     return
   }
   await withFeedback(async () => {
     await apiPost(currentView.value === 'my' ? '/api/user/v1/mfa_method/update' : '/api/manage/v1/user/mfa_method/update', currentView.value === 'my'
       ? {
-          method: 'passkey',
+          method: 'webauthn',
           enabled
         }
       : {
           userId: selectedUserId.value,
-          method: 'passkey',
+          method: 'webauthn',
           enabled
         })
     if (currentView.value === 'my') {
@@ -4538,7 +4506,7 @@ function parseOrganizationConsoleSettings(organization?: any): OrganizationConso
     domains: [],
     loginPolicy: {
       passwordLoginEnabled: true,
-      passkeyLoginEnabled: true,
+      webauthnLoginEnabled: true,
       allowUsername: true,
       allowEmail: true,
       allowPhone: true,
@@ -4557,7 +4525,7 @@ function parseOrganizationConsoleSettings(organization?: any): OrganizationConso
     },
     mfaPolicy: {
       requireForAllUsers: false,
-      allowPasskey: true,
+      allowWebauthn: true,
       allowTotp: true,
       allowEmailCode: true,
       allowSmsCode: false,
@@ -4608,7 +4576,7 @@ function syncOrganizationSettingForms(organization?: any) {
   organizationBasicSettingForm.supportEmail = settings.supportEmail
   organizationBasicSettingForm.logoUrl = settings.logoUrl
   organizationLoginPolicyForm.passwordLoginEnabled = settings.loginPolicy.passwordLoginEnabled
-  organizationLoginPolicyForm.passkeyLoginEnabled = settings.loginPolicy.passkeyLoginEnabled
+  organizationLoginPolicyForm.webauthnLoginEnabled = settings.loginPolicy.webauthnLoginEnabled
   organizationLoginPolicyForm.allowUsername = settings.loginPolicy.allowUsername
   organizationLoginPolicyForm.allowEmail = settings.loginPolicy.allowEmail
   organizationLoginPolicyForm.allowPhone = settings.loginPolicy.allowPhone
@@ -4623,7 +4591,7 @@ function syncOrganizationSettingForms(organization?: any) {
   organizationPasswordPolicyForm.passwordExpires = settings.passwordPolicy.passwordExpires
   organizationPasswordPolicyForm.expiryDays = settings.passwordPolicy.expiryDays
   organizationMFAPolicyForm.requireForAllUsers = settings.mfaPolicy.requireForAllUsers
-  organizationMFAPolicyForm.allowPasskey = settings.mfaPolicy.allowPasskey
+  organizationMFAPolicyForm.allowWebauthn = settings.mfaPolicy.allowWebauthn
   organizationMFAPolicyForm.allowTotp = settings.mfaPolicy.allowTotp
   organizationMFAPolicyForm.allowEmailCode = settings.mfaPolicy.allowEmailCode
   organizationMFAPolicyForm.allowSmsCode = settings.mfaPolicy.allowSmsCode
@@ -4709,7 +4677,7 @@ function buildOrganizationConsoleSettings(): OrganizationConsoleSettings {
       .filter((item) => item.host),
     loginPolicy: {
       passwordLoginEnabled: organizationLoginPolicyForm.passwordLoginEnabled,
-      passkeyLoginEnabled: organizationLoginPolicyForm.passkeyLoginEnabled,
+      webauthnLoginEnabled: organizationLoginPolicyForm.webauthnLoginEnabled,
       allowUsername: organizationLoginPolicyForm.allowUsername,
       allowEmail: organizationLoginPolicyForm.allowEmail,
       allowPhone: organizationLoginPolicyForm.allowPhone,
@@ -4728,7 +4696,7 @@ function buildOrganizationConsoleSettings(): OrganizationConsoleSettings {
     },
     mfaPolicy: {
       requireForAllUsers: organizationMFAPolicyForm.requireForAllUsers,
-      allowPasskey: organizationMFAPolicyForm.allowPasskey,
+      allowWebauthn: organizationMFAPolicyForm.allowWebauthn,
       allowTotp: organizationMFAPolicyForm.allowTotp,
       allowEmailCode: organizationMFAPolicyForm.allowEmailCode,
       allowSmsCode: organizationMFAPolicyForm.allowSmsCode,
@@ -4782,7 +4750,7 @@ function verifyOrganizationDomain(index: number) {
   messageVariant.value = 'success'
 }
 
-function providerPreset(kind: 'google' | 'github' | 'apple' | 'qq' | 'weibo' | 'custom_oauth' | 'custom_oidc' | 'custom_saml') {
+function providerPreset(kind: 'google' | 'github' | 'apple' | 'qq' | 'weibo' | 'custom_oauth' | 'custom_oidc') {
   if (kind === 'google') {
     return {
       protocol: 'oidc',
@@ -4840,11 +4808,7 @@ function providerPreset(kind: 'google' | 'github' | 'apple' | 'qq' | 'weibo' | '
       authorizationUrl: 'https://api.weibo.com/oauth2/authorize',
       tokenUrl: 'https://api.weibo.com/oauth2/access_token',
       userInfoUrl: 'https://api.weibo.com/2/users/show.json',
-      jwksUrl: '',
-      metadataUrl: '',
-      entityId: '',
-      entryPoint: '',
-      certificate: ''
+      jwksUrl: ''
     }
   }
   if (kind === 'custom_oauth') {
@@ -4856,58 +4820,33 @@ function providerPreset(kind: 'google' | 'github' | 'apple' | 'qq' | 'weibo' | '
       authorizationUrl: '',
       tokenUrl: '',
       userInfoUrl: '',
-      jwksUrl: '',
-      metadataUrl: '',
-      entityId: '',
-      entryPoint: '',
-      certificate: ''
-    }
-  }
-  if (kind === 'custom_oidc') {
-    return {
-      protocol: 'oidc',
-      name: 'Custom OIDC',
-      issuer: '',
-      scopes: 'openid profile email',
-      authorizationUrl: '',
-      tokenUrl: '',
-      userInfoUrl: '',
-      jwksUrl: '',
-      metadataUrl: '',
-      entityId: '',
-      entryPoint: '',
-      certificate: ''
+      jwksUrl: ''
     }
   }
   return {
-    protocol: 'saml',
-    name: 'Custom SAML',
+    protocol: 'oidc',
+    name: 'Custom OIDC',
     issuer: '',
-    scopes: '',
+    scopes: 'openid profile email',
     authorizationUrl: '',
     tokenUrl: '',
     userInfoUrl: '',
-    jwksUrl: '',
-    metadataUrl: '',
-    entityId: '',
-    entryPoint: '',
-    certificate: ''
+    jwksUrl: ''
   }
 }
 
-function providerKindName(kind: 'google' | 'github' | 'apple' | 'qq' | 'weibo' | 'custom_oauth' | 'custom_oidc' | 'custom_saml') {
+function providerKindName(kind: 'google' | 'github' | 'apple' | 'qq' | 'weibo' | 'custom_oauth' | 'custom_oidc') {
   if (kind === 'google') return 'google'
   if (kind === 'github') return 'github'
   if (kind === 'apple') return 'apple'
   if (kind === 'qq') return 'qq'
   if (kind === 'weibo') return 'weibo'
   if (kind === 'custom_oauth') return 'custom oauth'
-  if (kind === 'custom_oidc') return 'custom oidc'
-  return 'custom saml'
+  return 'custom oidc'
 }
 
-function isCustomExternalIDPKind(kind: 'google' | 'github' | 'apple' | 'qq' | 'weibo' | 'custom_oauth' | 'custom_oidc' | 'custom_saml') {
-  return kind === 'custom_oauth' || kind === 'custom_oidc' || kind === 'custom_saml'
+function isCustomExternalIDPKind(kind: 'google' | 'github' | 'apple' | 'qq' | 'weibo' | 'custom_oauth' | 'custom_oidc') {
+  return kind === 'custom_oauth' || kind === 'custom_oidc'
 }
 
 function normalizeProviderKind(item: any) {
@@ -4921,12 +4860,11 @@ function normalizeProviderKind(item: any) {
   if (normalizedName === 'apple') return 'apple'
   if (normalizedName === 'qq') return 'qq'
   if (normalizedName === 'weibo' || normalizedName === '新浪微博') return 'weibo'
-  if (item?.protocol === 'saml') return 'custom_saml'
   if (item?.protocol === 'oidc') return 'custom_oidc'
   return 'custom_oauth'
 }
 
-function findExistingExternalIDP(kind: 'google' | 'github' | 'apple' | 'qq' | 'weibo' | 'custom_oauth' | 'custom_oidc' | 'custom_saml') {
+function findExistingExternalIDP(kind: 'google' | 'github' | 'apple' | 'qq' | 'weibo' | 'custom_oauth' | 'custom_oidc') {
   if (isCustomExternalIDPKind(kind)) {
     return null
   }
@@ -4934,7 +4872,7 @@ function findExistingExternalIDP(kind: 'google' | 'github' | 'apple' | 'qq' | 'w
   return externalIDPs.value.find((item: any) => normalizeProviderKind(item) === expectedName || normalizeProviderName(item.name) === expectedName) || null
 }
 
-function openExternalIDPModal(kind: 'google' | 'github' | 'apple' | 'qq' | 'weibo' | 'custom_oauth' | 'custom_oidc' | 'custom_saml') {
+function openExternalIDPModal(kind: 'google' | 'github' | 'apple' | 'qq' | 'weibo' | 'custom_oauth' | 'custom_oidc') {
   currentExternalIDPKind.value = kind
   const existing = findExistingExternalIDP(kind)
   const preset = providerPreset(kind)
@@ -4950,15 +4888,11 @@ function openExternalIDPModal(kind: 'google' | 'github' | 'apple' | 'qq' | 'weib
   externalIDPForm.tokenUrl = existing?.tokenUrl || preset.tokenUrl
   externalIDPForm.userInfoUrl = existing?.userInfoUrl || preset.userInfoUrl
   externalIDPForm.jwksUrl = existing?.jwksUrl || preset.jwksUrl
-  externalIDPForm.metadataUrl = existing?.metadata?.metadataUrl || preset.metadataUrl
-  externalIDPForm.entityId = existing?.metadata?.entityId || preset.entityId
-  externalIDPForm.entryPoint = existing?.metadata?.entryPoint || preset.entryPoint
-  externalIDPForm.certificate = existing?.metadata?.certificate || preset.certificate
   externalIDPConfigModalVisible.value = true
 }
 
 function openExistingExternalIDP(item: any) {
-  const kind = normalizeProviderKind(item) as 'google' | 'github' | 'apple' | 'qq' | 'weibo' | 'custom_oauth' | 'custom_oidc' | 'custom_saml'
+  const kind = normalizeProviderKind(item) as 'google' | 'github' | 'apple' | 'qq' | 'weibo' | 'custom_oauth' | 'custom_oidc'
   currentExternalIDPKind.value = kind
   externalIDPForm.id = item.id || ''
   externalIDPForm.organizationId = currentOrganizationId.value || currentOrganization.value?.id || ''
@@ -4972,10 +4906,6 @@ function openExistingExternalIDP(item: any) {
   externalIDPForm.tokenUrl = item.tokenUrl || ''
   externalIDPForm.userInfoUrl = item.userInfoUrl || ''
   externalIDPForm.jwksUrl = item.jwksUrl || ''
-  externalIDPForm.metadataUrl = item.metadata?.metadataUrl || ''
-  externalIDPForm.entityId = item.metadata?.entityId || ''
-  externalIDPForm.entryPoint = item.metadata?.entryPoint || ''
-  externalIDPForm.certificate = item.metadata?.certificate || ''
   externalIDPConfigModalVisible.value = true
 }
 

@@ -6,7 +6,7 @@ import (
 
 	"pass-pivot/internal/model"
 	sharedhandler "pass-pivot/internal/server/shared/handler"
-	sharedhttp "pass-pivot/internal/server/shared/web"
+	sharedweb "pass-pivot/internal/server/shared/web"
 )
 
 type Handler struct {
@@ -20,16 +20,16 @@ func NewHandler(service *Service) *Handler {
 func (h *Handler) GetCurrentUserProfile(w http.ResponseWriter, r *http.Request) {
 	identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r)
 	if !ok || identity.User == nil {
-		sharedhttp.Error(w, http.StatusUnauthorized, "access token is required")
+		sharedweb.Error(w, http.StatusUnauthorized, "access token is required")
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, identity.User)
+	sharedweb.JSON(w, http.StatusOK, identity.User)
 }
 
 func (h *Handler) UpdateCurrentUserProfile(w http.ResponseWriter, r *http.Request) {
 	identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r)
 	if !ok || identity.User == nil {
-		sharedhttp.Error(w, http.StatusUnauthorized, "access token is required")
+		sharedweb.Error(w, http.StatusUnauthorized, "access token is required")
 		return
 	}
 	var payload struct {
@@ -39,7 +39,7 @@ func (h *Handler) UpdateCurrentUserProfile(w http.ResponseWriter, r *http.Reques
 		PhoneNumber string `json:"phoneNumber"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid JSON body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	item, err := h.service.platform.UpdateCurrentUserProfile(r.Context(), identity.Token.SessionID, model.User{
@@ -49,44 +49,44 @@ func (h *Handler) UpdateCurrentUserProfile(w http.ResponseWriter, r *http.Reques
 		PhoneNumber: payload.PhoneNumber,
 	})
 	if err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, item)
+	sharedweb.JSON(w, http.StatusOK, item)
 }
 
 func (h *Handler) GetCurrentUserDetail(w http.ResponseWriter, r *http.Request) {
 	identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r)
 	if !ok || identity.User == nil {
-		sharedhttp.Error(w, http.StatusUnauthorized, "access token is required")
+		sharedweb.Error(w, http.StatusUnauthorized, "access token is required")
 		return
 	}
 	item, err := h.service.platform.GetUserDetail(r.Context(), identity.User.ID)
 	if err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, item)
+	sharedweb.JSON(w, http.StatusOK, item)
 }
 
 func (h *Handler) GetCurrentUserSetting(w http.ResponseWriter, r *http.Request) {
 	identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r)
 	if !ok || identity.User == nil {
-		sharedhttp.Error(w, http.StatusUnauthorized, "access token is required")
+		sharedweb.Error(w, http.StatusUnauthorized, "access token is required")
 		return
 	}
 	item, err := h.service.platform.GetCurrentUserSetting(r.Context(), identity.Token.SessionID)
 	if err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, item)
+	sharedweb.JSON(w, http.StatusOK, item)
 }
 
 func (h *Handler) UpdateCurrentUserSetting(w http.ResponseWriter, r *http.Request) {
 	identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r)
 	if !ok || identity.User == nil {
-		sharedhttp.Error(w, http.StatusUnauthorized, "access token is required")
+		sharedweb.Error(w, http.StatusUnauthorized, "access token is required")
 		return
 	}
 	var payload struct {
@@ -94,20 +94,20 @@ func (h *Handler) UpdateCurrentUserSetting(w http.ResponseWriter, r *http.Reques
 		NewPassword     string `json:"newPassword"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid JSON body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	if err := h.service.platform.UpdateCurrentUserPassword(r.Context(), identity.Token.SessionID, payload.CurrentPassword, payload.NewPassword); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, map[string]any{"updated": true})
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"updated": true})
 }
 
 func (h *Handler) UpdateCurrentUserMFAMethod(w http.ResponseWriter, r *http.Request) {
 	identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r)
 	if !ok || identity.User == nil {
-		sharedhttp.Error(w, http.StatusUnauthorized, "access token is required")
+		sharedweb.Error(w, http.StatusUnauthorized, "access token is required")
 		return
 	}
 	var payload struct {
@@ -115,80 +115,122 @@ func (h *Handler) UpdateCurrentUserMFAMethod(w http.ResponseWriter, r *http.Requ
 		Enabled bool   `json:"enabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid JSON body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	if err := h.service.platform.SetCurrentUserMFAMethod(r.Context(), identity.Token.SessionID, payload.Method, payload.Enabled); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, map[string]any{"updated": true})
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"updated": true})
 }
 
 func (h *Handler) DeleteCurrentUserMFAEnrollment(w http.ResponseWriter, r *http.Request) {
 	identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r)
 	if !ok || identity.User == nil {
-		sharedhttp.Error(w, http.StatusUnauthorized, "access token is required")
+		sharedweb.Error(w, http.StatusUnauthorized, "access token is required")
 		return
 	}
 	var payload struct {
 		Method string `json:"method"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid JSON body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	if err := h.service.platform.DeleteCurrentUserMFAEnrollments(r.Context(), identity.Token.SessionID, payload.Method); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, map[string]any{"deleted": true})
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"deleted": true})
 }
 
-func (h *Handler) DeleteCurrentUserPasskey(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) DeleteCurrentUserSecureKey(w http.ResponseWriter, r *http.Request) {
 	identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r)
 	if !ok || identity.User == nil {
-		sharedhttp.Error(w, http.StatusUnauthorized, "access token is required")
+		sharedweb.Error(w, http.StatusUnauthorized, "access token is required")
 		return
 	}
 	var payload struct {
 		CredentialID string `json:"credentialId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid JSON body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
-	if err := h.service.platform.DeleteCurrentUserPasskey(r.Context(), identity.Token.SessionID, payload.CredentialID); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+	if err := h.service.platform.DeleteCurrentUserSecureKey(r.Context(), identity.Token.SessionID, payload.CredentialID); err != nil {
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, map[string]any{"deleted": true})
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"deleted": true})
+}
+
+func (h *Handler) BeginCurrentUserSecureKeyRegistration(w http.ResponseWriter, r *http.Request) {
+	identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r)
+	if !ok || identity.User == nil {
+		sharedweb.Error(w, http.StatusUnauthorized, "access token is required")
+		return
+	}
+	var payload struct {
+		Purpose string `json:"purpose"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil && err.Error() != "EOF" {
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	challengeID, options, err := h.service.platform.BeginCurrentUserSecureKeyRegistration(r.Context(), identity.Token.SessionID, payload.Purpose)
+	if err != nil {
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"challengeId": challengeID, "options": options})
+}
+
+func (h *Handler) FinishCurrentUserSecureKeyRegistration(w http.ResponseWriter, r *http.Request) {
+	identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r)
+	if !ok || identity.User == nil {
+		sharedweb.Error(w, http.StatusUnauthorized, "access token is required")
+		return
+	}
+	var payload struct {
+		ChallengeID string          `json:"challengeId"`
+		Response    json.RawMessage `json:"response"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if err := h.service.platform.FinishSecureKeyRegistration(r.Context(), payload.ChallengeID, payload.Response); err != nil {
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"registered": true})
 }
 
 func (h *Handler) UntrustCurrentDevice(w http.ResponseWriter, r *http.Request) {
 	identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r)
 	if !ok || identity.User == nil {
-		sharedhttp.Error(w, http.StatusUnauthorized, "access token is required")
+		sharedweb.Error(w, http.StatusUnauthorized, "access token is required")
 		return
 	}
 	var payload struct {
 		DeviceID string `json:"deviceId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid JSON body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	if err := h.service.platform.UntrustCurrentDevice(r.Context(), identity.Token.SessionID, payload.DeviceID); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, map[string]any{"updated": true})
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"updated": true})
 }
 
 func (h *Handler) CreateCurrentExternalIdentityBinding(w http.ResponseWriter, r *http.Request) {
 	identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r)
 	if !ok || identity.User == nil {
-		sharedhttp.Error(w, http.StatusUnauthorized, "access token is required")
+		sharedweb.Error(w, http.StatusUnauthorized, "access token is required")
 		return
 	}
 	var payload struct {
@@ -197,7 +239,7 @@ func (h *Handler) CreateCurrentExternalIdentityBinding(w http.ResponseWriter, r 
 		Subject       string `json:"subject"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid JSON body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	item, err := h.service.platform.CreateCurrentExternalIdentityBinding(r.Context(), identity.Token.SessionID, model.ExternalIdentityBinding{
@@ -206,28 +248,28 @@ func (h *Handler) CreateCurrentExternalIdentityBinding(w http.ResponseWriter, r 
 		Subject:       payload.Subject,
 	})
 	if err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusCreated, item)
+	sharedweb.JSON(w, http.StatusCreated, item)
 }
 
 func (h *Handler) DeleteCurrentExternalIdentityBinding(w http.ResponseWriter, r *http.Request) {
 	identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r)
 	if !ok || identity.User == nil {
-		sharedhttp.Error(w, http.StatusUnauthorized, "access token is required")
+		sharedweb.Error(w, http.StatusUnauthorized, "access token is required")
 		return
 	}
 	var payload struct {
 		BindingID string `json:"bindingId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, "invalid JSON body")
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	if err := h.service.platform.DeleteCurrentExternalIdentityBinding(r.Context(), identity.Token.SessionID, payload.BindingID); err != nil {
-		sharedhttp.Error(w, http.StatusBadRequest, err.Error())
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sharedhttp.JSON(w, http.StatusOK, map[string]any{"deleted": true})
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"deleted": true})
 }

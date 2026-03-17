@@ -27,8 +27,9 @@ func NewApp(cfg config.Config) (*App, error) {
 		apiauthn.NewHandler(deps.Authn),
 		apiauthz.NewHandler(deps.Authz),
 		authhandler.NewOIDCHandler(cfg, deps.OIDC, deps.Authn, deps.System),
-		authhandler.NewFederationHandler(deps.Federation),
-		authhandler.NewPasskeyHandler(deps.Passkey),
+		authhandler.NewExternalIDPHandler(deps.ExternalIDP),
+		authhandler.NewWebAuthnHandler(deps.Authn),
+		authhandler.NewMFAU2FHandler(deps.MFA),
 		sharedweb.WithCORS,
 	)
 	return app, nil

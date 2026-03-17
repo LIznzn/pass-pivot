@@ -15,7 +15,6 @@ import (
 	"pass-pivot/internal/config"
 	"pass-pivot/internal/db"
 	"pass-pivot/internal/model"
-	authservice "pass-pivot/internal/server/auth/service"
 	"pass-pivot/util"
 
 	"gorm.io/driver/mysql"
@@ -79,7 +78,7 @@ func ensureSystemBootstrapConfig(cfg *config.Config) error {
 	ensureUUID("PPVT_ADMIN_USER_ID", &cfg.AdminUserID)
 
 	ensurePublicKey := func(seed string, publicKeyKey string) error {
-		publicKey, err := authservice.GenerateInternalClientPublicKey(seed)
+		publicKey, err := util.DeriveEd25519PublicKey(seed)
 		if err != nil {
 			return err
 		}
@@ -280,7 +279,7 @@ func initSchema(database *gorm.DB) error {
 		&model.Project{},
 		&model.Application{},
 		&model.User{},
-		&model.MFAPasskey{},
+		&model.SecureKey{},
 		&model.MFAEnrollment{},
 		&model.MFARecoveryCode{},
 		&model.Session{},
@@ -434,7 +433,7 @@ func seed(ctx context.Context, database *gorm.DB, cfg config.Config) error {
 				cfg.AuthnAPIApplicationID:  cfg.APIAuthnPrivateSeed,
 				cfg.AuthzAPIApplicationID:  cfg.APIAuthzPrivateSeed,
 			}
-			publicKey, err := authservice.GenerateInternalClientPublicKey(seedByID[applications[i].ID])
+			publicKey, err := util.DeriveEd25519PublicKey(seedByID[applications[i].ID])
 			if err != nil {
 				return err
 			}
@@ -560,7 +559,7 @@ func defaultConsoleSettings() model.OrganizationSetting {
 		Domains:          []model.OrganizationDomain{},
 		LoginPolicy: model.OrganizationLoginPolicy{
 			PasswordLoginEnabled: true,
-			PasskeyLoginEnabled:  true,
+			WebAuthnLoginEnabled: true,
 			AllowUsername:        true,
 			AllowEmail:           true,
 			AllowPhone:           true,
@@ -579,7 +578,7 @@ func defaultConsoleSettings() model.OrganizationSetting {
 		},
 		MFAPolicy: model.OrganizationMFAPolicy{
 			RequireForAllUsers: false,
-			AllowPasskey:       true,
+			AllowWebAuthn:      true,
 			AllowTotp:          true,
 			AllowEmailCode:     true,
 			AllowSmsCode:       false,
