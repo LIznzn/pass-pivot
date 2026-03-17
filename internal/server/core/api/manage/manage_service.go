@@ -34,6 +34,18 @@ type fidoRegistrationService interface {
 	FinishRegistration(ctx context.Context, challengeID string, payload json.RawMessage) error
 }
 
+func applicationIsDisabled(status string) bool {
+	return strings.TrimSpace(status) == "disabled"
+}
+
+func projectIsDisabled(status string) bool {
+	return strings.TrimSpace(status) == "disabled"
+}
+
+func organizationIsDisabled(status string) bool {
+	return strings.TrimSpace(status) == "disabled"
+}
+
 var (
 	applicationTypeOptions = map[string]bool{
 		"web":    true,
@@ -133,13 +145,22 @@ func (s *Service) GetLoginTarget(ctx context.Context, applicationID string) (*co
 	if err := s.db.WithContext(ctx).First(&application, "id = ?", applicationID).Error; err != nil {
 		return nil, err
 	}
+	if applicationIsDisabled(application.Status) {
+		return nil, errors.New("application is disabled")
+	}
 	var project model.Project
 	if err := s.db.WithContext(ctx).First(&project, "id = ?", application.ProjectID).Error; err != nil {
 		return nil, err
 	}
+	if projectIsDisabled(project.Status) {
+		return nil, errors.New("project is disabled")
+	}
 	var organization model.Organization
 	if err := s.db.WithContext(ctx).First(&organization, "id = ?", project.OrganizationID).Error; err != nil {
 		return nil, err
+	}
+	if organizationIsDisabled(organization.Status) {
+		return nil, errors.New("organization is disabled")
 	}
 	providers, err := s.ListExternalIDPs(ctx, organization.ID)
 	if err != nil {
@@ -174,9 +195,22 @@ func (s *Service) ListPublicExternalIDPsByApplication(ctx context.Context, appli
 	if err := s.db.WithContext(ctx).First(&application, "id = ?", applicationID).Error; err != nil {
 		return nil, err
 	}
+	if applicationIsDisabled(application.Status) {
+		return nil, errors.New("application is disabled")
+	}
 	var project model.Project
 	if err := s.db.WithContext(ctx).First(&project, "id = ?", application.ProjectID).Error; err != nil {
 		return nil, err
+	}
+	if projectIsDisabled(project.Status) {
+		return nil, errors.New("project is disabled")
+	}
+	var organization model.Organization
+	if err := s.db.WithContext(ctx).First(&organization, "id = ?", project.OrganizationID).Error; err != nil {
+		return nil, err
+	}
+	if organizationIsDisabled(organization.Status) {
+		return nil, errors.New("organization is disabled")
 	}
 	return s.ListExternalIDPs(ctx, project.OrganizationID)
 }
@@ -184,6 +218,9 @@ func (s *Service) ListPublicExternalIDPsByApplication(ctx context.Context, appli
 func (s *Service) CreateOrganization(ctx context.Context, org model.Organization) (*model.Organization, error) {
 	if org.Name == "" {
 		return nil, errors.New("name is required")
+	}
+	if strings.TrimSpace(org.Status) == "" {
+		org.Status = "active"
 	}
 	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&org).Error; err != nil {
@@ -265,6 +302,174 @@ func (s *Service) UpdateOrganization(ctx context.Context, org model.Organization
 	}
 	existing.ConsoleSettings = &settings
 	return &existing, nil
+}
+
+func (s *Service) DisableOrganization(ctx context.Context, organizationID string) error {
+	if strings.TrimSpace(organizationID) == "" {
+		return errors.New("organizationId is required")
+	}
+	var organization model.Organization
+	if err := s.db.WithContext(ctx).First(&organization, "id = ?", organizationID).Error; err != nil {
+		return err
+	}
+	now := time.Now()
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&organization).Update("status", "disabled").Error; err != nil {
+			return err
+		}
+		var appIDs []string
+		if err := tx.Model(&model.Application{}).
+			Joins("JOIN project ON project.id = application.project_id").
+			Where("project.organization_id = ?", organization.ID).
+			Pluck("application.id", &appIDs).Error; err != nil {
+			return err
+		}
+		if len(appIDs) > 0 {
+			if err := tx.Model(&model.Token{}).
+				Where("application_id IN ? AND revoked_at IS NULL", appIDs).
+				Updates(map[string]any{"revoked_at": now, "revocation_note": "organization_disabled"}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("application_id IN ?", appIDs).Delete(&model.AuthorizationCode{}).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Where("organization_id = ?", organization.ID).Delete(&model.Session{}).Error; err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	return s.audit.Record(ctx, coreservice.AuditEvent{
+		OrganizationID: organization.ID,
+		ActorType:      "admin",
+		EventType:      "organization.disabled",
+		Result:         "success",
+		TargetType:     "organization",
+		TargetID:       organization.ID,
+	})
+}
+
+func (s *Service) DeleteOrganization(ctx context.Context, organizationID string) error {
+	if strings.TrimSpace(organizationID) == "" {
+		return errors.New("organizationId is required")
+	}
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var organization model.Organization
+		if err := tx.First(&organization, "id = ?", organizationID).Error; err != nil {
+			return err
+		}
+
+		var projectIDs []string
+		if err := tx.Model(&model.Project{}).Where("organization_id = ?", organization.ID).Pluck("id", &projectIDs).Error; err != nil {
+			return err
+		}
+		var appIDs []string
+		if len(projectIDs) > 0 {
+			if err := tx.Model(&model.Application{}).Where("project_id IN ?", projectIDs).Pluck("id", &appIDs).Error; err != nil {
+				return err
+			}
+		}
+		var userIDs []string
+		if err := tx.Model(&model.User{}).Where("organization_id = ?", organization.ID).Pluck("id", &userIDs).Error; err != nil {
+			return err
+		}
+		var externalIDPIDs []string
+		if err := tx.Model(&model.ExternalIDP{}).Where("organization_id = ?", organization.ID).Pluck("id", &externalIDPIDs).Error; err != nil {
+			return err
+		}
+
+		if len(appIDs) > 0 {
+			if err := tx.Where("application_id IN ?", appIDs).Delete(&model.AuthorizationCode{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("application_id IN ?", appIDs).Delete(&model.Token{}).Error; err != nil {
+				return err
+			}
+		}
+		if len(userIDs) > 0 {
+			if err := tx.Where("user_id IN ?", userIDs).Delete(&model.AuthorizationCode{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("user_id IN ?", userIDs).Delete(&model.Token{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("user_id IN ?", userIDs).Delete(&model.Session{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("user_id IN ?", userIDs).Delete(&model.SecureKey{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("user_id IN ?", userIDs).Delete(&model.MFAEnrollment{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("user_id IN ?", userIDs).Delete(&model.MFARecoveryCode{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("user_id IN ?", userIDs).Delete(&model.Device{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("user_id IN ?", userIDs).Delete(&model.ExternalIdentityBinding{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("id IN ?", userIDs).Delete(&model.User{}).Error; err != nil {
+				return err
+			}
+		}
+		if len(externalIDPIDs) > 0 {
+			if err := tx.Where("provider_id IN ?", externalIDPIDs).Delete(&model.ExternalAuthState{}).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Where("organization_id = ?", organization.ID).Delete(&model.ExternalAuthState{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("organization_id = ?", organization.ID).Delete(&model.Session{}).Error; err != nil {
+			return err
+		}
+		if len(appIDs) > 0 {
+			if err := tx.Where("id IN ?", appIDs).Delete(&model.Application{}).Error; err != nil {
+				return err
+			}
+		}
+		if len(projectIDs) > 0 {
+			if err := tx.Unscoped().Where("project_id IN ?", projectIDs).Delete(&model.ProjectUserAssignment{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("id IN ?", projectIDs).Delete(&model.Project{}).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Where("organization_id = ?", organization.ID).Delete(&model.Policy{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("organization_id = ?", organization.ID).Delete(&model.Role{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("organization_id = ?", organization.ID).Delete(&model.ExternalIDP{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Delete(&organization).Error; err != nil {
+			return err
+		}
+		for _, userID := range userIDs {
+			if s.deleteAuthorizationCodesByUser != nil {
+				s.deleteAuthorizationCodesByUser(userID)
+			}
+			if s.deleteMFAChallengesByUser != nil {
+				s.deleteMFAChallengesByUser(userID)
+			}
+		}
+		return s.audit.Record(ctx, coreservice.AuditEvent{
+			OrganizationID: organization.ID,
+			ActorType:      "admin",
+			EventType:      "organization.deleted",
+			Result:         "success",
+			TargetType:     "organization",
+			TargetID:       organization.ID,
+		})
+	})
 }
 
 func (s *Service) attachOrganizationSettings(ctx context.Context, organizations []model.Organization) error {
@@ -419,6 +624,9 @@ func (s *Service) CreateProject(ctx context.Context, project model.Project) (*mo
 	if project.OrganizationID == "" || project.Name == "" {
 		return nil, errors.New("organizationId and name are required")
 	}
+	if strings.TrimSpace(project.Status) == "" {
+		project.Status = "active"
+	}
 	if err := s.db.WithContext(ctx).Create(&project).Error; err != nil {
 		return nil, err
 	}
@@ -444,8 +652,9 @@ func (s *Service) UpdateProject(ctx context.Context, project model.Project) (*mo
 		return nil, err
 	}
 	updates := map[string]any{
-		"name":        coalesceString(project.Name, existing.Name),
-		"description": coalesceString(project.Description, existing.Description),
+		"name":             coalesceString(project.Name, existing.Name),
+		"description":      coalesceString(project.Description, existing.Description),
+		"user_acl_enabled": project.UserACLEnabled,
 	}
 	if err := s.db.WithContext(ctx).Model(&existing).Updates(updates).Error; err != nil {
 		return nil, err
@@ -454,6 +663,94 @@ func (s *Service) UpdateProject(ctx context.Context, project model.Project) (*mo
 		return nil, err
 	}
 	return &existing, nil
+}
+
+func (s *Service) DisableProject(ctx context.Context, projectID string) error {
+	var project model.Project
+	if err := s.db.WithContext(ctx).First(&project, "id = ?", projectID).Error; err != nil {
+		return err
+	}
+	now := time.Now()
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&project).Update("status", "disabled").Error; err != nil {
+			return err
+		}
+		var appIDs []string
+		if err := tx.Model(&model.Application{}).Where("project_id = ?", project.ID).Pluck("id", &appIDs).Error; err != nil {
+			return err
+		}
+		if len(appIDs) == 0 {
+			return nil
+		}
+		if err := tx.Model(&model.Token{}).
+			Where("application_id IN ? AND revoked_at IS NULL", appIDs).
+			Updates(map[string]any{"revoked_at": now, "revocation_note": "project_disabled"}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("application_id IN ?", appIDs).Delete(&model.AuthorizationCode{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("application_id IN ?", appIDs).Delete(&model.Session{}).Error; err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	return s.audit.Record(ctx, coreservice.AuditEvent{
+		OrganizationID: project.OrganizationID,
+		ProjectID:      project.ID,
+		ActorType:      "admin",
+		EventType:      "project.disabled",
+		Result:         "success",
+		TargetType:     "project",
+		TargetID:       project.ID,
+	})
+}
+
+func (s *Service) DeleteProject(ctx context.Context, projectID string) error {
+	if strings.TrimSpace(projectID) == "" {
+		return errors.New("projectId is required")
+	}
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var project model.Project
+		if err := tx.First(&project, "id = ?", projectID).Error; err != nil {
+			return err
+		}
+		var appIDs []string
+		if err := tx.Model(&model.Application{}).Where("project_id = ?", project.ID).Pluck("id", &appIDs).Error; err != nil {
+			return err
+		}
+		if len(appIDs) > 0 {
+			if err := tx.Where("application_id IN ?", appIDs).Delete(&model.AuthorizationCode{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("application_id IN ?", appIDs).Delete(&model.Token{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("application_id IN ?", appIDs).Delete(&model.Session{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("id IN ?", appIDs).Delete(&model.Application{}).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Unscoped().Where("project_id = ?", project.ID).Delete(&model.ProjectUserAssignment{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Delete(&project).Error; err != nil {
+			return err
+		}
+		return s.audit.Record(ctx, coreservice.AuditEvent{
+			OrganizationID: project.OrganizationID,
+			ProjectID:      project.ID,
+			ActorType:      "admin",
+			EventType:      "project.deleted",
+			Result:         "success",
+			TargetType:     "project",
+			TargetID:       project.ID,
+		})
+	})
 }
 
 func (s *Service) CreateApplication(ctx context.Context, app model.Application) (*coreservice.ApplicationMutationResult, error) {
@@ -475,6 +772,9 @@ func (s *Service) CreateApplication(ctx context.Context, app model.Application) 
 		return nil, err
 	}
 	app.Roles = validatedRoles
+	if strings.TrimSpace(app.Status) == "" {
+		app.Status = "active"
+	}
 	generatedPrivateKey := ""
 	if app.ClientAuthenticationType == "private_key_jwt" {
 		publicKey, privateKey, err := util.GenerateEd25519KeyMaterial()
@@ -570,6 +870,75 @@ func (s *Service) UpdateApplication(ctx context.Context, app model.Application) 
 		Application:         existing,
 		GeneratedPrivateKey: generatedPrivateKey,
 	}, nil
+}
+
+func (s *Service) DisableApplication(ctx context.Context, applicationID string) error {
+	var app model.Application
+	if err := s.db.WithContext(ctx).First(&app, "id = ?", applicationID).Error; err != nil {
+		return err
+	}
+	now := time.Now()
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&app).Update("status", "disabled").Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&model.Token{}).
+			Where("application_id = ? AND revoked_at IS NULL", app.ID).
+			Updates(map[string]any{"revoked_at": now, "revocation_note": "application_disabled"}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("application_id = ?", app.ID).Delete(&model.AuthorizationCode{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("application_id = ?", app.ID).Delete(&model.Session{}).Error; err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	return s.audit.Record(ctx, coreservice.AuditEvent{
+		ApplicationID: app.ID,
+		ProjectID:     app.ProjectID,
+		ActorType:     "admin",
+		EventType:     "application.disabled",
+		Result:        "success",
+		TargetType:    "application",
+		TargetID:      app.ID,
+	})
+}
+
+func (s *Service) DeleteApplication(ctx context.Context, applicationID string) error {
+	if strings.TrimSpace(applicationID) == "" {
+		return errors.New("applicationId is required")
+	}
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var app model.Application
+		if err := tx.First(&app, "id = ?", applicationID).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("application_id = ?", app.ID).Delete(&model.AuthorizationCode{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("application_id = ?", app.ID).Delete(&model.Token{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("application_id = ?", app.ID).Delete(&model.Session{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Delete(&app).Error; err != nil {
+			return err
+		}
+		return s.audit.Record(ctx, coreservice.AuditEvent{
+			ApplicationID: app.ID,
+			ProjectID:     app.ProjectID,
+			ActorType:     "admin",
+			EventType:     "application.deleted",
+			Result:        "success",
+			TargetType:    "application",
+			TargetID:      app.ID,
+		})
+	})
 }
 
 func (s *Service) ResetApplicationKey(ctx context.Context, applicationID string) (*coreservice.ApplicationMutationResult, error) {
@@ -856,14 +1225,110 @@ func containsString(values []string, expected string) bool {
 	return false
 }
 
+func normalizeUserIDs(userIDs []string) []string {
+	set := make(map[string]struct{}, len(userIDs))
+	normalized := make([]string, 0, len(userIDs))
+	for _, userID := range userIDs {
+		trimmed := strings.TrimSpace(userID)
+		if trimmed == "" {
+			continue
+		}
+		if _, exists := set[trimmed]; exists {
+			continue
+		}
+		set[trimmed] = struct{}{}
+		normalized = append(normalized, trimmed)
+	}
+	sort.Strings(normalized)
+	return normalized
+}
+
+func (s *Service) attachProjectAssignedUserIDs(ctx context.Context, items []model.Project) error {
+	if len(items) == 0 {
+		return nil
+	}
+	projectIDs := make([]string, 0, len(items))
+	for _, item := range items {
+		projectIDs = append(projectIDs, item.ID)
+	}
+	var assignments []model.ProjectUserAssignment
+	if err := s.db.WithContext(ctx).Where("project_id IN ?", projectIDs).Find(&assignments).Error; err != nil {
+		return err
+	}
+	assignmentMap := make(map[string][]string, len(items))
+	for _, assignment := range assignments {
+		assignmentMap[assignment.ProjectID] = append(assignmentMap[assignment.ProjectID], assignment.UserID)
+	}
+	for i := range items {
+		items[i].AssignedUserIDs = normalizeUserIDs(assignmentMap[items[i].ID])
+	}
+	return nil
+}
+
 func (s *Service) ListProjects(ctx context.Context, organizationID string) ([]model.Project, error) {
 	var items []model.Project
 	query := s.db.WithContext(ctx).Preload("Applications")
 	if organizationID != "" {
 		query = query.Where("organization_id = ?", organizationID)
 	}
-	err := query.Find(&items).Error
-	return items, err
+	if err := query.Find(&items).Error; err != nil {
+		return nil, err
+	}
+	if err := s.attachProjectAssignedUserIDs(ctx, items); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func (s *Service) UpdateProjectUserAssignments(ctx context.Context, projectID string, userIDs []string) ([]string, error) {
+	if strings.TrimSpace(projectID) == "" {
+		return nil, errors.New("projectId is required")
+	}
+	normalizedUserIDs := normalizeUserIDs(userIDs)
+	var project model.Project
+	if err := s.db.WithContext(ctx).First(&project, "id = ?", projectID).Error; err != nil {
+		return nil, err
+	}
+	if len(normalizedUserIDs) > 0 {
+		var users []model.User
+		if err := s.db.WithContext(ctx).
+			Where("organization_id = ? AND id IN ?", project.OrganizationID, normalizedUserIDs).
+			Find(&users).Error; err != nil {
+			return nil, err
+		}
+		if len(users) != len(normalizedUserIDs) {
+			return nil, errors.New("some users do not belong to the current organization")
+		}
+	}
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Unscoped().Where("project_id = ?", projectID).Delete(&model.ProjectUserAssignment{}).Error; err != nil {
+			return err
+		}
+		if len(normalizedUserIDs) == 0 {
+			return nil
+		}
+		assignments := make([]model.ProjectUserAssignment, 0, len(normalizedUserIDs))
+		for _, userID := range normalizedUserIDs {
+			assignments = append(assignments, model.ProjectUserAssignment{
+				ProjectID: projectID,
+				UserID:    userID,
+			})
+		}
+		return tx.Create(&assignments).Error
+	}); err != nil {
+		return nil, err
+	}
+	_ = s.audit.Record(ctx, coreservice.AuditEvent{
+		OrganizationID: project.OrganizationID,
+		ProjectID:      project.ID,
+		ActorType:      "admin",
+		EventType:      "project.user_assignment.updated",
+		Result:         "success",
+		TargetType:     "project",
+		TargetID:       project.ID,
+		Detail:         map[string]any{"userIds": normalizedUserIDs},
+	})
+	return normalizedUserIDs, nil
 }
 
 func (s *Service) ListApplications(ctx context.Context, projectID string) ([]model.Application, error) {

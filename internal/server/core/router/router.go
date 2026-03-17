@@ -19,5 +19,5 @@ func NewCoreRouter(system *apisystem.Handler, manage *apimanage.Handler, user *a
 	apiauthz.RegisterRoutes(mux, authz)
 	apimanage.RegisterRoutes(mux, manage, authn, authz)
 	apiuser.RegisterRoutes(mux, user, authn)
-	return cors(middleware.APIPolicyAuthorization(authz.Service(), middleware.APIClientAuthentication(system.Service(), oidc, mux)))
+	return cors(middleware.APIClientAuthentication(system.Service(), oidc, middleware.APIPolicyAuthorization(authz.Service(), mux)))
 }

@@ -31,6 +31,14 @@ type webAuthnFIDOService interface {
 	FinishAssertion(ctx context.Context, challengeID string, payload json.RawMessage) (*sharedfido.AssertionResult, error)
 }
 
+func applicationIsActive(app model.Application) bool {
+	return strings.TrimSpace(app.Status) != "disabled"
+}
+
+func organizationIsActive(org model.Organization) bool {
+	return strings.TrimSpace(org.Status) != "disabled"
+}
+
 func NewAuthnService(db *gorm.DB, cfg config.Config, audit *coreservice.AuditService, mfa *authservice.MFAService) *AuthnService {
 	return &AuthnService{db: db, cfg: cfg, audit: audit, mfa: mfa}
 }
@@ -60,6 +68,29 @@ func (s *AuthnService) FinishWebAuthnLogin(ctx context.Context, challengeID stri
 	var user model.User
 	if err := s.db.WithContext(ctx).First(&user, "id = ?", assertion.UserID).Error; err != nil {
 		return nil, err
+	}
+	var organization model.Organization
+	if err := s.db.WithContext(ctx).First(&organization, "id = ?", user.OrganizationID).Error; err != nil {
+		return nil, err
+	}
+	if !organizationIsActive(organization) {
+		return nil, errors.New("organization is disabled")
+	}
+	if strings.TrimSpace(applicationID) != "" {
+		var app model.Application
+		if err := s.db.WithContext(ctx).First(&app, "id = ?", applicationID).Error; err != nil {
+			return nil, err
+		}
+		if !applicationIsActive(app) {
+			return nil, errors.New("application is disabled")
+		}
+	}
+	allowed, err := s.isUserAllowedForApplication(ctx, applicationID, user.ID)
+	if err != nil {
+		return nil, err
+	}
+	if !allowed {
+		return nil, errors.New("user is not assigned to the target project")
 	}
 	device, err := s.upsertDevice(ctx, user, deviceKey, "", "", false)
 	if err != nil {
@@ -92,6 +123,15 @@ func (s *AuthnService) FinishWebAuthnLogin(ctx context.Context, challengeID stri
 }
 
 func (s *AuthnService) LoginWithUserCredential(ctx context.Context, in sharedauthn.LoginInput) (*sharedauthn.LoginResult, error) {
+	if strings.TrimSpace(in.ApplicationID) != "" {
+		var app model.Application
+		if err := s.db.WithContext(ctx).First(&app, "id = ?", in.ApplicationID).Error; err != nil {
+			return nil, err
+		}
+		if !applicationIsActive(app) {
+			return nil, errors.New("application is disabled")
+		}
+	}
 	user, err := s.findUserByIdentifier(ctx, in.OrganizationID, in.Identifier)
 	if err != nil {
 		_ = s.audit.Record(ctx, coreservice.AuditEvent{
@@ -124,6 +164,20 @@ func (s *AuthnService) LoginWithUserCredential(ctx context.Context, in sharedaut
 	}
 	if user.Status != "active" {
 		return nil, errors.New("user is not active")
+	}
+	var organization model.Organization
+	if err := s.db.WithContext(ctx).First(&organization, "id = ?", user.OrganizationID).Error; err != nil {
+		return nil, err
+	}
+	if !organizationIsActive(organization) {
+		return nil, errors.New("organization is disabled")
+	}
+	allowed, err := s.isUserAllowedForApplication(ctx, in.ApplicationID, user.ID)
+	if err != nil {
+		return nil, err
+	}
+	if !allowed {
+		return nil, errors.New("user is not assigned to the target project")
 	}
 
 	var device *model.Device
@@ -583,9 +637,19 @@ func (s *AuthnService) IssuePasswordGrantTokenForApplication(ctx context.Context
 	if strings.TrimSpace(identifier) == "" || strings.TrimSpace(password) == "" {
 		return nil, nil, nil, errors.New("username and password are required")
 	}
+	if !applicationIsActive(app) {
+		return nil, nil, nil, errors.New("application is disabled")
+	}
 	var project model.Project
 	if err := s.db.WithContext(ctx).First(&project, "id = ?", app.ProjectID).Error; err != nil {
 		return nil, nil, nil, errors.New("application project not found")
+	}
+	var organization model.Organization
+	if err := s.db.WithContext(ctx).First(&organization, "id = ?", project.OrganizationID).Error; err != nil {
+		return nil, nil, nil, errors.New("organization not found")
+	}
+	if !organizationIsActive(organization) {
+		return nil, nil, nil, errors.New("organization is disabled")
 	}
 
 	user, err := s.findUserByIdentifier(ctx, project.OrganizationID, identifier)
@@ -597,6 +661,13 @@ func (s *AuthnService) IssuePasswordGrantTokenForApplication(ctx context.Context
 	}
 	if user.Status != "active" {
 		return nil, nil, nil, errors.New("user is not active")
+	}
+	allowed, err := s.isUserAllowedForProject(ctx, project.ID, user.ID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if !allowed {
+		return nil, nil, nil, errors.New("user is not assigned to the target project")
 	}
 
 	session := model.Session{
@@ -637,6 +708,42 @@ func (s *AuthnService) findUserByIdentifier(ctx context.Context, organizationID,
 		Where("organization_id = ? AND (username = ? OR email = ? OR phone_number = ?)", organizationID, identifier, identifier, identifier).
 		First(&user).Error
 	return user, err
+}
+
+func (s *AuthnService) isUserAllowedForApplication(ctx context.Context, applicationID, userID string) (bool, error) {
+	if strings.TrimSpace(applicationID) == "" || strings.TrimSpace(userID) == "" {
+		return true, nil
+	}
+	var app model.Application
+	if err := s.db.WithContext(ctx).Select("id", "project_id").First(&app, "id = ?", applicationID).Error; err != nil {
+		return false, err
+	}
+	return s.isUserAllowedForProject(ctx, app.ProjectID, userID)
+}
+
+func (s *AuthnService) isUserAllowedForProject(ctx context.Context, projectID, userID string) (bool, error) {
+	if strings.TrimSpace(projectID) == "" || strings.TrimSpace(userID) == "" {
+		return true, nil
+	}
+	var project model.Project
+	if err := s.db.WithContext(ctx).Select("id", "status", "user_acl_enabled").First(&project, "id = ?", projectID).Error; err != nil {
+		return false, err
+	}
+	if strings.TrimSpace(project.Status) == "disabled" {
+		return false, nil
+	}
+	if !project.UserACLEnabled {
+		return true, nil
+	}
+	var assignment model.ProjectUserAssignment
+	err := s.db.WithContext(ctx).Where("project_id = ? AND user_id = ?", projectID, userID).First(&assignment).Error
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	return false, err
 }
 
 func (s *AuthnService) RevokeToken(ctx context.Context, tokenValue, reason string) error {
@@ -707,6 +814,16 @@ func (s *AuthnService) issueTokensForApplication(ctx context.Context, user model
 	var app model.Application
 	if err := s.db.WithContext(ctx).First(&app, "id = ?", applicationID).Error; err != nil {
 		return nil, err
+	}
+	if !applicationIsActive(app) {
+		return nil, errors.New("application is disabled")
+	}
+	var organization model.Organization
+	if err := s.db.WithContext(ctx).First(&organization, "id = ?", user.OrganizationID).Error; err != nil {
+		return nil, err
+	}
+	if !organizationIsActive(organization) {
+		return nil, errors.New("organization is disabled")
 	}
 	tokens := make([]model.Token, 0, 2)
 	if applicationIssuesAccessToken(app.TokenType) {

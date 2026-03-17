@@ -277,6 +277,7 @@ func initSchema(database *gorm.DB) error {
 	if err := database.AutoMigrate(
 		&model.Organization{},
 		&model.Project{},
+		&model.ProjectUserAssignment{},
 		&model.Application{},
 		&model.User{},
 		&model.SecureKey{},
@@ -305,6 +306,7 @@ func seed(ctx context.Context, database *gorm.DB, cfg config.Config) error {
 		organization := model.Organization{
 			BaseModel:         model.BaseModel{ID: cfg.InternalOrganizationID},
 			Name:              "internal",
+			Status:            "active",
 			Metadata:          map[string]string{},
 			AllowJWTAccess:    true,
 			AllowBasicAccess:  true,
@@ -330,6 +332,7 @@ func seed(ctx context.Context, database *gorm.DB, cfg config.Config) error {
 			OrganizationID: cfg.InternalOrganizationID,
 			Name:           "ppvt",
 			Description:    "PPVT system project",
+			Status:         "active",
 		}
 		if err := upsertByID(tx, &project); err != nil {
 			return err
@@ -341,6 +344,7 @@ func seed(ctx context.Context, database *gorm.DB, cfg config.Config) error {
 				ProjectID:                cfg.SystemProjectID,
 				Name:                     "manage-api",
 				Description:              "System manage API application",
+				Status:                   "active",
 				ApplicationType:          "api",
 				GrantType:                []string{"client_credentials"},
 				EnableRefreshToken:       false,
@@ -355,6 +359,7 @@ func seed(ctx context.Context, database *gorm.DB, cfg config.Config) error {
 				ProjectID:                cfg.SystemProjectID,
 				Name:                     "user-api",
 				Description:              "System current-user API application",
+				Status:                   "active",
 				ApplicationType:          "api",
 				GrantType:                []string{"client_credentials"},
 				EnableRefreshToken:       false,
@@ -369,6 +374,7 @@ func seed(ctx context.Context, database *gorm.DB, cfg config.Config) error {
 				ProjectID:                cfg.SystemProjectID,
 				Name:                     "authn-api",
 				Description:              "System authentication API application",
+				Status:                   "active",
 				ApplicationType:          "api",
 				GrantType:                []string{"client_credentials"},
 				EnableRefreshToken:       false,
@@ -383,6 +389,7 @@ func seed(ctx context.Context, database *gorm.DB, cfg config.Config) error {
 				ProjectID:                cfg.SystemProjectID,
 				Name:                     "authz-api",
 				Description:              "System authorization decision API application",
+				Status:                   "active",
 				ApplicationType:          "api",
 				GrantType:                []string{"client_credentials"},
 				EnableRefreshToken:       false,
@@ -398,6 +405,7 @@ func seed(ctx context.Context, database *gorm.DB, cfg config.Config) error {
 				Name:                     "console-web",
 				Description:              "Official PPVT console frontend",
 				RedirectURIs:             "http://localhost:8093/console/callback",
+				Status:                   "active",
 				ApplicationType:          "web",
 				GrantType:                []string{"authorization_code_pkce"},
 				EnableRefreshToken:       false,
@@ -413,6 +421,7 @@ func seed(ctx context.Context, database *gorm.DB, cfg config.Config) error {
 				Name:                     "portal-web",
 				Description:              "Official PPVT portal frontend",
 				RedirectURIs:             "http://localhost:8092/portal/callback",
+				Status:                   "active",
 				ApplicationType:          "web",
 				GrantType:                []string{"authorization_code_pkce"},
 				EnableRefreshToken:       false,
@@ -521,6 +530,14 @@ func seed(ctx context.Context, database *gorm.DB, cfg config.Config) error {
 			CurrentUKID:    "ukid-" + cfg.AdminUserID,
 		}
 		if err := upsertByID(tx, &user); err != nil {
+			return err
+		}
+		projectAssignment := model.ProjectUserAssignment{
+			BaseModel: model.BaseModel{ID: stableUUID(cfg.SystemProjectID + ":" + cfg.AdminUserID)},
+			ProjectID: cfg.SystemProjectID,
+			UserID:    cfg.AdminUserID,
+		}
+		if err := upsertByID(tx, &projectAssignment); err != nil {
 			return err
 		}
 		return nil

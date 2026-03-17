@@ -310,7 +310,7 @@
               </div>
             </div>
             <BFormInput v-model="applicationForm.name" placeholder="应用名称" class="mb-2" />
-            <BFormInput v-model="applicationForm.redirectUris" placeholder="redirect URIs，多个值可用逗号或换行分隔" class="mb-2" />
+            <BFormInput v-model="applicationForm.redirectUris" placeholder="回调地址，多个值可用逗号或换行分隔" class="mb-2" />
             <BFormSelect v-model="applicationForm.applicationType" :options="applicationTypeOptions" class="mb-2" />
             <div class="detail-card mb-2">
               <div class="record-meta mb-2">Token Type</div>
@@ -382,7 +382,16 @@
                 <p class="console-module-subtitle">查看并维护当前应用的协议能力、令牌参数与接入配置。</p>
               </div>
             </div>
-            <BButton variant="primary" @click="updateApplication">保存应用</BButton>
+            <div class="console-action-menu" role="group" aria-label="应用操作">
+              <button type="button" class="btn btn-primary console-action-menu-toggle">
+                操作
+                <i class="bi bi-chevron-down" aria-hidden="true"></i>
+              </button>
+              <div class="console-action-menu-list">
+                <button type="button" class="console-action-menu-item" @click="showApplicationDisableNotice">停用</button>
+                <button type="button" class="console-action-menu-item console-action-menu-item-danger" @click="showApplicationDeleteNotice">删除</button>
+              </div>
+            </div>
           </div>
           <div class="console-module-metrics">
             <div v-for="item in applicationDetailMetrics" :key="item.label" class="console-module-metric">
@@ -407,20 +416,6 @@
             <button v-for="item in applicationDetailPanels" :key="item.id" type="button" class="console-module-sidebar-link" @click="scrollToPanel(item.id)">{{ item.label }}</button>
           </aside>
           <div class="console-module-main">
-            <div id="application-overview" class="info-card">
-              <div class="section-title">基本信息</div>
-              <div class="record-list">
-                <div class="record-card">
-                  <div class="record-meta">应用 ID：{{ currentApplication?.id || '-' }}</div>
-                  <div class="record-meta">应用名称：{{ currentApplication?.name || '-' }}</div>
-                <div class="record-meta">项目 ID：{{ currentProject?.id || '-' }}</div>
-                <div class="record-meta">Application Type：{{ formatApplicationType(currentApplication?.applicationType) }}</div>
-                <div class="record-meta">应用角色：{{ formatRoleLabels(currentApplication?.roles) }}</div>
-                <div class="record-meta">创建时间：{{ formatDateTime(currentApplication?.createdAt) }}</div>
-                <div class="record-meta">更新时间：{{ formatDateTime(currentApplication?.updatedAt) }}</div>
-              </div>
-            </div>
-            </div>
             <div id="application-protocol" class="info-card">
               <div class="section-title">协议配置</div>
               <div class="record-meta mb-3">Application Type 仅作为内部标记。真正控制协议行为的是 Grant Type、Token Type、Enable Refresh Token、Client Authentication Type 四个维度。</div>
@@ -437,34 +432,21 @@
                 <div class="record-meta">4. 其他 Grant Type 不能使用 `client_authentication_type=none`。</div>
                 <div class="record-meta mt-2">{{ currentApplicationProtocolHint }}</div>
               </div>
-              <div class="detail-card mb-3">
-                <div class="record-meta mb-2">系统内置 Application 默认组合</div>
-                <div class="metadata-table-wrap">
-                  <table class="table table-sm align-middle mb-0">
-                    <thead>
-                      <tr>
-                        <th>名称</th>
-                        <th>默认组合</th>
-                        <th>应用角色</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr v-for="item in builtinApplicationProfiles" :key="item.name">
-                        <td>{{ item.name }}</td>
-                        <td>{{ item.protocol }}</td>
-                        <td>{{ item.capabilities }}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
               <BForm @submit.prevent="updateApplication">
-                <BFormInput v-model="applicationUpdateForm.id" placeholder="applicationId" class="mb-2" />
-                <BFormInput v-model="applicationUpdateForm.name" placeholder="application name" class="mb-2" />
-                <BFormInput v-model="applicationUpdateForm.redirectUris" placeholder="redirect URIs" class="mb-2" />
-                <BFormSelect v-model="applicationUpdateForm.applicationType" :options="applicationTypeOptions" class="mb-2" />
-                <div class="detail-card mb-2">
-                  <div class="record-meta mb-2">Token Type</div>
+                <div class="mb-3">
+                  <label class="form-label">应用名称</label>
+                  <BFormInput v-model="applicationUpdateForm.name" placeholder="请输入应用名称" />
+                </div>
+                <div class="mb-3">
+                  <label class="form-label">回调地址</label>
+                  <BFormInput v-model="applicationUpdateForm.redirectUris" placeholder="请输入回调地址" />
+                </div>
+                <div class="mb-3">
+                  <label class="form-label">Application Type</label>
+                  <BFormSelect v-model="applicationUpdateForm.applicationType" :options="applicationTypeOptions" />
+                </div>
+                <div class="detail-card mb-3">
+                  <div class="form-label mb-2">Token Type</div>
                   <div class="d-flex flex-wrap gap-3">
                     <label v-for="item in applicationUpdateTokenTypeOptions" :key="item.value" class="d-inline-flex align-items-center gap-2">
                       <input
@@ -477,9 +459,12 @@
                     </label>
                   </div>
                 </div>
-                <BFormCheckbox v-model="applicationUpdateForm.enableRefreshToken" class="mb-2">启用 Refresh Token</BFormCheckbox>
-                <div class="detail-card mb-2">
-                  <div class="record-meta mb-2">Grant Type</div>
+                <div class="mb-3">
+                  <label class="form-label d-block">Refresh Token</label>
+                  <BFormCheckbox v-model="applicationUpdateForm.enableRefreshToken">启用 Refresh Token</BFormCheckbox>
+                </div>
+                <div class="detail-card mb-3">
+                  <div class="form-label mb-2">Grant Type</div>
                   <div class="d-flex flex-wrap gap-3">
                     <label v-for="item in grantTypeOptions" :key="item.value" class="d-inline-flex align-items-center gap-2">
                       <input
@@ -492,9 +477,19 @@
                     </label>
                   </div>
                 </div>
-                <BFormSelect v-model="applicationUpdateForm.clientAuthenticationType" :options="applicationUpdateClientAuthenticationTypeOptions" class="mb-2" />
-                <div class="detail-card mb-2">
-                  <div class="record-meta mb-2">应用角色</div>
+                <div class="mb-3">
+                  <label class="form-label">Client Authentication Type</label>
+                  <BFormSelect v-model="applicationUpdateForm.clientAuthenticationType" :options="applicationUpdateClientAuthenticationTypeOptions" />
+                </div>
+                <BButton type="submit" variant="outline-primary">保存协议配置</BButton>
+              </BForm>
+            </div>
+            <div id="application-role-assignment" class="info-card">
+              <div class="section-title">角色分配</div>
+              <div class="record-meta mb-3">维护当前应用可授予或可使用的应用角色标签。</div>
+              <BForm @submit.prevent="updateApplication">
+                <div class="detail-card mb-3">
+                  <div class="form-label mb-2">应用角色</div>
                   <div class="d-flex flex-wrap gap-3">
                     <label v-for="item in applicationAssignableRoles" :key="item.id" class="d-inline-flex align-items-center gap-2">
                       <input
@@ -507,22 +502,30 @@
                     </label>
                   </div>
                 </div>
-                <BButton type="submit" variant="outline-primary">保存协议配置</BButton>
+                <BButton type="submit" variant="outline-primary">保存角色分配</BButton>
               </BForm>
             </div>
             <div id="application-token" class="info-card">
               <div class="section-title">令牌设置</div>
               <div class="record-meta mb-3">Issuer 为实例级统一配置。`private_key_jwt` 应用的公钥以 Ed25519 裸公钥形式保存在系统中；普通应用的私钥只在创建或重置时显示一次，系统内置 API 应用的私钥固化在代码中。</div>
               <BForm @submit.prevent="updateApplication">
-                <textarea
-                  v-if="applicationUpdateForm.clientAuthenticationType === 'private_key_jwt'"
-                  class="form-control mb-2"
-                  rows="8"
-                  :value="applicationUpdateForm.publicKey"
-                  readonly
-                />
-                <BFormInput v-model="applicationUpdateForm.accessTokenTTLMinutes" type="number" placeholder="access token ttl minutes" class="mb-2" />
-                <BFormInput v-model="applicationUpdateForm.refreshTokenTTLHours" type="number" placeholder="refresh token ttl hours" class="mb-2" />
+                <div v-if="applicationUpdateForm.clientAuthenticationType === 'private_key_jwt'" class="mb-3">
+                  <label class="form-label">应用公钥</label>
+                  <textarea
+                    class="form-control"
+                    rows="8"
+                    :value="applicationUpdateForm.publicKey"
+                    readonly
+                  />
+                </div>
+                <div class="mb-3">
+                  <label class="form-label">Access Token TTL Minutes</label>
+                  <BFormInput v-model="applicationUpdateForm.accessTokenTTLMinutes" type="number" placeholder="请输入 access token ttl minutes" />
+                </div>
+                <div class="mb-3">
+                  <label class="form-label">Refresh Token TTL Hours</label>
+                  <BFormInput v-model="applicationUpdateForm.refreshTokenTTLHours" type="number" placeholder="请输入 refresh token ttl hours" />
+                </div>
                 <div class="d-flex gap-2">
                   <BButton type="submit" variant="outline-primary">保存令牌设置</BButton>
                   <BButton
@@ -636,7 +639,16 @@
               <h2 class="console-module-title">{{ currentModuleEntityTitle }}</h2>
               <p class="console-module-subtitle">{{ currentModuleSummaryText }}</p>
             </div>
-            <BButton variant="primary" @click="runModuleAction">{{ currentModuleActionLabel }}</BButton>
+            <div class="console-action-menu" role="group" aria-label="组织操作">
+              <button type="button" class="btn btn-primary console-action-menu-toggle">
+                操作
+                <i class="bi bi-chevron-down" aria-hidden="true"></i>
+              </button>
+              <div class="console-action-menu-list">
+                <button type="button" class="console-action-menu-item" @click="showOrganizationDisableNotice">停用</button>
+                <button type="button" class="console-action-menu-item console-action-menu-item-danger" @click="showOrganizationDeleteNotice">删除</button>
+              </div>
+            </div>
           </div>
           <div class="console-module-metrics" :class="currentModuleMetricsClass">
             <div v-for="item in currentModuleMetrics" :key="item.label" class="console-module-metric">
@@ -836,7 +848,7 @@
 
       <section v-else-if="tab === 'role' && roleViewMode === 'list'" class="section-grid">
         <div class="info-card">
-          <div class="section-title">当前组织下可用的角色</div>
+          <div class="section-title">当前组织下可用的用户角色</div>
           <div class="d-flex align-items-center justify-content-between gap-3 mb-3 flex-wrap">
             <div class="d-flex align-items-center gap-2 flex-wrap">
               <BButton size="sm" variant="outline-danger" :disabled="selectedRoleIds.length === 0" @click="deleteSelectedRoles">删除角色</BButton>
@@ -862,26 +874,24 @@
                     <input
                       class="form-check-input console-list-checkbox"
                       type="checkbox"
-                      :checked="roles.length > 0 && selectedRoleIds.length === roles.length"
-                      @change="toggleAllRoles(($event.target as HTMLInputElement).checked)"
+                      :checked="userAssignableRoles.length > 0 && userAssignableRoles.every((role) => selectedRoleIds.includes(role.id))"
+                      @change="toggleRolesByType('user', ($event.target as HTMLInputElement).checked)"
                     />
                   </th>
                   <th>角色 ID</th>
                   <th>角色标签</th>
-                  <th>类型</th>
                   <th>描述</th>
                   <th>策略数</th>
                   <th class="text-end">操作</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="role in roles" :key="role.id">
+                <tr v-for="role in userAssignableRoles" :key="role.id">
                   <td class="console-list-check-col">
                     <input class="form-check-input console-list-checkbox" type="checkbox" :checked="selectedRoleIds.includes(role.id)" @change="toggleRoleSelection(role.id, ($event.target as HTMLInputElement).checked)" />
                   </td>
                   <td class="console-list-id">{{ role.id }}</td>
                   <td>{{ role.name || '-' }}</td>
-                  <td>{{ role.type === 'application' ? '应用角色' : '用户角色' }}</td>
                   <td>{{ role.description || '-' }}</td>
                   <td>{{ policies.filter((item) => item.roleId === role.id).length }}</td>
                   <td class="text-end">
@@ -891,8 +901,52 @@
                     </div>
                   </td>
                 </tr>
-                <tr v-if="roles.length === 0">
-                  <td colspan="7" class="text-center text-secondary py-4">当前组织下还没有角色。</td>
+                <tr v-if="userAssignableRoles.length === 0">
+                  <td colspan="6" class="text-center text-secondary py-4">当前组织下还没有用户角色。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="info-card">
+          <div class="section-title">当前组织下可用的应用角色</div>
+          <div class="table-responsive">
+            <table class="table align-middle console-list-table mb-0">
+              <thead>
+                <tr>
+                  <th class="console-list-check-col">
+                    <input
+                      class="form-check-input console-list-checkbox"
+                      type="checkbox"
+                      :checked="applicationAssignableRoles.length > 0 && applicationAssignableRoles.every((role) => selectedRoleIds.includes(role.id))"
+                      @change="toggleRolesByType('application', ($event.target as HTMLInputElement).checked)"
+                    />
+                  </th>
+                  <th>角色 ID</th>
+                  <th>角色标签</th>
+                  <th>描述</th>
+                  <th>策略数</th>
+                  <th class="text-end">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="role in applicationAssignableRoles" :key="role.id">
+                  <td class="console-list-check-col">
+                    <input class="form-check-input console-list-checkbox" type="checkbox" :checked="selectedRoleIds.includes(role.id)" @change="toggleRoleSelection(role.id, ($event.target as HTMLInputElement).checked)" />
+                  </td>
+                  <td class="console-list-id">{{ role.id }}</td>
+                  <td>{{ role.name || '-' }}</td>
+                  <td>{{ role.description || '-' }}</td>
+                  <td>{{ policies.filter((item) => item.roleId === role.id).length }}</td>
+                  <td class="text-end">
+                    <div class="d-inline-flex gap-2">
+                      <BButton size="sm" variant="outline-primary" @click="selectRole(role)">查看详情</BButton>
+                      <BButton size="sm" variant="outline-danger" @click="deleteSingleRole(role.id)">删除</BButton>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-if="applicationAssignableRoles.length === 0">
+                  <td colspan="6" class="text-center text-secondary py-4">当前组织下还没有应用角色。</td>
                 </tr>
               </tbody>
             </table>
@@ -913,7 +967,16 @@
               <p class="console-module-subtitle">{{ currentModuleSummaryText }}</p>
               </div>
             </div>
-            <BButton variant="primary" @click="runModuleAction">{{ currentModuleActionLabel }}</BButton>
+            <div class="console-action-menu" role="group" aria-label="项目操作">
+              <button type="button" class="btn btn-primary console-action-menu-toggle">
+                操作
+                <i class="bi bi-chevron-down" aria-hidden="true"></i>
+              </button>
+              <div class="console-action-menu-list">
+                <button type="button" class="console-action-menu-item" @click="showProjectDisableNotice">停用</button>
+                <button type="button" class="console-action-menu-item console-action-menu-item-danger" @click="showProjectDeleteNotice">删除</button>
+              </div>
+            </div>
           </div>
           <div class="console-module-metrics" :class="currentModuleMetricsClass">
             <div v-for="item in currentModuleMetrics" :key="item.label" class="console-module-metric">
@@ -982,38 +1045,70 @@
             </div>
             <div id="project-user-assignment" class="info-card">
               <div class="section-title">用户分配</div>
-              <div class="record-meta mb-3">当前组织用户列表，可作为该项目的用户分配基础。</div>
-              <div class="record-list">
-                <div v-for="user in users" :key="user.id" class="record-card">
-                  <div class="record-head">
-                    <strong>{{ user.name || user.username || user.email || user.id }}</strong>
-                    <code>{{ user.status }}</code>
-                  </div>
-                  <div class="record-meta">{{ user.email || user.phoneNumber || '-' }}</div>
-                  <div class="record-meta">角色标签：{{ formatRoleLabels(user.roles) }}</div>
-                </div>
+              <div class="record-meta mb-3">
+                {{ projectUpdateForm.userAclEnabled
+                  ? '已开启用户访问控制。只有已分配用户，才能访问该项目下的系统应用；如果分配列表为空，则所有用户都不可访问。'
+                  : '当前未开启用户访问控制。关闭时，当前组织下所有用户都可以访问该项目下的系统应用。' }}
               </div>
-            </div>
-            <div id="project-role-assignment" class="info-card">
-              <div class="section-title">角色分配</div>
-              <div class="record-meta mb-3">当前组织角色标签列表，可作为该项目的角色分配基础。</div>
-              <div class="record-list">
-                <div v-for="role in roles" :key="role.id" class="record-card">
-                  <div class="record-head">
-                    <strong>{{ role.name }}</strong>
-                    <code>{{ role.type === 'application' ? '应用角色' : '用户角色' }}</code>
-                  </div>
-                  <div class="record-meta">{{ role.description || 'no description' }}</div>
-                </div>
+              <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+                <div class="record-meta mb-0">已分配 {{ projectAssignedUserIds.length }} / {{ users.length }} 个用户。</div>
+                <BButton variant="outline-primary" size="sm" @click="openProjectUserAssignmentModal">添加用户</BButton>
               </div>
+              <div class="table-responsive project-user-assignment-wrap mb-3">
+                <table class="table align-middle console-list-table project-user-assignment-table mb-0">
+                  <thead>
+                    <tr>
+                      <th>用户 ID</th>
+                      <th>用户名</th>
+                      <th>名称</th>
+                      <th>邮箱 / 手机号</th>
+                      <th>状态</th>
+                      <th>角色</th>
+                      <th class="text-end">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="user in assignedProjectUsers" :key="user.id">
+                      <td class="console-list-id">{{ user.id }}</td>
+                      <td>{{ user.username || '-' }}</td>
+                      <td>{{ user.name || '-' }}</td>
+                      <td>{{ user.email || user.phoneNumber || '-' }}</td>
+                      <td>
+                        <span class="badge rounded-pill" :class="user.status === 'disabled' ? 'text-bg-secondary' : 'text-bg-success'">
+                          {{ user.status === 'disabled' ? '停用' : '启用' }}
+                        </span>
+                      </td>
+                      <td>{{ formatRoleLabels(user.roles) }}</td>
+                      <td class="text-end">
+                        <BButton size="sm" variant="outline-danger" @click="removeProjectAssignedUser(user.id)">移出</BButton>
+                      </td>
+                    </tr>
+                    <tr v-if="assignedProjectUsers.length === 0">
+                      <td colspan="7" class="text-center text-secondary py-4">当前 ACL 中还没有用户。</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <BButton variant="primary" size="sm" @click="saveProjectUserAssignments">保存用户分配</BButton>
             </div>
             <div id="project-setting" class="info-card">
               <div class="section-title">项目设置</div>
               <div class="record-meta mb-3">维护当前项目的基础名称和描述。</div>
               <BForm @submit.prevent="updateProject">
-                <BFormInput v-model="projectUpdateForm.id" placeholder="projectId" class="mb-2" />
-                <BFormInput v-model="projectUpdateForm.name" placeholder="project name" class="mb-2" />
-                <BFormInput v-model="projectUpdateForm.description" placeholder="description" class="mb-2" />
+                <div class="mb-3">
+                  <label class="form-label">项目名称</label>
+                  <BFormInput v-model="projectUpdateForm.name" placeholder="请输入项目名称" />
+                </div>
+                <div class="mb-3">
+                  <label class="form-label">项目描述</label>
+                  <BFormInput v-model="projectUpdateForm.description" placeholder="请输入项目描述" />
+                </div>
+                <div class="mb-3">
+                  <label class="form-label d-block">用户访问控制</label>
+                  <BFormCheckbox v-model="projectUpdateForm.userAclEnabled">
+                    开启后，仅允许已分配到项目的用户访问该项目下应用
+                  </BFormCheckbox>
+                </div>
                 <BButton type="submit" variant="outline-primary">保存项目设置</BButton>
               </BForm>
             </div>
@@ -1871,6 +1966,62 @@
         <div class="record-meta mb-3">请立即保存以下私钥。系统不会再次展示该私钥。</div>
         <textarea class="form-control" rows="12" :value="applicationPrivateKeySnapshot" readonly />
       </BModal>
+      <BModal v-model="projectUserAssignmentModalVisible" title="添加项目用户" size="xl" centered>
+        <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+          <div class="record-meta mb-0">支持多选和反选。保存后会同步项目 ACL。</div>
+          <div class="d-flex gap-2">
+            <BButton size="sm" variant="outline-secondary" @click="selectAllProjectAssignmentUsers">全选</BButton>
+            <BButton size="sm" variant="outline-secondary" @click="invertProjectAssignmentUsers">反选</BButton>
+            <BButton size="sm" variant="outline-secondary" @click="clearProjectAssignmentUsers">清空</BButton>
+          </div>
+        </div>
+        <div class="table-responsive project-user-assignment-wrap">
+          <table class="table align-middle console-list-table project-user-assignment-table mb-0">
+            <thead>
+              <tr>
+                <th class="console-list-check-col">选择</th>
+                <th>用户 ID</th>
+                <th>用户名</th>
+                <th>名称</th>
+                <th>邮箱 / 手机号</th>
+                <th>状态</th>
+                <th>角色</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="user in users" :key="user.id">
+                <td class="console-list-check-col">
+                  <input
+                    class="form-check-input console-list-checkbox"
+                    type="checkbox"
+                    :checked="projectAssignmentDraftUserIds.includes(user.id)"
+                    @change="toggleProjectAssignmentDraftUser(user.id, ($event.target as HTMLInputElement).checked)"
+                  />
+                </td>
+                <td class="console-list-id">{{ user.id }}</td>
+                <td>{{ user.username || '-' }}</td>
+                <td>{{ user.name || '-' }}</td>
+                <td>{{ user.email || user.phoneNumber || '-' }}</td>
+                <td>
+                  <span class="badge rounded-pill" :class="user.status === 'disabled' ? 'text-bg-secondary' : 'text-bg-success'">
+                    {{ user.status === 'disabled' ? '停用' : '启用' }}
+                  </span>
+                </td>
+                <td>{{ formatRoleLabels(user.roles) }}</td>
+              </tr>
+              <tr v-if="users.length === 0">
+                <td colspan="7" class="text-center text-secondary py-4">当前组织下还没有用户。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <template #footer>
+          <div class="d-flex justify-content-end gap-2 w-100">
+            <BButton type="button" variant="outline-secondary" @click="projectUserAssignmentModalVisible = false">取消</BButton>
+            <BButton type="button" variant="primary" @click="confirmProjectUserAssignmentModal">确认添加</BButton>
+          </div>
+        </template>
+      </BModal>
     </main>
   </div>
 </template>
@@ -1913,6 +2064,7 @@ const currentMFAMethod = ref<MFAMethod>('totp')
 const externalIDPConfigModalVisible = ref(false)
 const currentExternalIDPKind = ref<'google' | 'github' | 'apple' | 'qq' | 'weibo' | 'custom_oauth' | 'custom_oidc'>('google')
 const applicationKeyModalVisible = ref(false)
+const projectUserAssignmentModalVisible = ref(false)
 const applicationKeyModalTitle = ref('应用私钥')
 const applicationPrivateKeySnapshot = ref('')
 const selectedUserId = ref('')
@@ -1927,6 +2079,8 @@ const userViewMode = ref<'list' | 'detail'>('list')
 const roleViewMode = ref<'list' | 'detail'>('list')
 const selectedUserIds = ref<string[]>([])
 const selectedRoleIds = ref<string[]>([])
+const projectAssignedUserIds = ref<string[]>([])
+const projectAssignmentDraftUserIds = ref<string[]>([])
 const showCreateUserForm = ref(false)
 const showCreateRoleForm = ref(false)
 const organizationMetadataRows = ref<Array<{ id: string; key: string; value: string }>>([])
@@ -1997,8 +2151,8 @@ type OrganizationConsoleSettings = {
 
 const organizationForm = reactive({ name: '' })
 const organizationUpdateForm = reactive({ id: '', name: '', metadata: {} as Record<string, string> })
-const projectForm = reactive({ organizationId: '', name: '' })
-const projectUpdateForm = reactive({ id: '', name: '', description: '' })
+const projectForm = reactive({ organizationId: '', name: '', userAclEnabled: false })
+const projectUpdateForm = reactive({ id: '', name: '', description: '', userAclEnabled: false })
 const applicationForm = reactive({
   projectId: '',
   name: '',
@@ -2282,6 +2436,7 @@ const currentOrganization = computed(() => organizations.value.find((item: any) 
 const currentOrganizationLabel = computed(() => currentOrganization.value?.name || currentOrganization.value?.id || '选择组织')
 const currentProject = computed(() => projects.value.find((item: any) => item.id === selectedProjectId.value) || projects.value[0])
 const currentApplication = computed(() => applications.value.find((item: any) => item.id === selectedApplicationId.value) || applications.value[0])
+const assignedProjectUsers = computed(() => users.value.filter((item: any) => projectAssignedUserIds.value.includes(item.id)))
 const selectedUser = computed(() => users.value.find((item: any) => item.id === selectedUserId.value))
 const currentUserRecord = computed(() => {
   if (currentView.value === 'my') {
@@ -2598,7 +2753,6 @@ const currentModulePanels = computed(() => {
   if (tab.value === 'project') return [
     { id: 'project-application', label: '应用列表' },
     { id: 'project-user-assignment', label: '用户分配' },
-    { id: 'project-role-assignment', label: '角色分配' },
     { id: 'project-setting', label: '项目设置' }
   ]
   if (tab.value === 'user') return [
@@ -2644,14 +2798,6 @@ const applicationDetailMetrics = computed<MetricItem[]>(() => [
   { label: '创建时间', value: formatDateTime(currentApplication.value?.createdAt) },
   { label: '最近变更', value: formatDateTime(currentApplication.value?.updatedAt) }
 ])
-const builtinApplicationProfiles = computed(() => [
-  { name: 'console-web', protocol: 'authorization_code_pkce / [access_token] / refresh=false / none', capabilities: 'api:manage, api:user' },
-  { name: 'portal-web', protocol: 'authorization_code_pkce / [access_token] / refresh=false / none', capabilities: 'api:user' },
-  { name: 'manage-api', protocol: 'client_credentials / [access_token] / refresh=false / private_key_jwt', capabilities: 'api:manage' },
-  { name: 'user-api', protocol: 'client_credentials / [access_token] / refresh=false / private_key_jwt', capabilities: 'api:user' },
-  { name: 'authn-api', protocol: 'client_credentials / [access_token] / refresh=false / private_key_jwt', capabilities: 'api:authn' },
-  { name: 'authz-api', protocol: 'client_credentials / [access_token] / refresh=false / private_key_jwt', capabilities: 'api:authz' }
-])
 const currentApplicationProtocolHint = computed(() => {
   const applicationType = currentApplication.value?.applicationType || applicationUpdateForm.applicationType
   if (applicationType === 'api') {
@@ -2663,8 +2809,8 @@ const currentApplicationProtocolHint = computed(() => {
   return '推荐 Web 类型优先使用 `authorization_code_pkce + access_token + none`。如需 OIDC 前端消费身份声明，可改为 `access_token_id_token`。'
 })
 const applicationDetailPanels = computed(() => [
-  { id: 'application-overview', label: '基本信息' },
   { id: 'application-protocol', label: '协议配置' },
+  { id: 'application-role-assignment', label: '角色分配' },
   { id: 'application-token', label: '令牌设置' }
 ])
 const showBackToTopButton = computed(() => {
@@ -2962,6 +3108,20 @@ watch(
 )
 
 watch(
+  () => currentApplication.value,
+  (value) => {
+    syncApplicationEditState(value)
+  }
+)
+
+watch(
+  () => currentProject.value,
+  (value) => {
+    syncProjectEditState(value)
+  }
+)
+
+watch(
   () => currentOrganization.value,
   (value) => {
     syncOrganizationMetadataRows(value)
@@ -3006,9 +3166,7 @@ async function loadAll() {
   projectForm.organizationId = currentOrg?.id ?? projectForm.organizationId
   projectQuery.organizationId = currentOrg?.id ?? projectQuery.organizationId
   applicationForm.projectId = project?.id ?? applicationForm.projectId
-  projectUpdateForm.id = project?.id ?? projectUpdateForm.id
-  projectUpdateForm.name = project?.name ?? projectUpdateForm.name
-  projectUpdateForm.description = project?.description ?? projectUpdateForm.description
+  syncProjectEditState(project)
   applicationQuery.projectId = project?.id ?? applicationQuery.projectId
   applicationUpdateForm.id = application?.id ?? applicationUpdateForm.id
   applicationUpdateForm.name = application?.name ?? applicationUpdateForm.name
@@ -3077,9 +3235,8 @@ async function loadProjects() {
     selectedProjectId.value = projects.value[0]?.id ?? ''
   }
   const selectedProject = projects.value.find((item: any) => item.id === selectedProjectId.value) || projects.value[0]
-  projectUpdateForm.id = selectedProject?.id ?? ''
-  projectUpdateForm.name = selectedProject?.name ?? ''
-  projectUpdateForm.description = selectedProject?.description ?? ''
+  syncProjectEditState(selectedProject)
+  syncProjectUserAssignments(selectedProject)
 }
 
 async function loadApplications() {
@@ -3089,18 +3246,7 @@ async function loadApplications() {
     selectedApplicationId.value = applications.value[0]?.id ?? ''
   }
   const selectedApplication = applications.value.find((item: any) => item.id === selectedApplicationId.value) || applications.value[0]
-  applicationUpdateForm.id = selectedApplication?.id ?? ''
-  applicationUpdateForm.name = selectedApplication?.name ?? ''
-  applicationUpdateForm.redirectUris = selectedApplication?.redirectUris ?? ''
-  applicationUpdateForm.applicationType = selectedApplication?.applicationType ?? 'web'
-  applicationUpdateForm.grantType = [...(selectedApplication?.grantType ?? ['authorization_code_pkce'])]
-  applicationUpdateForm.clientAuthenticationType = selectedApplication?.clientAuthenticationType ?? 'none'
-  applicationUpdateForm.tokenType = [...(selectedApplication?.tokenType ?? ['access_token'])]
-  applicationUpdateForm.enableRefreshToken = Boolean(selectedApplication?.enableRefreshToken)
-  applicationUpdateForm.roles = [...(selectedApplication?.roles ?? [])]
-  applicationUpdateForm.publicKey = selectedApplication?.publicKey ?? ''
-  applicationUpdateForm.accessTokenTTLMinutes = selectedApplication?.accessTokenTTLMinutes ?? 10
-  applicationUpdateForm.refreshTokenTTLHours = selectedApplication?.refreshTokenTTLHours ?? 168
+  syncApplicationEditState(selectedApplication)
 }
 
 async function loadUsers() {
@@ -3128,6 +3274,38 @@ function syncUserEditState(user?: any) {
   userUpdateForm.roleLabels = (user.roles ?? []).join(',')
   userUpdateForm.status = user.status ?? ''
   userRoleAssignments.value = [...(user.roles ?? [])]
+}
+
+function syncProjectEditState(project?: any) {
+  if (!project) {
+    return
+  }
+  projectUpdateForm.id = project.id ?? ''
+  projectUpdateForm.name = project.name ?? ''
+  projectUpdateForm.description = project.description ?? ''
+  projectUpdateForm.userAclEnabled = Boolean(project.userAclEnabled)
+}
+
+function syncApplicationEditState(application?: any) {
+  if (!application) {
+    return
+  }
+  applicationUpdateForm.id = application.id ?? ''
+  applicationUpdateForm.name = application.name ?? ''
+  applicationUpdateForm.redirectUris = application.redirectUris ?? ''
+  applicationUpdateForm.applicationType = application.applicationType ?? 'web'
+  applicationUpdateForm.grantType = [...(application.grantType ?? ['authorization_code_pkce'])]
+  applicationUpdateForm.clientAuthenticationType = application.clientAuthenticationType ?? 'none'
+  applicationUpdateForm.tokenType = [...(application.tokenType ?? ['access_token'])]
+  applicationUpdateForm.enableRefreshToken = Boolean(application.enableRefreshToken)
+  applicationUpdateForm.roles = [...(application.roles ?? [])]
+  applicationUpdateForm.publicKey = application.publicKey ?? ''
+  applicationUpdateForm.accessTokenTTLMinutes = application.accessTokenTTLMinutes ?? 10
+  applicationUpdateForm.refreshTokenTTLHours = application.refreshTokenTTLHours ?? 168
+}
+
+function syncProjectUserAssignments(project?: any) {
+  projectAssignedUserIds.value = Array.isArray(project?.assignedUserIds) ? [...project.assignedUserIds] : []
 }
 
 async function loadUserDetail(userID = selectedUserId.value) {
@@ -3160,9 +3338,8 @@ function selectUser(user: any) {
 
 async function selectProject(project: any) {
   selectedProjectId.value = project.id ?? ''
-  projectUpdateForm.id = project.id ?? ''
-  projectUpdateForm.name = project.name ?? ''
-  projectUpdateForm.description = project.description ?? ''
+  syncProjectEditState(project)
+  syncProjectUserAssignments(project)
   applicationQuery.projectId = project.id ?? ''
   applicationForm.projectId = project.id ?? ''
   await loadApplications()
@@ -3178,18 +3355,7 @@ async function selectProject(project: any) {
 
 function selectApplication(application: any) {
   selectedApplicationId.value = application.id ?? ''
-  applicationUpdateForm.id = application.id ?? ''
-  applicationUpdateForm.name = application.name ?? ''
-  applicationUpdateForm.redirectUris = application.redirectUris ?? ''
-  applicationUpdateForm.applicationType = application.applicationType ?? 'web'
-  applicationUpdateForm.grantType = [...(application.grantType ?? ['authorization_code_pkce'])]
-  applicationUpdateForm.clientAuthenticationType = application.clientAuthenticationType ?? 'none'
-  applicationUpdateForm.tokenType = [...(application.tokenType ?? ['access_token'])]
-  applicationUpdateForm.enableRefreshToken = Boolean(application.enableRefreshToken)
-  applicationUpdateForm.roles = [...(application.roles ?? [])]
-  applicationUpdateForm.publicKey = application.publicKey ?? ''
-  applicationUpdateForm.accessTokenTTLMinutes = application.accessTokenTTLMinutes ?? 10
-  applicationUpdateForm.refreshTokenTTLHours = application.refreshTokenTTLHours ?? 168
+  syncApplicationEditState(application)
 }
 
 async function goApplicationDetail(application: any) {
@@ -3332,6 +3498,15 @@ function backToRoleList() {
 
 function toggleAllRoles(checked: boolean) {
   selectedRoleIds.value = checked ? roles.value.map((item: any) => item.id) : []
+}
+
+function toggleRolesByType(type: 'user' | 'application', checked: boolean) {
+  const targetIds = roles.value.filter((item: any) => item.type === type).map((item: any) => item.id)
+  if (checked) {
+    selectedRoleIds.value = Array.from(new Set([...selectedRoleIds.value, ...targetIds]))
+    return
+  }
+  selectedRoleIds.value = selectedRoleIds.value.filter((id) => !targetIds.includes(id))
 }
 
 function toggleRoleSelection(roleId: string, checked: boolean) {
@@ -4453,6 +4628,69 @@ function toggleUserRole(roleName: string, checked: boolean) {
   userRoleAssignments.value = userRoleAssignments.value.filter((item) => item !== roleName)
 }
 
+function toggleProjectUserAssignment(userId: string, checked: boolean) {
+  if (checked) {
+    if (!projectAssignedUserIds.value.includes(userId)) {
+      projectAssignedUserIds.value = [...projectAssignedUserIds.value, userId]
+    }
+    return
+  }
+  projectAssignedUserIds.value = projectAssignedUserIds.value.filter((item) => item !== userId)
+}
+
+function openProjectUserAssignmentModal() {
+  projectAssignmentDraftUserIds.value = [...projectAssignedUserIds.value]
+  projectUserAssignmentModalVisible.value = true
+}
+
+function toggleProjectAssignmentDraftUser(userId: string, checked: boolean) {
+  if (checked) {
+    if (!projectAssignmentDraftUserIds.value.includes(userId)) {
+      projectAssignmentDraftUserIds.value = [...projectAssignmentDraftUserIds.value, userId]
+    }
+    return
+  }
+  projectAssignmentDraftUserIds.value = projectAssignmentDraftUserIds.value.filter((item) => item !== userId)
+}
+
+function selectAllProjectAssignmentUsers() {
+  projectAssignmentDraftUserIds.value = users.value.map((item: any) => item.id)
+}
+
+function invertProjectAssignmentUsers() {
+  const selectedSet = new Set(projectAssignmentDraftUserIds.value)
+  projectAssignmentDraftUserIds.value = users.value
+    .map((item: any) => item.id)
+    .filter((id: string) => !selectedSet.has(id))
+}
+
+function clearProjectAssignmentUsers() {
+  projectAssignmentDraftUserIds.value = []
+}
+
+function confirmProjectUserAssignmentModal() {
+  projectAssignedUserIds.value = [...projectAssignmentDraftUserIds.value]
+  projectUserAssignmentModalVisible.value = false
+}
+
+function removeProjectAssignedUser(userId: string) {
+  projectAssignedUserIds.value = projectAssignedUserIds.value.filter((item) => item !== userId)
+}
+
+async function saveProjectUserAssignments() {
+  if (!selectedProjectId.value) {
+    return
+  }
+  await withFeedback(async () => {
+    const response = await apiPost<{ userIds: string[] }>('/api/manage/v1/project/user_assignment/update', {
+      projectId: selectedProjectId.value,
+      userIds: projectAssignedUserIds.value
+    })
+    projectAssignedUserIds.value = [...(response.userIds ?? [])]
+    await loadProjects()
+  }, '用户分配已保存')
+}
+
 function syncExternalBindingIssuer() {
   const provider = userDetail.value?.externalIdps?.find((item: any) => item.id === externalBindingForm.externalIdpId)
   if (provider?.issuer) {
@@ -4911,6 +5149,94 @@ function openExistingExternalIDP(item: any) {
 
 function normalizeProviderName(value?: string) {
   return String(value || '').trim().toLowerCase()
+}
+
+async function showProjectDisableNotice() {
+  if (!selectedProjectId.value) {
+    return
+  }
+  await withFeedback(async () => {
+    await apiPost('/api/manage/v1/project/disable', { projectId: selectedProjectId.value })
+    await Promise.all([loadProjects(), loadApplications(), loadOrganizations()])
+  }, '项目已停用')
+}
+
+async function showOrganizationDisableNotice() {
+  if (!currentOrganization.value?.id) {
+    return
+  }
+  await withFeedback(async () => {
+    await apiPost('/api/manage/v1/organization/disable', { organizationId: currentOrganization.value.id })
+    await Promise.all([loadOrganizations(), loadProjects(), loadApplications()])
+  }, '组织已停用')
+}
+
+async function showOrganizationDeleteNotice() {
+  if (!currentOrganization.value?.id) {
+    return
+  }
+  const deletedOrganizationId = currentOrganization.value.id
+  await withFeedback(async () => {
+    await apiPost('/api/manage/v1/organization/delete', { organizationId: deletedOrganizationId })
+    await Promise.all([loadOrganizations(), loadUsers(), loadRoles(), loadPolicies(), loadExternalIDPs(), loadAudit()])
+    const fallbackOrganization = organizations.value.find((item: any) => item.id !== deletedOrganizationId) || organizations.value[0]
+    currentOrganizationId.value = fallbackOrganization?.id ?? ''
+    organizationSwitcher.value = currentOrganizationId.value
+    projectQuery.organizationId = currentOrganizationId.value
+    userQuery.organizationId = currentOrganizationId.value
+    roleQuery.organizationId = currentOrganizationId.value
+    policyForm.organizationId = currentOrganizationId.value
+    roleForm.organizationId = currentOrganizationId.value
+    userForm.organizationId = currentOrganizationId.value
+    externalIDPForm.organizationId = currentOrganizationId.value
+    externalBindingForm.organizationId = currentOrganizationId.value
+    if (currentOrganizationId.value) {
+      await Promise.all([loadProjects(), loadApplications()])
+      await router.push({ name: 'console-organization', params: { organizationId: currentOrganizationId.value } })
+      return
+    }
+    projects.value = []
+    applications.value = []
+    selectedProjectId.value = ''
+    selectedApplicationId.value = ''
+  }, '组织已删除')
+}
+
+async function showProjectDeleteNotice() {
+  if (!selectedProjectId.value) {
+    return
+  }
+  await withFeedback(async () => {
+    await apiPost('/api/manage/v1/project/delete', { projectId: selectedProjectId.value })
+    selectedProjectId.value = ''
+    selectedApplicationId.value = ''
+    await Promise.all([loadProjects(), loadApplications(), loadOrganizations()])
+    backToProjectList()
+  }, '项目已删除')
+}
+
+async function showApplicationDisableNotice() {
+  if (!selectedApplicationId.value) {
+    return
+  }
+  await withFeedback(async () => {
+    await apiPost('/api/manage/v1/application/disable', { applicationId: selectedApplicationId.value })
+    await loadApplications()
+    await loadOrganizations()
+  }, '应用已停用')
+}
+
+async function showApplicationDeleteNotice() {
+  if (!selectedApplicationId.value) {
+    return
+  }
+  await withFeedback(async () => {
+    await apiPost('/api/manage/v1/application/delete', { applicationId: selectedApplicationId.value })
+    selectedApplicationId.value = ''
+    await loadApplications()
+    await loadOrganizations()
+    await backToProjectDetail()
+  }, '应用已删除')
 }
 
 function formatDateTime(value?: string) {

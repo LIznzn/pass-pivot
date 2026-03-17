@@ -26,6 +26,7 @@ func (b *BaseModel) BeforeCreate(tx *gorm.DB) error {
 type Organization struct {
 	BaseModel
 	Name              string                     `gorm:"size:128" json:"name"`
+	Status            string                     `gorm:"size:32;default:active" json:"status"`
 	Metadata          map[string]string          `gorm:"serializer:json;type:json" json:"metadata"`
 	AllowJWTAccess    bool                       `json:"allowJwtAccess"`
 	AllowBasicAccess  bool                       `json:"allowBasicAccess"`
@@ -111,14 +112,27 @@ type OrganizationSetting struct {
 
 type Project struct {
 	BaseModel
-	OrganizationID string        `gorm:"index;size:36" json:"organizationId"`
-	Name           string        `gorm:"size:128" json:"name"`
-	Description    string        `gorm:"size:255" json:"description"`
-	Applications   []Application `json:"applications,omitempty"`
+	OrganizationID  string        `gorm:"index;size:36" json:"organizationId"`
+	Name            string        `gorm:"size:128" json:"name"`
+	Description     string        `gorm:"size:255" json:"description"`
+	Status          string        `gorm:"size:32;default:active" json:"status"`
+	UserACLEnabled  bool          `gorm:"column:user_acl_enabled" json:"userAclEnabled"`
+	Applications    []Application `json:"applications,omitempty"`
+	AssignedUserIDs []string      `gorm:"-" json:"assignedUserIds,omitempty"`
 }
 
 func (Project) TableName() string {
 	return "project"
+}
+
+type ProjectUserAssignment struct {
+	BaseModel
+	ProjectID string `gorm:"index:idx_project_user_assignment,unique;size:36" json:"projectId"`
+	UserID    string `gorm:"index:idx_project_user_assignment,unique;size:36" json:"userId"`
+}
+
+func (ProjectUserAssignment) TableName() string {
+	return "project_user_assignment"
 }
 
 type Application struct {
@@ -127,6 +141,7 @@ type Application struct {
 	Name                     string   `gorm:"size:128" json:"name"`
 	Description              string   `gorm:"size:255" json:"description"`
 	RedirectURIs             string   `gorm:"type:text" json:"redirectUris"`
+	Status                   string   `gorm:"size:32;default:active" json:"status"`
 	ApplicationType          string   `gorm:"size:32;default:web" json:"applicationType"`
 	GrantType                []string `gorm:"serializer:json;type:json" json:"grantType"`
 	EnableRefreshToken       bool     `json:"enableRefreshToken"`

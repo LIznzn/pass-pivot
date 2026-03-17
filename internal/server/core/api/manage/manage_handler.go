@@ -53,6 +53,36 @@ func (h *Handler) UpdateOrganization(w http.ResponseWriter, r *http.Request) {
 	sharedweb.JSON(w, http.StatusOK, item)
 }
 
+func (h *Handler) DisableOrganization(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		OrganizationID string `json:"organizationId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if err := h.service.DisableOrganization(r.Context(), payload.OrganizationID); err != nil {
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"disabled": true})
+}
+
+func (h *Handler) DeleteOrganization(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		OrganizationID string `json:"organizationId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if err := h.service.DeleteOrganization(r.Context(), payload.OrganizationID); err != nil {
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"deleted": true})
+}
+
 func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		OrganizationID string `json:"organizationId"`
@@ -96,6 +126,56 @@ func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 	sharedweb.JSON(w, http.StatusOK, item)
 }
 
+func (h *Handler) DisableProject(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		ProjectID string `json:"projectId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if err := h.service.DisableProject(r.Context(), payload.ProjectID); err != nil {
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"disabled": true})
+}
+
+func (h *Handler) DeleteProject(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		ProjectID string `json:"projectId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if err := h.service.DeleteProject(r.Context(), payload.ProjectID); err != nil {
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"deleted": true})
+}
+
+func (h *Handler) UpdateProjectUserAssignments(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		ProjectID string   `json:"projectId"`
+		UserIDs   []string `json:"userIds"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	userIDs, err := h.service.UpdateProjectUserAssignments(r.Context(), payload.ProjectID, payload.UserIDs)
+	if err != nil {
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	sharedweb.JSON(w, http.StatusOK, map[string]any{
+		"projectId": payload.ProjectID,
+		"userIds":   userIDs,
+	})
+}
+
 func (h *Handler) ListApplications(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		ProjectID string `json:"projectId"`
@@ -128,6 +208,7 @@ func (h *Handler) CreateApplication(w http.ResponseWriter, r *http.Request) {
 		"name":                     item.Application.Name,
 		"description":              item.Application.Description,
 		"redirectUris":             item.Application.RedirectURIs,
+		"status":                   item.Application.Status,
 		"applicationType":          item.Application.ApplicationType,
 		"grantType":                item.Application.GrantType,
 		"enableRefreshToken":       item.Application.EnableRefreshToken,
@@ -182,6 +263,7 @@ func (h *Handler) UpdateApplication(w http.ResponseWriter, r *http.Request) {
 		"name":                     item.Application.Name,
 		"description":              item.Application.Description,
 		"redirectUris":             item.Application.RedirectURIs,
+		"status":                   item.Application.Status,
 		"applicationType":          item.Application.ApplicationType,
 		"grantType":                item.Application.GrantType,
 		"enableRefreshToken":       item.Application.EnableRefreshToken,
@@ -196,6 +278,36 @@ func (h *Handler) UpdateApplication(w http.ResponseWriter, r *http.Request) {
 		"generatedPrivateKey":      item.GeneratedPrivateKey,
 	}
 	sharedweb.JSON(w, http.StatusOK, response)
+}
+
+func (h *Handler) DisableApplication(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		ApplicationID string `json:"applicationId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if err := h.service.DisableApplication(r.Context(), payload.ApplicationID); err != nil {
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"disabled": true})
+}
+
+func (h *Handler) DeleteApplication(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		ApplicationID string `json:"applicationId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if err := h.service.DeleteApplication(r.Context(), payload.ApplicationID); err != nil {
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"deleted": true})
 }
 
 func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {

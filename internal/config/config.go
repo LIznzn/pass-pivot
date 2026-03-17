@@ -43,6 +43,7 @@ type Config struct {
 
 func Load() Config {
 	loadDotEnv(".env")
+	loadDotEnv(".init")
 	return loadFromEnv()
 }
 

@@ -4,7 +4,6 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev:auth": "vite --config auth/vite.config.ts",
     "dev:portal": "vite --config portal/vite.config.ts",
     "dev:console": "vite --config console/vite.config.ts",
     "build:auth": "vue-tsc -p auth/tsconfig.json && vite build --config auth/vite.config.ts",

@@ -113,13 +113,6 @@ npm install
 npm run dev:portal
 ```
 
-auth authorize UI：
-
-```bash
-cd web
-npm run dev:auth
-```
-
 console：
 
 ```bash
