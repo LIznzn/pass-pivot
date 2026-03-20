@@ -15,7 +15,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { finishConsoleAuthorization, startConsoleAuthorization } from '../auth'
+import { finishConsoleAuthorization, startConsoleAuthorization } from '../api/auth'
 
 const route = useRoute()
 const message = ref('正在交换授权码并建立控制台会话。')

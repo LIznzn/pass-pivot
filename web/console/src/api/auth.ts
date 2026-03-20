@@ -1,3 +1,5 @@
+import axios from 'axios'
+
 const authBaseUrl = import.meta.env.PPVT_CONSOLE_AUTH_BASE_URL ?? 'http://localhost:8091'
 const portalBaseUrl = import.meta.env.PPVT_CONSOLE_PORTAL_BASE_URL ?? 'http://localhost:8092'
 const consoleApplicationId = import.meta.env.PPVT_CONSOLE_APPLICATION_ID ?? ''
@@ -125,17 +127,11 @@ export async function finishConsoleAuthorization(code: string, state: string) {
   body.set('redirect_uri', callbackUrl())
   body.set('code_verifier', verifier)
 
-  const response = await fetch(`${authBaseUrl}/auth/token`, {
-    method: 'POST',
+  const response = await axios.post<TokenResponse>(`${authBaseUrl}/auth/token`, body, {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body.toString(),
-    credentials: 'include'
+    withCredentials: true
   })
-  if (!response.ok) {
-    throw new Error(await response.text())
-  }
-
-  const tokenSet = (await response.json()) as TokenResponse
+  const tokenSet = response.data
   if (!tokenSet.access_token) {
     throw new Error('missing access_token')
   }
