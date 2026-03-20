@@ -24,7 +24,7 @@
               type="button"
               class="console-module-metric-copy"
               :aria-label="`复制${item.label}`"
-              @click="emit('copy-metric', item.copyValue || item.value)"
+              @click="console.copyMetricValue(item.copyValue || item.value)"
             >
               <i class="bi bi-copy" aria-hidden="true"></i>
             </button>
@@ -34,7 +34,7 @@
     </div>
     <div class="console-module-workspace">
       <aside class="console-module-sidebar">
-        <button v-for="item in currentModulePanels" :key="item.id" type="button" class="console-module-sidebar-link" @click="emit('scroll-to-panel', item.id)">{{ item.label }}</button>
+        <button v-for="item in currentModulePanels" :key="item.id" type="button" class="console-module-sidebar-link" @click="console.scrollToPanel(item.id)">{{ item.label }}</button>
       </aside>
       <div class="console-module-main">
         <div id="role-list" class="info-card">
@@ -126,7 +126,7 @@
           <pre class="json-block mt-3">{{ JSON.stringify(decisionResult, null, 2) }}</pre>
         </div>
       </div>
-      <RightSide :items="moduleRecentChanges" :format-date-time="formatDateTime" />
+      <RightSide :items="moduleRecentChanges" />
     </div>
   </section>
 </template>
@@ -135,6 +135,8 @@
 import { computed } from 'vue'
 import { BButton, BForm, BFormInput, BFormSelect } from 'bootstrap-vue-next'
 import RightSide from '../layout/RightSide.vue'
+import { useAuditStore } from '../stores/audit'
+import { useConsoleStore } from '../stores/console'
 
 const effectOptions = [
   { value: 'allow', text: 'allow' },
@@ -157,9 +159,12 @@ const props = defineProps<{
   policyForm: { id: string; name: string; effect: string; priority: number; apiRulesText: string }
   policyCheckForm: { subjectType: string; subjectId: string; method: string; path: string }
   decisionResult: unknown
-  moduleRecentChanges: any[]
-  formatDateTime: (value?: string) => string
 }>()
+
+const auditStore = useAuditStore()
+const console = useConsoleStore()
+const moduleRecentChanges = computed(() => auditStore.moduleRecentChanges)
+const formatDateTime = console.formatDateTime
 
 const currentModulePanels = [
   { id: 'role-list', label: '角色列表' },
@@ -175,7 +180,7 @@ const currentModuleMetrics = computed<Array<{ label: string; value: string; copy
   { label: '角色数', value: String(props.roles.length) },
   { label: '关联策略', value: String(props.selectedRolePolicies.length) },
   { label: '策略总数', value: String(props.policies.length) },
-  { label: '最近变更', value: props.formatDateTime(props.selectedRole?.updatedAt) }
+  { label: '最近变更', value: formatDateTime(props.selectedRole?.updatedAt) }
 ])
 
 function formatPolicyRules(rules?: Array<{ method?: string; path?: string }>) {
@@ -188,8 +193,6 @@ function formatPolicyRules(rules?: Array<{ method?: string; path?: string }>) {
 const emit = defineEmits<{
   back: []
   'run-module-action': []
-  'copy-metric': [value: string]
-  'scroll-to-panel': [id: string]
   'select-role': [role: any]
   'update-role': []
   'save-policy': []

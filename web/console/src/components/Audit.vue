@@ -7,7 +7,7 @@
           <h2 class="console-module-title">{{ currentOrganization?.name || '审计' }}</h2>
           <p class="console-module-subtitle">查看平台关键事件、登录轨迹与策略变更审计。</p>
         </div>
-        <BButton variant="primary" @click="console.runModuleAction">刷新审计</BButton>
+        <BButton variant="primary" @click="auditStore.loadAudit">刷新审计</BButton>
       </div>
       <div class="console-module-metrics">
         <div v-for="item in currentModuleMetrics" :key="item.label" class="console-module-metric">
@@ -42,7 +42,7 @@
         </div>
         <div id="audit-list" class="info-card">
           <div class="section-title">审计日志</div>
-          <BButton size="sm" variant="outline-primary" class="mb-3" @click="console.loadAudit">刷新</BButton>
+          <BButton size="sm" variant="outline-primary" class="mb-3" @click="auditStore.loadAudit">刷新</BButton>
           <div class="record-list">
             <div v-for="item in auditLogs" :key="item.id" class="record-card">
               <div class="record-head">
@@ -58,28 +58,36 @@
           </div>
         </div>
       </div>
-      <RightSide :items="moduleRecentChanges" :format-date-time="formatDateTime" />
+      <RightSide :items="moduleRecentChanges" />
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watchEffect } from 'vue'
 import { BButton } from 'bootstrap-vue-next'
 import RightSide from '../layout/RightSide.vue'
-import { useConsoleLayout } from '../composables/useConsoleLayout'
+import { useAuditStore } from '../stores/audit'
+import { useConsoleStore } from '../stores/console'
+import { useOrganizationStore } from '../stores/organization'
 
-const console = useConsoleLayout()
+const auditStore = useAuditStore()
+const console = useConsoleStore()
+const organizationStore = useOrganizationStore()
 
 const currentModulePanels = [
   { id: 'audit-list', label: '审计日志' }
 ]
 
+watchEffect(() => {
+  console.setPageHeader('审计', '查看平台关键事件、登录轨迹与策略变更审计。')
+})
+
 const currentModuleMetrics = computed<Array<{ label: string; value: string; copyable?: boolean; copyValue?: string }>>(() => [
-  { label: '组织 ID', value: console.currentOrganization?.id || '-' },
-  { label: '创建时间', value: console.formatDateTime(console.currentOrganization?.createdAt) },
-  { label: '审计数', value: String(console.auditLogs.length) },
-  { label: '最近登录用户', value: console.currentLoginUserLabel || '-' }
+  { label: '组织 ID', value: organizationStore.currentOrganization?.id || '-' },
+  { label: '创建时间', value: console.formatDateTime(organizationStore.currentOrganization?.createdAt) },
+  { label: '审计数', value: String(auditStore.auditLogs.length) },
+  { label: '最近登录用户', value: console.currentLoginUser || '当前登录用户' }
 ])
 
 function formatIpLine(ipAddress?: string, ipLocation?: string) {
@@ -89,9 +97,8 @@ function formatIpLine(ipAddress?: string, ipLocation?: string) {
   return ip || location || '-'
 }
 
-const currentOrganization = computed(() => console.currentOrganization)
-const auditLogs = computed(() => console.auditLogs)
-const moduleRecentChanges = computed(() => console.moduleRecentChanges)
-const currentLoginUserLabel = computed(() => console.currentLoginUserLabel)
+const currentOrganization = computed(() => organizationStore.currentOrganization)
+const auditLogs = computed(() => auditStore.auditLogs)
+const moduleRecentChanges = computed(() => auditStore.moduleRecentChanges)
 const formatDateTime = console.formatDateTime
 </script>

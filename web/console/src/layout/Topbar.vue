@@ -12,8 +12,8 @@
               :key="item.id"
               type="button"
               class="nav-link"
-              :class="{ active: activeTab === item.id }"
-              @click="emit('set-tab', item.id)"
+              :class="{ active: console.tab === item.id }"
+              @click="console.setTab(item.id)"
             >
               {{ item.label }}
             </button>
@@ -32,15 +32,15 @@
               v-for="organization in organizations"
               :key="organization.id"
               class="organization-context-item"
-              @click="emit('switch-organization', organization.id)"
+              @click="organizationStore.handleOrganizationSwitch(organization.id)"
             >
               <span class="organization-context-item-row">
                 <span>{{ organization.name || organization.id }}</span>
-                <span v-if="organization.id === currentOrganizationId" class="organization-context-check">当前</span>
+                <span v-if="organization.id === console.currentOrganizationId" class="organization-context-check">当前</span>
               </span>
             </BDropdownItem>
             <BDropdownDivider />
-            <BDropdownItem class="organization-context-manage" @click="emit('manage-organization')">管理组织</BDropdownItem>
+            <BDropdownItem class="organization-context-manage" @click="console.toggleManageOrganization">管理组织</BDropdownItem>
           </BDropdown>
           <BDropdown right no-caret variant="link" class="user-context-dropdown" toggle-class="user-context-toggle" menu-class="user-context-menu">
             <template #button-content>
@@ -56,8 +56,8 @@
               </div>
             </div>
             <BDropdownDivider />
-            <BDropdownItem @click="emit('go-my')">用户中心</BDropdownItem>
-            <BDropdownItem @click="emit('logout')">退出登录</BDropdownItem>
+            <BDropdownItem @click="console.goMy()">用户中心</BDropdownItem>
+            <BDropdownItem @click="console.logout()">退出登录</BDropdownItem>
           </BDropdown>
         </div>
       </div>
@@ -67,24 +67,28 @@
 
 <script setup lang="ts">
 import { BDropdown, BDropdownDivider, BDropdownItem } from 'bootstrap-vue-next'
+import { computed } from 'vue'
+import { useConsoleStore } from '../stores/console'
+import { useOrganizationStore } from '../stores/organization'
 
-defineProps<{
-  activeTab: 'dashboard' | 'organization' | 'project' | 'user' | 'role' | 'audit' | 'setting'
-  organizations: any[]
-  currentOrganizationId: string
-  currentOrganizationLabel: string
-  currentUserInitials: string
-  currentUserDisplayName: string
-  currentUserEmail: string
-}>()
-
-const emit = defineEmits<{
-  'set-tab': [tab: 'dashboard' | 'organization' | 'project' | 'user' | 'role' | 'audit' | 'setting']
-  'switch-organization': [organizationId: string]
-  'manage-organization': []
-  'go-my': []
-  logout: []
-}>()
+const console = useConsoleStore()
+const organizationStore = useOrganizationStore()
+const organizations = computed(() => organizationStore.organizations)
+const currentOrganizationLabel = computed(() => organizationStore.currentOrganization?.name || organizationStore.currentOrganization?.id || '选择组织')
+const currentUserDisplayName = computed(() => console.currentLoginUser || '当前登录用户')
+const currentUserEmail = computed(() => console.currentLoginUser || '-')
+const currentUserInitials = computed(() => {
+  const source = currentUserDisplayName.value || currentUserEmail.value
+  const cleaned = source.replace(/[^A-Za-z0-9\u4e00-\u9fa5 ]/g, ' ').trim()
+  if (!cleaned) {
+    return 'U'
+  }
+  const parts = cleaned.split(/\s+/).filter(Boolean)
+  if (parts.length >= 2) {
+    return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase()
+  }
+  return cleaned.slice(0, 2).toUpperCase()
+})
 
 const navItems = [
   { id: 'dashboard', label: '仪表盘' },

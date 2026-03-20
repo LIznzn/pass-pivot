@@ -7,7 +7,7 @@
           <h2 class="console-module-title">实例概览</h2>
           <p class="console-module-subtitle">概览当前实例下的核心 IAM 统计和审计摘要。</p>
         </div>
-        <BButton variant="primary" @click="console.runModuleAction">刷新概览</BButton>
+        <BButton variant="primary" @click="refreshDashboard">刷新概览</BButton>
       </div>
       <div class="console-module-metrics">
         <div v-for="item in currentModuleMetrics" :key="item.label" class="console-module-metric">
@@ -44,7 +44,7 @@
         </div>
         <div id="dashboard-audit" class="info-card">
           <div class="section-title">审计摘要</div>
-          <BButton size="sm" variant="outline-primary" class="mb-3" @click="console.loadAudit">刷新</BButton>
+          <BButton size="sm" variant="outline-primary" class="mb-3" @click="auditStore.loadAudit">刷新</BButton>
           <div class="record-list">
             <div v-for="item in recentAuditLogs" :key="item.id" class="record-row">
               <div>
@@ -56,38 +56,67 @@
           </div>
         </div>
       </div>
-      <RightSide :items="moduleRecentChanges" :format-date-time="formatDateTime" />
+      <RightSide :items="moduleRecentChanges" />
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watchEffect } from 'vue'
 import { BButton } from 'bootstrap-vue-next'
 import RightSide from '../layout/RightSide.vue'
-import { useConsoleLayout } from '../composables/useConsoleLayout'
+import { useApplicationStore } from '../stores/application'
+import { useAuditStore } from '../stores/audit'
+import { useConsoleStore } from '../stores/console'
+import { useOrganizationStore } from '../stores/organization'
+import { useProjectStore } from '../stores/project'
+import { useRoleStore } from '../stores/role'
+import { useUserStore } from '../stores/user'
 
-const console = useConsoleLayout()
+const applicationStore = useApplicationStore()
+const auditStore = useAuditStore()
+const console = useConsoleStore()
+const organizationStore = useOrganizationStore()
+const projectStore = useProjectStore()
+const roleStore = useRoleStore()
+const userStore = useUserStore()
 
 const currentModulePanels = [
   { id: 'dashboard-overview', label: '平台概览' },
   { id: 'dashboard-audit', label: '审计摘要' }
 ]
 
+const projectCount = computed(() => organizationStore.currentOrganization?.projects?.length ?? 0)
+const applicationCount = computed(() => organizationStore.currentOrganization?.projects?.reduce((total: number, project: any) => total + (project.applications?.length ?? 0), 0) ?? 0)
+const policyCount = computed(() => roleStore.policies.length)
+
+watchEffect(() => {
+  console.setPageHeader('仪表盘', '概览当前实例下的核心 IAM 统计和审计摘要。')
+})
+
 const summaryTiles = computed(() => [
-  { label: '组织', value: console.summary.organizationCount },
-  { label: '项目', value: console.summary.projectCount },
-  { label: '应用', value: console.summary.applicationCount },
-  { label: '用户', value: console.summary.userCount },
-  { label: '角色标签', value: console.summary.roleCount },
-  { label: '策略', value: console.summary.policyCount }
+  { label: '组织', value: organizationStore.organizations.length },
+  { label: '项目', value: projectCount.value },
+  { label: '应用', value: applicationCount.value },
+  { label: '用户', value: userStore.users.length },
+  { label: '角色标签', value: roleStore.roles.length },
+  { label: '策略', value: policyCount.value }
 ])
 
 const currentModuleMetrics = computed<Array<{ label: string; value: string; copyable?: boolean; copyValue?: string }>>(() =>
   summaryTiles.value.map((item) => ({ label: item.label, value: String(item.value) }))
 )
 
-const recentAuditLogs = computed(() => console.recentAuditLogs)
-const moduleRecentChanges = computed(() => console.moduleRecentChanges)
+async function refreshDashboard() {
+  await Promise.all([
+    organizationStore.loadOrganizations(),
+    userStore.loadUsers(),
+    roleStore.loadRoles(),
+    auditStore.loadAudit()
+  ])
+}
+
+const recentAuditLogs = computed(() => auditStore.recentAuditLogs)
+const moduleRecentChanges = computed(() => auditStore.moduleRecentChanges)
 const formatDateTime = console.formatDateTime
 </script>

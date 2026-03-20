@@ -16,6 +16,7 @@
     "bootstrap": "^5.3.8",
     "bootstrap-icons": "^1.13.1",
     "bootstrap-vue-next": "^0.40.8",
+    "pinia": "^3.0.4",
     "qrcode": "^1.5.4",
     "vue": "^3.5.22",
     "vue-router": "^4.6.3"

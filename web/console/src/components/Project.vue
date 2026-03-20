@@ -2,14 +2,12 @@
   <Application
     v-if="currentView === 'application-detail'"
     :current-application="currentApplication"
-    :application-update-form="applicationUpdateForm"
+    :application-update-form="applicationStore.applicationUpdateForm"
     :application-type-options="applicationTypeOptions"
     :grant-type-options="grantTypeOptions"
     :token-type-options="tokenTypeOptions"
     :client-authentication-type-options="clientAuthenticationTypeOptions"
     :application-assignable-roles="applicationAssignableRoles"
-    :module-recent-changes="moduleRecentChanges"
-    :format-date-time="console.formatDateTime"
     :format-application-type="formatApplicationType"
     :format-application-token-type="formatApplicationTokenType"
     :format-application-grant-type="formatApplicationGrantType"
@@ -18,8 +16,6 @@
     @back="backToProjectDetail"
     @disable="showApplicationDisableNotice"
     @delete="showApplicationDeleteNotice"
-    @copy-metric="copyMetricValue"
-    @scroll-to-panel="scrollToPanel"
     @update-application="updateApplication"
     @reset-application-key="resetApplicationKey"
   />
@@ -29,7 +25,7 @@
       <div class="section-title">当前组织下可用的项目</div>
       <div class="record-list project-list-records">
         <button
-          v-for="project in projects"
+          v-for="project in projectStore.projects"
           :key="project.id"
           type="button"
           class="record-card record-card-button"
@@ -62,12 +58,9 @@
   <ProjectDetail
     v-else
     :current-project="currentProject"
-    :applications="applications"
-    :project-update-form="projectUpdateForm"
-    :project-assigned-user-ids="projectAssignedUserIds"
-    :users="console.users"
-    :module-recent-changes="moduleRecentChanges"
-    :format-date-time="console.formatDateTime"
+    :applications="applicationStore.applications"
+    :project-update-form="projectStore.projectUpdateForm"
+    :project-assigned-user-ids="projectStore.projectAssignedUserIds"
     :format-application-token-type="formatApplicationTokenType"
     :format-application-grant-type="formatApplicationGrantType"
     :format-role-labels="formatRoleLabels"
@@ -75,8 +68,6 @@
     @back="backToProjectList"
     @disable="showProjectDisableNotice"
     @delete="showProjectDeleteNotice"
-    @copy-metric="copyMetricValue"
-    @scroll-to-panel="scrollToPanel"
     @go-application-detail="goApplicationDetail"
     @go-application-create="openApplicationCreateModal"
     @save-project-user-assignments="saveProjectUserAssignments"
@@ -92,15 +83,15 @@
 
   <ProjectCreateModal
     :visible="projectCreateModalVisible"
-    :project-form="projectForm"
+    :project-form="projectStore.projectForm"
     @update:visible="projectCreateModalVisible = $event"
-    @hidden="resetProjectCreateForm"
+    @hidden="projectStore.resetProjectCreateForm"
     @submit="submitProjectCreate"
   />
 
   <ApplicationCreateModal
     :visible="applicationCreateModalVisible"
-    :application-form="applicationForm"
+    :application-form="applicationStore.applicationForm"
     :application-assignable-roles="applicationAssignableRoles"
     :application-type-options="applicationTypeOptions"
     :grant-type-options="grantTypeOptions"
@@ -108,7 +99,7 @@
     :client-authentication-type-options="clientAuthenticationTypeOptions"
     :application-protocol-templates="applicationProtocolTemplates"
     @update:visible="applicationCreateModalVisible = $event"
-    @hidden="resetApplicationCreateForm"
+    @hidden="applicationStore.resetApplicationCreateForm"
     @submit="submitApplicationCreate"
     @validation-error="toast.error($event)"
     @toggle-role-name="toggleRoleName"
@@ -116,82 +107,36 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from '@shared/composables/toast'
-import {
-  createApplication as apiCreateApplication,
-  deleteApplication as apiDeleteApplication,
-  disableApplication as apiDisableApplication,
-  queryApplications as apiQueryApplications,
-  resetApplicationKey as apiResetApplicationKey,
-  updateApplication as apiUpdateApplication
-} from '../api/manage/application'
-import {
-  createProject as apiCreateProject,
-  deleteProject as apiDeleteProject,
-  disableProject as apiDisableProject,
-  queryProjects as apiQueryProjects,
-  updateProject as apiUpdateProject,
-  updateProjectUserAssignments as apiUpdateProjectUserAssignments
-} from '../api/manage/project'
 import ProjectDetail from '../components/ProjectDetail.vue'
 import Application from '../components/Application.vue'
 import ApplicationKeyModal from '../modal/ApplicationKeyModal.vue'
 import ProjectCreateModal from '../modal/ProjectCreateModal.vue'
 import ApplicationCreateModal from '../modal/ApplicationCreateModal.vue'
-import { useConsoleLayout } from '../composables/useConsoleLayout'
+import { useApplicationStore } from '../stores/application'
+import { useConsoleStore } from '../stores/console'
+import { useOrganizationStore } from '../stores/organization'
+import { useProjectStore } from '../stores/project'
+import { useRoleStore } from '../stores/role'
 
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
-const console = useConsoleLayout()
+const applicationStore = useApplicationStore()
+const console = useConsoleStore()
+const organizationStore = useOrganizationStore()
+const projectStore = useProjectStore()
+const roleStore = useRoleStore()
 
 const consoleApplicationId = import.meta.env.PPVT_CONSOLE_APPLICATION_ID ?? ''
 const projectViewMode = ref<'list' | 'detail'>('list')
-const selectedProjectId = ref('')
-const selectedApplicationId = ref('')
-const projects = ref<any[]>([])
-const applications = ref<any[]>([])
-const projectAssignedUserIds = ref<string[]>([])
 const projectCreateModalVisible = ref(false)
 const applicationCreateModalVisible = ref(false)
 const applicationKeyModalVisible = ref(false)
 const applicationKeyModalTitle = ref('应用私钥')
 const applicationPrivateKeySnapshot = ref('')
-
-const projectQuery = reactive({ organizationId: '' })
-const applicationQuery = reactive({ projectId: '' })
-const projectForm = reactive({ organizationId: '', name: '', userAclEnabled: false })
-const projectUpdateForm = reactive({ id: '', name: '', description: '', userAclEnabled: false })
-const applicationForm = reactive({
-  projectId: '',
-  name: '',
-  redirectUris: '',
-  applicationType: 'web',
-  tokenType: ['access_token'] as string[],
-  enableRefreshToken: false,
-  grantType: ['authorization_code_pkce'] as string[],
-  clientAuthenticationType: 'none',
-  roles: [] as string[],
-  publicKey: '',
-  accessTokenTTLMinutes: 10,
-  refreshTokenTTLHours: 168
-})
-const applicationUpdateForm = reactive({
-  id: '',
-  name: '',
-  redirectUris: '',
-  applicationType: 'web',
-  tokenType: ['access_token'] as string[],
-  enableRefreshToken: false,
-  grantType: ['authorization_code_pkce'] as string[],
-  clientAuthenticationType: 'none',
-  roles: [] as string[],
-  publicKey: '',
-  accessTokenTTLMinutes: 10,
-  refreshTokenTTLHours: 168
-})
 
 const applicationTypeOptions = [
   { value: 'web', text: 'Web' },
@@ -236,10 +181,21 @@ const currentView = computed(() => {
   if (currentRouteName.value === 'console-application-detail') return 'application-detail'
   return 'main'
 })
-const currentProject = computed(() => projects.value.find((item: any) => item.id === selectedProjectId.value) || projects.value[0])
-const currentApplication = computed(() => applications.value.find((item: any) => item.id === selectedApplicationId.value) || applications.value[0])
-const applicationAssignableRoles = computed(() => console.roles.filter((item: any) => item.type === 'application'))
-const moduleRecentChanges = computed(() => console.recentAuditLogs.slice(0, 6))
+const currentProject = computed(() => projectStore.projects.find((item: any) => item.id === projectStore.selectedProjectId) || projectStore.projects[0])
+const currentApplication = computed(() => applicationStore.applications.find((item: any) => item.id === applicationStore.selectedApplicationId) || applicationStore.applications[0])
+const applicationAssignableRoles = computed(() => roleStore.roles.filter((item: any) => item.type === 'application'))
+
+watchEffect(() => {
+  if (currentView.value === 'application-detail') {
+    console.setPageHeader('', '')
+    return
+  }
+  if (projectViewMode.value === 'detail') {
+    console.setPageHeader('', '')
+    return
+  }
+  console.setPageHeader('项目', '管理项目与应用的结构、协议模式与接入配置。')
+})
 
 watch(
   () => [console.currentOrganizationId, route.name, route.params.projectId, route.params.applicationId],
@@ -249,104 +205,22 @@ watch(
       clearProjectAndApplicationState()
       return
     }
-    projectForm.organizationId = nextOrganizationId
-    projectQuery.organizationId = nextOrganizationId
     projectViewMode.value = routeName === 'console-project-list' ? 'list' : 'detail'
-    await loadProjects()
+    await projectStore.loadProjects(nextOrganizationId)
     if (typeof routeProjectId === 'string' && routeProjectId) {
-      selectedProjectId.value = routeProjectId
+      projectStore.setSelectedProjectId(routeProjectId)
     }
-    const builtinProject = console.currentOrganization?.projects?.find((item: any) => (item.applications || []).some((application: any) => application.id === consoleApplicationId))
-    if (!selectedProjectId.value) {
-      selectedProjectId.value = builtinProject?.id || projects.value[0]?.id || ''
+    const builtinProject = organizationStore.currentOrganization?.projects?.find((item: any) => (item.applications || []).some((application: any) => application.id === consoleApplicationId))
+    if (!projectStore.selectedProjectId) {
+      projectStore.setSelectedProjectId(builtinProject?.id || projectStore.projects[0]?.id || '')
     }
-    applicationQuery.projectId = selectedProjectId.value
-    applicationForm.projectId = selectedProjectId.value
-    await loadApplications()
+    await applicationStore.loadApplications(projectStore.selectedProjectId)
     if (typeof routeApplicationId === 'string' && routeApplicationId) {
-      selectedApplicationId.value = routeApplicationId
+      applicationStore.setSelectedApplicationId(routeApplicationId)
     }
   },
   { immediate: true }
 )
-
-watch(() => currentProject.value, (value) => {
-  if (!value) {
-    return
-  }
-  projectUpdateForm.id = value.id ?? ''
-  projectUpdateForm.name = value.name ?? ''
-  projectUpdateForm.description = value.description ?? ''
-  projectUpdateForm.userAclEnabled = Boolean(value.userAclEnabled)
-  projectAssignedUserIds.value = Array.isArray(value.assignedUserIds) ? [...value.assignedUserIds] : []
-})
-
-watch(() => currentApplication.value, (value) => {
-  if (!value) {
-    return
-  }
-  applicationUpdateForm.id = value.id ?? ''
-  applicationUpdateForm.name = value.name ?? ''
-  applicationUpdateForm.redirectUris = value.redirectUris ?? ''
-  applicationUpdateForm.applicationType = value.applicationType ?? 'web'
-  applicationUpdateForm.grantType = [...(value.grantType ?? ['authorization_code_pkce'])]
-  applicationUpdateForm.clientAuthenticationType = value.clientAuthenticationType ?? 'none'
-  applicationUpdateForm.tokenType = [...(value.tokenType ?? ['access_token'])]
-  applicationUpdateForm.enableRefreshToken = Boolean(value.enableRefreshToken)
-  applicationUpdateForm.roles = [...(value.roles ?? [])]
-  applicationUpdateForm.publicKey = value.publicKey ?? ''
-  applicationUpdateForm.accessTokenTTLMinutes = value.accessTokenTTLMinutes ?? 10
-  applicationUpdateForm.refreshTokenTTLHours = value.refreshTokenTTLHours ?? 168
-})
-
-async function loadProjects() {
-  const response = await apiQueryProjects(projectQuery)
-  projects.value = response.items
-  if (!projects.value.some((item: any) => item.id === selectedProjectId.value)) {
-    selectedProjectId.value = projects.value[0]?.id ?? ''
-  }
-}
-
-async function loadApplications() {
-  const response = await apiQueryApplications(applicationQuery)
-  applications.value = response.items
-  if (!applications.value.some((item: any) => item.id === selectedApplicationId.value)) {
-    selectedApplicationId.value = applications.value[0]?.id ?? ''
-  }
-}
-
-function scrollToPanel(id: string) {
-  const target = document.getElementById(id)
-  if (!target) {
-    return
-  }
-  const topbar = document.querySelector('.admin-topbar') as HTMLElement | null
-  const offset = (topbar?.offsetHeight ?? 0) + 32
-  const targetTop = target.getBoundingClientRect().top + window.scrollY - offset
-  window.scrollTo({ top: Math.max(targetTop, 0), behavior: 'smooth' })
-}
-
-async function copyMetricValue(value: string) {
-  if (!value || value === '-') return
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(value)
-    } else {
-      const textarea = document.createElement('textarea')
-      textarea.value = value
-      textarea.setAttribute('readonly', 'true')
-      textarea.style.position = 'absolute'
-      textarea.style.left = '-9999px'
-      document.body.appendChild(textarea)
-      textarea.select()
-      document.execCommand('copy')
-      document.body.removeChild(textarea)
-    }
-    toast.success('已复制到剪贴板')
-  } catch (error) {
-    toast.error(String(error))
-  }
-}
 
 async function withFeedback(fn: () => Promise<void>, successMessage = '操作成功') {
   try {
@@ -407,45 +281,19 @@ function formatApplicationClientAuthenticationType(value?: string) {
 }
 
 function clearProjectAndApplicationState() {
-  projects.value = []
-  applications.value = []
-  selectedProjectId.value = ''
-  selectedApplicationId.value = ''
+  projectStore.clearProjectState()
+  applicationStore.clearApplicationState()
 }
 
 function selectApplication(application: any) {
-  selectedApplicationId.value = application.id ?? ''
-  if (!application) {
-    return
-  }
-  applicationUpdateForm.id = application.id ?? ''
-  applicationUpdateForm.name = application.name ?? ''
-  applicationUpdateForm.redirectUris = application.redirectUris ?? ''
-  applicationUpdateForm.applicationType = application.applicationType ?? 'web'
-  applicationUpdateForm.grantType = [...(application.grantType ?? ['authorization_code_pkce'])]
-  applicationUpdateForm.clientAuthenticationType = application.clientAuthenticationType ?? 'none'
-  applicationUpdateForm.tokenType = [...(application.tokenType ?? ['access_token'])]
-  applicationUpdateForm.enableRefreshToken = Boolean(application.enableRefreshToken)
-  applicationUpdateForm.roles = [...(application.roles ?? [])]
-  applicationUpdateForm.publicKey = application.publicKey ?? ''
-  applicationUpdateForm.accessTokenTTLMinutes = application.accessTokenTTLMinutes ?? 10
-  applicationUpdateForm.refreshTokenTTLHours = application.refreshTokenTTLHours ?? 168
+  applicationStore.setSelectedApplicationId(application?.id ?? '')
 }
 
 async function selectProject(project: any) {
-  selectedProjectId.value = project.id ?? ''
-  if (project) {
-    projectUpdateForm.id = project.id ?? ''
-    projectUpdateForm.name = project.name ?? ''
-    projectUpdateForm.description = project.description ?? ''
-    projectUpdateForm.userAclEnabled = Boolean(project.userAclEnabled)
-  }
-  projectAssignedUserIds.value = Array.isArray(project?.assignedUserIds) ? [...project.assignedUserIds] : []
-  applicationQuery.projectId = project.id ?? ''
-  applicationForm.projectId = project.id ?? ''
-  await loadApplications()
+  projectStore.setSelectedProjectId(project?.id ?? '')
+  await applicationStore.loadApplications(project?.id ?? '')
   projectViewMode.value = 'detail'
-  await router.push({ name: 'console-project-detail', params: { organizationId: console.currentOrganizationId || console.currentOrganization?.id || '', projectId: project.id ?? '' } })
+  await router.push({ name: 'console-project-detail', params: { organizationId: console.currentOrganizationId || organizationStore.currentOrganization?.id || '', projectId: project.id ?? '' } })
 }
 
 async function goApplicationDetail(application: any) {
@@ -454,7 +302,7 @@ async function goApplicationDetail(application: any) {
     name: 'console-application-detail',
     params: {
       organizationId: console.currentOrganizationId,
-      projectId: selectedProjectId.value || currentProject.value?.id || '',
+      projectId: projectStore.selectedProjectId || currentProject.value?.id || '',
       applicationId: application.id ?? ''
     }
   })
@@ -462,178 +310,127 @@ async function goApplicationDetail(application: any) {
 
 function backToProjectList() {
   projectViewMode.value = 'list'
-  void router.push({ name: 'console-project-list', params: { organizationId: console.currentOrganizationId || console.currentOrganization?.id || '' } })
+  void router.push({ name: 'console-project-list', params: { organizationId: console.currentOrganizationId || organizationStore.currentOrganization?.id || '' } })
 }
 
 async function backToProjectDetail() {
-  await router.push({ name: 'console-project-detail', params: { organizationId: console.currentOrganizationId || console.currentOrganization?.id || '', projectId: selectedProjectId.value || currentProject.value?.id || '' } })
+  await router.push({ name: 'console-project-detail', params: { organizationId: console.currentOrganizationId || organizationStore.currentOrganization?.id || '', projectId: projectStore.selectedProjectId || currentProject.value?.id || '' } })
 }
 
 function openProjectCreateModal() {
-  resetProjectCreateForm()
+  projectStore.resetProjectCreateForm()
   projectCreateModalVisible.value = true
 }
 
 function openApplicationCreateModal() {
-  if (!selectedProjectId.value && !currentProject.value?.id) {
+  if (!projectStore.selectedProjectId && !currentProject.value?.id) {
     toast.error('请先选择项目')
     return
   }
-  resetApplicationCreateForm()
-  applicationForm.projectId = selectedProjectId.value || currentProject.value?.id || ''
+  applicationStore.resetApplicationCreateForm(projectStore.selectedProjectId || currentProject.value?.id || '')
   applicationCreateModalVisible.value = true
 }
 
-async function createProject() {
-  await withFeedback(async () => {
-    await apiCreateProject(projectForm)
-    await loadProjects()
-  })
-}
-
-function resetProjectCreateForm() {
-  projectForm.name = ''
-}
-
 async function submitProjectCreate() {
-  await createProject()
-  resetProjectCreateForm()
+  await withFeedback(async () => {
+    await projectStore.createProject()
+  })
+  projectStore.resetProjectCreateForm()
   projectCreateModalVisible.value = false
 }
 
 async function updateProject() {
   await withFeedback(async () => {
-    await apiUpdateProject(projectUpdateForm)
-    await loadProjects()
+    await projectStore.updateProject()
   })
-}
-
-async function createApplication() {
-  let createdApplicationId = ''
-  await withFeedback(async () => {
-    const created = await apiCreateApplication({
-      ...applicationForm,
-      roles: [...applicationForm.roles],
-      accessTokenTTLMinutes: Number(applicationForm.accessTokenTTLMinutes),
-      refreshTokenTTLHours: Number(applicationForm.refreshTokenTTLHours)
-    })
-    createdApplicationId = created.id ?? ''
-    applicationForm.publicKey = created.publicKey ?? ''
-    if (created.generatedPrivateKey) showApplicationPrivateKey(created.generatedPrivateKey, '应用私钥')
-    await loadApplications()
-  })
-  return createdApplicationId
-}
-
-function resetApplicationCreateForm() {
-  applicationForm.projectId = selectedProjectId.value || currentProject.value?.id || ''
-  applicationForm.name = ''
-  applicationForm.redirectUris = ''
-  applicationForm.applicationType = 'web'
-  applicationForm.tokenType = ['access_token']
-  applicationForm.enableRefreshToken = false
-  applicationForm.grantType = ['authorization_code_pkce']
-  applicationForm.clientAuthenticationType = 'none'
-  applicationForm.roles = []
-  applicationForm.publicKey = ''
-  applicationForm.accessTokenTTLMinutes = 10
-  applicationForm.refreshTokenTTLHours = 168
 }
 
 async function submitApplicationCreate() {
-  const createdApplicationId = await createApplication()
+  let createdApplicationId = ''
+  await withFeedback(async () => {
+    const created = await applicationStore.createApplication()
+    createdApplicationId = created.id ?? ''
+    showApplicationPrivateKey(created.generatedPrivateKey, '应用私钥')
+  })
   if (!createdApplicationId) return
-  resetApplicationCreateForm()
+  applicationStore.resetApplicationCreateForm(projectStore.selectedProjectId || currentProject.value?.id || '')
   applicationCreateModalVisible.value = false
-  selectedApplicationId.value = createdApplicationId
+  applicationStore.setSelectedApplicationId(createdApplicationId)
   await router.push({
     name: 'console-application-detail',
     params: {
-      organizationId: console.currentOrganizationId || console.currentOrganization?.id || '',
-      projectId: selectedProjectId.value || currentProject.value?.id || '',
+      organizationId: console.currentOrganizationId || organizationStore.currentOrganization?.id || '',
+      projectId: projectStore.selectedProjectId || currentProject.value?.id || '',
       applicationId: createdApplicationId
     }
   })
 }
 
 async function updateApplication() {
-  const updateProtocolError = validateApplicationProtocolInput(applicationUpdateForm)
+  const updateProtocolError = validateApplicationProtocolInput(applicationStore.applicationUpdateForm)
   if (updateProtocolError) {
     toast.error(updateProtocolError)
     return
   }
   await withFeedback(async () => {
-    const updated = await apiUpdateApplication({
-      ...applicationUpdateForm,
-      roles: [...applicationUpdateForm.roles],
-      accessTokenTTLMinutes: Number(applicationUpdateForm.accessTokenTTLMinutes),
-      refreshTokenTTLHours: Number(applicationUpdateForm.refreshTokenTTLHours)
-    })
-    applicationUpdateForm.publicKey = updated.publicKey ?? applicationUpdateForm.publicKey
-    if (updated.generatedPrivateKey) showApplicationPrivateKey(updated.generatedPrivateKey, '应用私钥')
-    await loadApplications()
+    const updated = await applicationStore.updateApplication()
+    showApplicationPrivateKey(updated?.generatedPrivateKey, '应用私钥')
   })
 }
 
 async function resetApplicationKey() {
-  if (!applicationUpdateForm.id) return
+  if (!applicationStore.applicationUpdateForm.id) return
   await withFeedback(async () => {
-    const result = await apiResetApplicationKey(applicationUpdateForm.id)
-    applicationUpdateForm.publicKey = result.publicKey ?? ''
-    if (result.generatedPrivateKey) showApplicationPrivateKey(result.generatedPrivateKey, '重置后的应用私钥')
-    await loadApplications()
+    const result = await applicationStore.resetApplicationKey()
+    showApplicationPrivateKey(result?.generatedPrivateKey, '重置后的应用私钥')
   })
 }
 
-function showApplicationPrivateKey(privateKey: string, title: string) {
-  applicationPrivateKeySnapshot.value = privateKey
-  applicationKeyModalTitle.value = title
-  applicationKeyModalVisible.value = true
-}
-
 async function saveProjectUserAssignments(userIds: string[]) {
-  if (!selectedProjectId.value) return
+  if (!projectStore.selectedProjectId) return
   await withFeedback(async () => {
-    const response = await apiUpdateProjectUserAssignments(selectedProjectId.value, userIds)
-    projectAssignedUserIds.value = [...(response.userIds ?? [])]
-    await loadProjects()
+    await projectStore.saveProjectUserAssignments(userIds)
   }, '用户分配已保存')
 }
 
 async function showProjectDisableNotice() {
-  if (!selectedProjectId.value) return
+  if (!projectStore.selectedProjectId) return
   await withFeedback(async () => {
-    await apiDisableProject(selectedProjectId.value)
-    await Promise.all([loadProjects(), loadApplications()])
+    await projectStore.disableProject()
+    await applicationStore.loadApplications(projectStore.selectedProjectId)
   }, '项目已停用')
 }
 
 async function showProjectDeleteNotice() {
-  if (!selectedProjectId.value) return
+  if (!projectStore.selectedProjectId) return
   await withFeedback(async () => {
-    await apiDeleteProject(selectedProjectId.value)
-    selectedProjectId.value = ''
-    selectedApplicationId.value = ''
-    await Promise.all([loadProjects(), loadApplications()])
+    await projectStore.deleteProject()
+    applicationStore.clearApplicationState()
     backToProjectList()
   }, '项目已删除')
 }
 
 async function showApplicationDisableNotice() {
-  if (!selectedApplicationId.value) return
+  if (!applicationStore.selectedApplicationId) return
   await withFeedback(async () => {
-    await apiDisableApplication(selectedApplicationId.value)
-    await loadApplications()
+    await applicationStore.disableApplication()
   }, '应用已停用')
 }
 
 async function showApplicationDeleteNotice() {
-  if (!selectedApplicationId.value) return
+  if (!applicationStore.selectedApplicationId) return
   await withFeedback(async () => {
-    await apiDeleteApplication(selectedApplicationId.value)
-    selectedApplicationId.value = ''
-    await loadApplications()
+    await applicationStore.deleteApplication()
     await backToProjectDetail()
   }, '应用已删除')
+}
+
+function showApplicationPrivateKey(privateKey?: string, title = '应用私钥') {
+  if (!privateKey) {
+    return
+  }
+  applicationPrivateKeySnapshot.value = privateKey
+  applicationKeyModalTitle.value = title
+  applicationKeyModalVisible.value = true
 }
 </script>

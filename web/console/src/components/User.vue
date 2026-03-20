@@ -10,16 +10,16 @@
       </div>
       <div v-if="showCreateUserForm" class="detail-card mb-3">
         <BForm @submit.prevent="submitUserCreateFromList">
-          <BFormInput v-model="userForm.username" placeholder="username" class="mb-2" />
-          <BFormInput v-model="userForm.name" placeholder="name" class="mb-2" />
-          <BFormInput v-model="userForm.email" placeholder="email" class="mb-2" />
+          <BFormInput v-model="userStore.userForm.username" placeholder="username" class="mb-2" />
+          <BFormInput v-model="userStore.userForm.name" placeholder="name" class="mb-2" />
+          <BFormInput v-model="userStore.userForm.email" placeholder="email" class="mb-2" />
           <div class="phone-input-group mb-2">
-            <BFormSelect v-model="userPhoneInput.countryCode" :options="console.phoneCountryOptions" class="phone-country-select" />
+            <BFormSelect v-model="userPhoneInput.countryCode" :options="phoneCountryOptions" class="phone-country-select" />
             <BFormInput v-model="userPhoneInput.localNumber" placeholder="phoneNumber" class="phone-local-input" />
           </div>
-          <BFormInput v-model="userForm.roleLabels" placeholder="role labels, comma separated" class="mb-2" />
-          <BFormInput v-model="userForm.identifier" placeholder="login identifier" class="mb-2" />
-          <BFormInput v-model="userForm.password" type="password" placeholder="initial password" class="mb-2" />
+          <BFormInput v-model="userStore.userForm.roleLabels" placeholder="role labels, comma separated" class="mb-2" />
+          <BFormInput v-model="userStore.userForm.identifier" placeholder="login identifier" class="mb-2" />
+          <BFormInput v-model="userStore.userForm.password" type="password" placeholder="initial password" class="mb-2" />
           <div class="d-flex gap-2">
             <BButton type="submit" variant="primary">创建用户</BButton>
             <BButton type="button" variant="outline-secondary" @click="showCreateUserForm = false">取消</BButton>
@@ -34,7 +34,7 @@
                 <input
                   class="form-check-input console-list-checkbox"
                   type="checkbox"
-                  :checked="users.length > 0 && selectedUserIds.length === users.length"
+                  :checked="userStore.users.length > 0 && selectedUserIds.length === userStore.users.length"
                   @change="toggleAllUsers(($event.target as HTMLInputElement).checked)"
                 />
               </th>
@@ -48,7 +48,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="user in users" :key="user.id">
+            <tr v-for="user in userStore.users" :key="user.id">
               <td class="console-list-check-col">
                 <input class="form-check-input console-list-checkbox" type="checkbox" :checked="selectedUserIds.includes(user.id)" @change="toggleUserSelection(user.id, ($event.target as HTMLInputElement).checked)" />
               </td>
@@ -69,7 +69,7 @@
                 </div>
               </td>
             </tr>
-            <tr v-if="users.length === 0">
+            <tr v-if="userStore.users.length === 0">
               <td colspan="8" class="text-center text-secondary py-4">当前组织下还没有用户。</td>
             </tr>
           </tbody>
@@ -80,23 +80,19 @@
 
   <template v-else>
     <UserDetail
-      :user-update-form="userUpdateForm"
+      :user-update-form="userStore.userUpdateForm"
       :user-update-phone-input="userUpdatePhoneInput"
-      :phone-country-options="console.phoneCountryOptions"
+      :phone-country-options="phoneCountryOptions"
       :current-user-record="currentUserRecord"
-      :user-detail="userDetail"
+      :user-detail="userStore.userDetail"
       :user-admin-form="userAdminForm"
-      :external-binding-form="externalBindingForm"
+      :external-binding-form="userStore.externalBindingForm"
       :user-assignable-roles="userAssignableRoles"
-      :user-role-assignments="userRoleAssignments"
+      :user-role-assignments="userStore.userRoleAssignments"
       :user-admin-result="userAdminResult"
-      :selected-user-id="selectedUserId"
-      :module-recent-changes="moduleRecentChanges"
-      :format-date-time="console.formatDateTime"
+      :selected-user-id="userStore.selectedUserId"
       @back="backToUserList"
       @run-module-action="runModuleAction"
-      @copy-metric="copyMetricValue"
-      @scroll-to-panel="scrollToPanel"
       @update-user="updateUser"
       @reset-user-password="resetUserPassword"
       @toggle-webauthn-login="toggleWebAuthnLogin"
@@ -126,11 +122,9 @@
       :totp-verify-form="totpVerifyForm"
       :current-user-record="currentUserRecord"
       :mfa-setting-form="mfaSettingForm"
-      :boolean-setting-options="console.booleanSettingOptions"
       :u2f-secure-keys="u2fSecureKeys"
-      :user-detail="userDetail"
+      :user-detail="userStore.userDetail"
       :generated-recovery-code-list="generatedRecoveryCodeList"
-      :format-date-time="console.formatDateTime"
       @update:visible="mfaConfigModalVisible = $event"
       @delete-totp-enrollments="deleteTotpEnrollments"
       @delete-secure-key="deleteSecureKey"
@@ -140,40 +134,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import QRCode from 'qrcode'
 import { BButton, BForm, BFormInput, BFormSelect } from 'bootstrap-vue-next'
 import { normalizeCreationOptions, serializeCredential } from '@shared/api/webauthn'
 import { useToast } from '@shared/composables/toast'
-import {
-  beginRegisterSecureKey as apiBeginRegisterSecureKey,
-  createExternalIdentityBinding as apiCreateExternalIdentityBinding,
-  createUser as apiCreateUser,
-  deleteExternalIdentityBinding as apiDeleteExternalIdentityBinding,
-  deleteSecureKey as apiDeleteSecureKey,
-  deleteUserMfaEnrollment as apiDeleteUserMfaEnrollment,
-  deleteUsers as apiDeleteUsers,
-  disableUser as apiDisableUser,
-  enableUser as apiEnableUser,
-  enrollUserTotp as apiEnrollUserTotp,
-  finishRegisterSecureKey as apiFinishRegisterSecureKey,
-  generateUserRecoveryCodes as apiGenerateUserRecoveryCodes,
-  queryUserDetail as apiQueryUserDetail,
-  queryUsers as apiQueryUsers,
-  resetUserPassword as apiResetUserPassword,
-  resetUserUkid as apiResetUserUkid,
-  revokeAllUserSessions as apiRevokeAllUserSessions,
-  rotateUserToken as apiRotateUserToken,
-  untrustUserDevice as apiUntrustUserDevice,
-  updateUser as apiUpdateUser,
-  updateUserMfaMethod as apiUpdateUserMfaMethod,
-  verifyUserTotp as apiVerifyUserTotp
-} from '../api/manage/user'
-import { queryRoles as apiQueryRoles } from '../api/manage/role'
 import UserDetail from '../components/UserDetail.vue'
 import MfaConfigModal from '../modal/MfaConfigModal.vue'
-import { useConsoleLayout } from '../composables/useConsoleLayout'
+import { useConsoleStore } from '../stores/console'
+import { useOrganizationStore } from '../stores/organization'
+import { useUserStore } from '../stores/user'
 
 type MFAMethod = 'totp' | 'email_code' | 'sms_code' | 'u2f' | 'recovery_code'
 type PhoneInputState = {
@@ -184,55 +155,66 @@ type PhoneInputState = {
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
-const console = useConsoleLayout()
+const console = useConsoleStore()
+const organizationStore = useOrganizationStore()
+const userStore = useUserStore()
 const consoleApplicationId = import.meta.env.PPVT_CONSOLE_APPLICATION_ID ?? ''
 
-const users = ref<any[]>([])
-const roles = ref<any[]>([])
-const userDetail = ref<any | null>(null)
-const selectedUserId = ref('')
 const userViewMode = ref<'list' | 'detail'>('list')
 const mfaConfigModalVisible = ref(false)
 const currentMFAMethod = ref<MFAMethod>('totp')
 const totpSetup = ref<unknown>(null)
 const totpQRCodeDataURL = ref('')
-const recoveryCodes = ref<unknown>(null)
-const userAdminResult = ref<unknown>(null)
-const userRoleAssignments = ref<string[]>([])
 const selectedUserIds = ref<string[]>([])
 const showCreateUserForm = ref(false)
+const userAdminResult = ref<unknown>(null)
+const recoveryCodes = ref<{ codes?: string[] } | null>(null)
 
-const userForm = reactive({ organizationId: '', applicationId: '', username: '', name: '', email: '', phoneNumber: '', roleLabels: '', identifier: '', password: '' })
-const userUpdateForm = reactive({ id: '', username: '', name: '', email: '', phoneNumber: '', roleLabels: '', status: '' })
 const userAdminForm = reactive({ password: '' })
-const externalBindingForm = reactive({ organizationId: '', userId: '', externalIdpId: '', issuer: '', subject: '' })
 const userPhoneInput = reactive<PhoneInputState>({ countryCode: '+86', localNumber: '' })
 const userUpdatePhoneInput = reactive<PhoneInputState>({ countryCode: '+86', localNumber: '' })
 const mfaSettingForm = reactive({ emailEnabled: 'disabled', smsEnabled: 'disabled' })
 const totpVerifyForm = reactive({ enrollmentId: '', code: '' })
 
-const selectedUser = computed(() => users.value.find((item: any) => item.id === selectedUserId.value))
+const phoneCountryOptions = [
+  { value: '+86', text: '+86 中国' },
+  { value: '+852', text: '+852 中国香港' },
+  { value: '+853', text: '+853 中国澳门' },
+  { value: '+886', text: '+886 中国台湾' },
+  { value: '+81', text: '+81 日本' },
+  { value: '+82', text: '+82 韩国' },
+  { value: '+1', text: '+1 美国/加拿大' },
+  { value: '+44', text: '+44 英国' },
+  { value: '+49', text: '+49 德国' },
+  { value: '+33', text: '+33 法国' },
+  { value: '+65', text: '+65 新加坡' },
+  { value: '+60', text: '+60 马来西亚' },
+  { value: '+61', text: '+61 澳大利亚' }
+]
+
+const userAssignableRoles = computed(() => userStore.roles.filter((item: any) => item.type === 'user'))
 const currentUserRecord = computed(() => {
-  if (userDetail.value?.user?.id === selectedUserId.value) {
-    return userDetail.value.user
+  if (userStore.userDetail?.user?.id === userStore.selectedUserId) {
+    return userStore.userDetail.user
   }
-  return selectedUser.value
-})
-const userAssignableRoles = computed(() => roles.value.filter((item: any) => item.type === 'user'))
-const moduleRecentChanges = computed(() => {
-  if (userDetail.value?.recentAuditLogs?.length) {
-    return userDetail.value.recentAuditLogs.slice(0, 6)
-  }
-  return console.recentAuditLogs.slice(0, 6)
+  return userStore.users.find((item: any) => item.id === userStore.selectedUserId)
 })
 const pendingTotpEnrollmentId = computed(() => (totpSetup.value as { enrollmentId?: string } | null)?.enrollmentId || '')
 const pendingTotpProvisioningUri = computed(() => (totpSetup.value as { provisioningUri?: string } | null)?.provisioningUri || '')
 const pendingTotpManualEntryKey = computed(() => (totpSetup.value as { manualEntryKey?: string } | null)?.manualEntryKey || '')
-const generatedRecoveryCodeList = computed(() => (recoveryCodes.value as { codes?: string[] } | null)?.codes || [])
-const activeTOTPEnrollments = computed(() => (userDetail.value?.mfaEnrollments || []).filter((item: any) => item.method === 'totp'))
-const emailCodeEnrollment = computed(() => (userDetail.value?.mfaEnrollments || []).find((item: any) => item.method === 'email_code'))
-const smsCodeEnrollment = computed(() => (userDetail.value?.mfaEnrollments || []).find((item: any) => item.method === 'sms_code'))
-const u2fSecureKeys = computed(() => (userDetail.value?.secureKeys || []).filter((item: any) => item.u2fEnable))
+const generatedRecoveryCodeList = computed(() => recoveryCodes.value?.codes || [])
+const activeTOTPEnrollments = computed(() => (userStore.userDetail?.mfaEnrollments || []).filter((item: any) => item.method === 'totp'))
+const emailCodeEnrollment = computed(() => (userStore.userDetail?.mfaEnrollments || []).find((item: any) => item.method === 'email_code'))
+const smsCodeEnrollment = computed(() => (userStore.userDetail?.mfaEnrollments || []).find((item: any) => item.method === 'sms_code'))
+const u2fSecureKeys = computed(() => (userStore.userDetail?.secureKeys || []).filter((item: any) => item.u2fEnable))
+
+watchEffect(() => {
+  if (userViewMode.value === 'detail') {
+    console.setPageHeader('', '')
+    return
+  }
+  console.setPageHeader('用户', '管理用户、通行密钥、身份验证器、备用验证码与管理员动作。')
+})
 
 watch(
   () => pendingTotpProvisioningUri.value,
@@ -267,35 +249,33 @@ watch(
   async ([organizationId, routeName, routeUserId]) => {
     const nextOrganizationId = typeof organizationId === 'string' ? organizationId : ''
     if (!nextOrganizationId) {
-      users.value = []
-      roles.value = []
-      userDetail.value = null
-      selectedUserId.value = ''
+      userStore.clearUserState()
+      userAdminResult.value = null
+      recoveryCodes.value = null
       userViewMode.value = 'list'
       return
     }
-    userForm.organizationId = nextOrganizationId
-    externalBindingForm.organizationId = nextOrganizationId
+    userStore.userForm.organizationId = nextOrganizationId
+    userStore.externalBindingForm.organizationId = nextOrganizationId
     userViewMode.value = routeName === 'console-user-detail' ? 'detail' : 'list'
-    await Promise.all([loadUsers(), loadRoles()])
+    await Promise.all([loadUsers(), userStore.loadRoles()])
     if (typeof routeUserId === 'string' && routeUserId) {
-      selectedUserId.value = routeUserId
+      userStore.setSelectedUserId(routeUserId)
       await loadUserDetail(routeUserId)
       return
     }
-    if (!selectedUserId.value && users.value.length) {
-      selectedUserId.value = users.value[0].id
-      syncCurrentUser(users.value[0])
+    if (!userStore.selectedUserId && userStore.users.length) {
+      userStore.setSelectedUserId(userStore.users[0].id)
     }
     if (userViewMode.value === 'detail') {
-      await loadUserDetail(selectedUserId.value)
+      await loadUserDetail(userStore.selectedUserId)
     }
   },
   { immediate: true }
 )
 
 watch(
-  () => users.value,
+  () => userStore.users,
   (items) => {
     const userIds = new Set(items.map((item: any) => item.id))
     selectedUserIds.value = selectedUserIds.value.filter((id) => userIds.has(id))
@@ -303,89 +283,20 @@ watch(
   { immediate: true, deep: true }
 )
 
-function syncCurrentUser(user?: any) {
-  if (!user) {
-    return
-  }
-  userUpdateForm.id = user.id ?? ''
-  userUpdateForm.username = user.username ?? ''
-  userUpdateForm.name = user.name ?? ''
-  userUpdateForm.email = user.email ?? ''
-  userUpdateForm.phoneNumber = user.phoneNumber ?? ''
-  syncPhoneInput(userUpdatePhoneInput, userUpdateForm.phoneNumber, console.phoneCountryOptions.map((item: any) => item.value))
-  userUpdateForm.roleLabels = (user.roles ?? []).join(',')
-  userUpdateForm.status = user.status ?? ''
-  userRoleAssignments.value = [...(user.roles ?? [])]
-}
-
 async function loadUsers() {
-  const response = await apiQueryUsers({ organizationId: console.currentOrganizationId })
-  users.value = response.items
-  await console.loadUsers()
-  if (!users.value.some((item: any) => item.id === selectedUserId.value)) {
-    selectedUserId.value = users.value[0]?.id ?? ''
-  }
-  if (selectedUserId.value) {
-    syncCurrentUser(users.value.find((item: any) => item.id === selectedUserId.value) || users.value[0])
+  await userStore.loadUsers()
+  if (userStore.userUpdateForm.phoneNumber !== undefined) {
+    syncPhoneInput(userUpdatePhoneInput, userStore.userUpdateForm.phoneNumber, phoneCountryOptions.map((item) => item.value))
   }
 }
 
-async function loadRoles() {
-  const response = await apiQueryRoles({ organizationId: console.currentOrganizationId })
-  roles.value = response.items
-}
-
-async function loadUserDetail(userId = selectedUserId.value) {
-  if (!userId) {
-    userDetail.value = null
-    return
-  }
-  const detail = await apiQueryUserDetail(userId)
-  userDetail.value = detail
-  syncCurrentUser(detail.user)
-  externalBindingForm.organizationId = detail.user?.organizationId ?? console.currentOrganizationId
-  externalBindingForm.userId = detail.user?.id ?? userId
-  externalBindingForm.externalIdpId = detail.externalIdps?.[0]?.id ?? externalBindingForm.externalIdpId
-  externalBindingForm.issuer = detail.externalIdps?.find((item: any) => item.id === externalBindingForm.externalIdpId)?.issuer ?? externalBindingForm.issuer
-}
-
-function scrollToPanel(id: string) {
-  const target = document.getElementById(id)
-  if (!target) {
-    return
-  }
-  const topbar = document.querySelector('.admin-topbar') as HTMLElement | null
-  const offset = (topbar?.offsetHeight ?? 0) + 32
-  const targetTop = target.getBoundingClientRect().top + window.scrollY - offset
-  window.scrollTo({ top: Math.max(targetTop, 0), behavior: 'smooth' })
-}
-
-async function copyMetricValue(value: string) {
-  if (!value || value === '-') {
-    return
-  }
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(value)
-    } else {
-      const textarea = document.createElement('textarea')
-      textarea.value = value
-      textarea.setAttribute('readonly', 'true')
-      textarea.style.position = 'absolute'
-      textarea.style.left = '-9999px'
-      document.body.appendChild(textarea)
-      textarea.select()
-      document.execCommand('copy')
-      document.body.removeChild(textarea)
-    }
-    toast.success('已复制到剪贴板')
-  } catch (error) {
-    toast.error(String(error))
-  }
+async function loadUserDetail(userId = userStore.selectedUserId) {
+  await userStore.loadUserDetail(userId)
+  syncPhoneInput(userUpdatePhoneInput, userStore.userUpdateForm.phoneNumber, phoneCountryOptions.map((item) => item.value))
 }
 
 function toggleAllUsers(checked: boolean) {
-  selectedUserIds.value = checked ? users.value.map((item: any) => item.id) : []
+  selectedUserIds.value = checked ? userStore.users.map((item: any) => item.id) : []
 }
 
 function toggleUserSelection(userId: string, checked: boolean) {
@@ -402,12 +313,12 @@ function buildUserRouteAfterDelete() {
   if (route.name !== 'console-user-detail') {
     return null
   }
-  if (selectedUserId.value) {
+  if (userStore.selectedUserId) {
     return {
       name: 'console-user-detail',
       params: {
         organizationId: console.currentOrganizationId,
-        userId: selectedUserId.value
+        userId: userStore.selectedUserId
       }
     }
   }
@@ -430,13 +341,12 @@ async function withFeedback(fn: () => Promise<void>, successMessage = '操作成
 
 function selectUser(user: any) {
   userViewMode.value = 'detail'
-  selectedUserId.value = user.id
-  syncCurrentUser(user)
+  userStore.setSelectedUserId(user.id)
   void loadUserDetail(user.id)
   void router.push({
     name: 'console-user-detail',
     params: {
-      organizationId: console.currentOrganizationId || console.currentOrganization?.id || '',
+      organizationId: console.currentOrganizationId || organizationStore.currentOrganization?.id || '',
       userId: user.id ?? ''
     }
   })
@@ -447,7 +357,7 @@ function backToUserList() {
   void router.push({
     name: 'console-user-list',
     params: {
-      organizationId: console.currentOrganizationId || console.currentOrganization?.id || ''
+      organizationId: console.currentOrganizationId || organizationStore.currentOrganization?.id || ''
     }
   })
 }
@@ -457,7 +367,7 @@ async function deleteSelectedUsers(userIds: string[]) {
     return
   }
   await withFeedback(async () => {
-    await apiDeleteUsers({ userIds })
+    await userStore.deleteUsers({ userIds })
     await loadUsers()
     await loadUserDetail()
   })
@@ -465,7 +375,7 @@ async function deleteSelectedUsers(userIds: string[]) {
 
 async function deleteSingleUser(userId: string) {
   await withFeedback(async () => {
-    await apiDeleteUsers({ userId })
+    await userStore.deleteUsers({ userId })
     await loadUsers()
     await loadUserDetail()
     const nextRoute = buildUserRouteAfterDelete()
@@ -477,10 +387,10 @@ async function deleteSingleUser(userId: string) {
 
 async function createUser() {
   await withFeedback(async () => {
-    await apiCreateUser({
-      ...userForm,
+    await userStore.createUser({
+      ...userStore.userForm,
       phoneNumber: composePhoneNumber(userPhoneInput),
-      roles: splitRoleLabels(userForm.roleLabels)
+      roles: splitRoleLabels(userStore.userForm.roleLabels)
     })
     resetPhoneInput(userPhoneInput)
     await loadUsers()
@@ -488,17 +398,17 @@ async function createUser() {
 }
 
 async function submitUserCreateFromList() {
-  userForm.phoneNumber = composePhoneNumber(userPhoneInput)
+  userStore.userForm.phoneNumber = composePhoneNumber(userPhoneInput)
   await createUser()
   showCreateUserForm.value = false
 }
 
 async function updateUser() {
   await withFeedback(async () => {
-    await apiUpdateUser({
-      ...userUpdateForm,
+    await userStore.updateUser({
+      ...userStore.userUpdateForm,
       phoneNumber: composePhoneNumber(userUpdatePhoneInput),
-      roles: userRoleAssignments.value
+      roles: userStore.userRoleAssignments
     })
     await loadUsers()
     await loadUserDetail()
@@ -506,86 +416,83 @@ async function updateUser() {
 }
 
 async function createExternalBinding() {
-  if (!selectedUserId.value) {
+  if (!userStore.selectedUserId) {
     return
   }
   await withFeedback(async () => {
-    externalBindingForm.userId = externalBindingForm.userId || selectedUserId.value
-    await apiCreateExternalIdentityBinding(externalBindingForm)
+    userStore.externalBindingForm.userId = userStore.externalBindingForm.userId || userStore.selectedUserId
+    await userStore.createExternalBinding()
     await loadUserDetail()
   })
 }
 
 async function registerSecureKey(purpose: 'webauthn' | 'u2f' = 'webauthn') {
-  const userId = selectedUserId.value
+  const userId = userStore.selectedUserId
   if (!userId) {
     return
   }
   await withFeedback(async () => {
-    const begin = await apiBeginRegisterSecureKey(userId, purpose)
+    const begin = await userStore.beginRegisterSecureKey(purpose)
+    if (!begin) {
+      return
+    }
     const credential = await navigator.credentials.create({
       publicKey: normalizeCreationOptions(begin.options)
     })
     if (!credential) {
       throw new Error('Secure key registration was cancelled')
     }
-    await apiFinishRegisterSecureKey(begin.challengeId, serializeCredential(credential as PublicKeyCredential))
-    await loadUserDetail()
+    await userStore.finishRegisterSecureKey(begin.challengeId, serializeCredential(credential as PublicKeyCredential))
   })
 }
 
 async function enrollTotp() {
-  if (!selectedUserId.value) {
+  if (!userStore.selectedUserId) {
     return
   }
   await withFeedback(async () => {
-    totpSetup.value = await apiEnrollUserTotp(selectedUserId.value, consoleApplicationId)
+    totpSetup.value = await userStore.enrollUserTotp(consoleApplicationId)
     totpVerifyForm.enrollmentId = pendingTotpEnrollmentId.value
-    await loadUserDetail()
   })
 }
 
 async function verifyTotpEnrollment() {
-  if (!selectedUserId.value) {
+  if (!userStore.selectedUserId) {
     return
   }
   await withFeedback(async () => {
-    await apiVerifyUserTotp(selectedUserId.value, pendingTotpEnrollmentId.value, totpVerifyForm.code)
+    await userStore.verifyUserTotp(pendingTotpEnrollmentId.value, totpVerifyForm.code)
     totpSetup.value = null
     totpVerifyForm.enrollmentId = ''
     totpVerifyForm.code = ''
-    await loadUserDetail()
   })
 }
 
 async function generateRecoveryCodes() {
-  if (!selectedUserId.value) {
+  if (!userStore.selectedUserId) {
     return
   }
   await withFeedback(async () => {
-    recoveryCodes.value = await apiGenerateUserRecoveryCodes(selectedUserId.value)
-    await loadUserDetail()
+    recoveryCodes.value = await userStore.generateRecoveryCodes() as { codes?: string[] } | null
   })
 }
 
 async function saveMFAEmailSetting() {
-  if (!selectedUserId.value) {
+  if (!userStore.selectedUserId) {
     return
   }
   await withFeedback(async () => {
-    await apiUpdateUserMfaMethod(selectedUserId.value, 'email_code', mfaSettingForm.emailEnabled === 'active')
-    await loadUserDetail()
+    await userStore.updateUserMfaMethod('email_code', mfaSettingForm.emailEnabled === 'active')
     mfaConfigModalVisible.value = false
   })
 }
 
 async function saveMFASMSSetting() {
-  if (!selectedUserId.value) {
+  if (!userStore.selectedUserId) {
     return
   }
   await withFeedback(async () => {
-    await apiUpdateUserMfaMethod(selectedUserId.value, 'sms_code', mfaSettingForm.smsEnabled === 'active')
-    await loadUserDetail()
+    await userStore.updateUserMfaMethod('sms_code', mfaSettingForm.smsEnabled === 'active')
     mfaConfigModalVisible.value = false
   })
 }
@@ -594,12 +501,11 @@ async function toggleInlineMFAMethod(method: MFAMethod, enabled: boolean) {
   if (method !== 'email_code' && method !== 'sms_code') {
     return
   }
-  if (!selectedUserId.value) {
+  if (!userStore.selectedUserId) {
     return
   }
   await withFeedback(async () => {
-    await apiUpdateUserMfaMethod(selectedUserId.value, method, enabled)
-    await loadUserDetail()
+    await userStore.updateUserMfaMethod(method, enabled)
   })
 }
 
@@ -637,129 +543,118 @@ async function submitCurrentMFAModal() {
 }
 
 async function deleteTotpEnrollments() {
-  if (!selectedUserId.value) {
+  if (!userStore.selectedUserId) {
     return
   }
   await withFeedback(async () => {
-    await apiDeleteUserMfaEnrollment(selectedUserId.value, 'totp')
+    await userStore.deleteUserMfaEnrollment('totp')
     totpSetup.value = null
     totpVerifyForm.enrollmentId = ''
     totpVerifyForm.code = ''
-    await loadUserDetail()
     mfaConfigModalVisible.value = false
   })
 }
 
 async function deleteSecureKey(credentialId: string) {
-  if (!selectedUserId.value) {
+  if (!userStore.selectedUserId) {
     return
   }
   await withFeedback(async () => {
-    await apiDeleteSecureKey(selectedUserId.value, credentialId)
-    await loadUserDetail()
+    await userStore.deleteSecureKey(credentialId)
   })
 }
 
 async function toggleWebAuthnLogin(enabled: boolean) {
-  if (!selectedUserId.value) {
+  if (!userStore.selectedUserId) {
     return
   }
   await withFeedback(async () => {
-    await apiUpdateUserMfaMethod(selectedUserId.value, 'webauthn', enabled)
-    await loadUserDetail()
+    await userStore.updateUserMfaMethod('webauthn', enabled)
   }, enabled ? '已启用通行密钥登录' : '已关闭通行密钥登录')
 }
 
 async function resetUserPassword() {
-  if (!selectedUserId.value) {
+  if (!userStore.selectedUserId) {
     return
   }
   await withFeedback(async () => {
-    userAdminResult.value = await apiResetUserPassword(selectedUserId.value, userAdminForm.password)
+    userAdminResult.value = await userStore.resetUserPassword(userAdminForm.password)
     userAdminForm.password = ''
   })
 }
 
 async function resetUserUkid() {
-  if (!selectedUserId.value) {
+  if (!userStore.selectedUserId) {
     return
   }
   await withFeedback(async () => {
-    userAdminResult.value = await apiResetUserUkid(selectedUserId.value)
-    await loadUserDetail()
+    userAdminResult.value = await userStore.resetUserUkid()
   })
 }
 
 async function disableUser() {
-  if (!selectedUserId.value) {
+  if (!userStore.selectedUserId) {
     return
   }
   await withFeedback(async () => {
-    userAdminResult.value = await apiDisableUser(selectedUserId.value)
-    await loadUsers()
-    await loadUserDetail()
+    userAdminResult.value = await userStore.disableUser()
   })
 }
 
 async function enableUser() {
-  if (!selectedUserId.value) {
+  if (!userStore.selectedUserId) {
     return
   }
   await withFeedback(async () => {
-    userAdminResult.value = await apiEnableUser(selectedUserId.value)
-    await loadUsers()
-    await loadUserDetail()
+    userAdminResult.value = await userStore.enableUser()
   })
 }
 
 async function deleteExternalBinding(bindingId: string) {
-  if (!selectedUserId.value) {
+  if (!userStore.selectedUserId) {
     return
   }
   await withFeedback(async () => {
-    await apiDeleteExternalIdentityBinding(selectedUserId.value, bindingId)
+    await userStore.deleteExternalBinding(bindingId)
     await loadUserDetail()
   })
 }
 
 async function untrustManagedDevice(deviceId: string) {
-  if (!selectedUserId.value) {
+  if (!userStore.selectedUserId) {
     return
   }
   await withFeedback(async () => {
-    await apiUntrustUserDevice(selectedUserId.value, deviceId)
-    await loadUserDetail()
+    await userStore.untrustManagedDevice(deviceId)
   })
 }
 
 async function revokeAllUserSessions() {
-  if (!selectedUserId.value) {
+  if (!userStore.selectedUserId) {
     return
   }
   await withFeedback(async () => {
-    userAdminResult.value = await apiRevokeAllUserSessions(selectedUserId.value)
-    await loadUserDetail()
+    userAdminResult.value = await userStore.revokeAllUserSessions()
   })
 }
 
 async function rotateUserToken() {
-  if (!selectedUserId.value) {
+  if (!userStore.selectedUserId) {
     return
   }
   await withFeedback(async () => {
-    userAdminResult.value = await apiRotateUserToken(selectedUserId.value)
-    await loadUserDetail()
+    userAdminResult.value = await userStore.rotateUserToken()
   })
 }
 
 function toggleUserRole(roleName: string, checked: boolean) {
   if (checked) {
-    if (!userRoleAssignments.value.includes(roleName)) {
-      userRoleAssignments.value = [...userRoleAssignments.value, roleName]
+    if (!userStore.userRoleAssignments.includes(roleName)) {
+      userStore.userRoleAssignments = [...userStore.userRoleAssignments, roleName]
     }
     return
   }
-  userRoleAssignments.value = userRoleAssignments.value.filter((item) => item !== roleName)
+  userStore.userRoleAssignments = userStore.userRoleAssignments.filter((item) => item !== roleName)
 }
 
 async function openMFAModal(method: MFAMethod) {

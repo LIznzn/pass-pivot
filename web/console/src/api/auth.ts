@@ -1,16 +1,18 @@
-import axios from 'axios'
+import { requestPost } from '../util/request'
 
 const authBaseUrl = import.meta.env.PPVT_CONSOLE_AUTH_BASE_URL ?? 'http://localhost:8091'
 const portalBaseUrl = import.meta.env.PPVT_CONSOLE_PORTAL_BASE_URL ?? 'http://localhost:8092'
 const consoleApplicationId = import.meta.env.PPVT_CONSOLE_APPLICATION_ID ?? ''
 
-const stateKey = 'ppvt-oauth-state'
-const verifierKey = 'ppvt-oauth-code-verifier'
-const nonceKey = 'ppvt-oauth-nonce'
-const targetKey = 'ppvt-oauth-target'
-const accessTokenKey = 'ppvt-access-token'
-const refreshTokenKey = 'ppvt-refresh-token'
-const idTokenKey = 'ppvt-id-token'
+const storageKeys = {
+  state: 'ppvt-oauth-state',
+  verifier: 'ppvt-oauth-code-verifier',
+  nonce: 'ppvt-oauth-nonce',
+  target: 'ppvt-oauth-target',
+  accessToken: 'ppvt-access-token',
+  refreshToken: 'ppvt-refresh-token',
+  idToken: 'ppvt-id-token'
+} as const
 
 type TokenResponse = {
   access_token: string
@@ -19,6 +21,18 @@ type TokenResponse = {
   token_type: string
   expires_in: number
   scope?: string
+}
+
+function getSessionValue(key: keyof typeof storageKeys) {
+  return sessionStorage.getItem(storageKeys[key]) ?? ''
+}
+
+function setSessionValue(key: keyof typeof storageKeys, value: string) {
+  sessionStorage.setItem(storageKeys[key], value)
+}
+
+function removeSessionValue(key: keyof typeof storageKeys) {
+  sessionStorage.removeItem(storageKeys[key])
 }
 
 function randomBase64Url(bytes = 32) {
@@ -40,51 +54,65 @@ async function sha256Base64Url(value: string) {
   return toBase64Url(new Uint8Array(digest))
 }
 
-function callbackUrl() {
+function getCallbackUrl() {
   return `${window.location.origin}/console/callback`
 }
 
-function logoutRedirectUrl() {
-  return callbackUrl()
+function getDefaultTarget() {
+  return `${window.location.origin}/console/dashboard`
 }
 
 function clearOAuthHandshake() {
-  sessionStorage.removeItem(stateKey)
-  sessionStorage.removeItem(verifierKey)
-  sessionStorage.removeItem(nonceKey)
-  sessionStorage.removeItem(targetKey)
+  removeSessionValue('state')
+  removeSessionValue('verifier')
+  removeSessionValue('nonce')
+  removeSessionValue('target')
+}
+
+function persistTokenSet(tokenSet: TokenResponse) {
+  setSessionValue('accessToken', tokenSet.access_token)
+  if (tokenSet.refresh_token) {
+    setSessionValue('refreshToken', tokenSet.refresh_token)
+  } else {
+    removeSessionValue('refreshToken')
+  }
+  if (tokenSet.id_token) {
+    setSessionValue('idToken', tokenSet.id_token)
+  } else {
+    removeSessionValue('idToken')
+  }
 }
 
 export function clearConsoleAuthSession() {
-  sessionStorage.removeItem(accessTokenKey)
-  sessionStorage.removeItem(refreshTokenKey)
-  sessionStorage.removeItem(idTokenKey)
+  removeSessionValue('accessToken')
+  removeSessionValue('refreshToken')
+  removeSessionValue('idToken')
   clearOAuthHandshake()
 }
 
 export function getCurrentAccessToken() {
-  return sessionStorage.getItem(accessTokenKey) ?? ''
+  return getSessionValue('accessToken')
 }
 
 export async function buildConsoleAuthorizationUrl(target?: string) {
   if (!consoleApplicationId) {
     throw new Error('missing console application id')
   }
+
   const verifier = randomBase64Url(32)
   const challenge = await sha256Base64Url(verifier)
   const state = randomBase64Url(24)
   const nonce = randomBase64Url(24)
-  const finalTarget = target || window.location.href
 
-  sessionStorage.setItem(verifierKey, verifier)
-  sessionStorage.setItem(stateKey, state)
-  sessionStorage.setItem(nonceKey, nonce)
-  sessionStorage.setItem(targetKey, finalTarget)
+  setSessionValue('verifier', verifier)
+  setSessionValue('state', state)
+  setSessionValue('nonce', nonce)
+  setSessionValue('target', target || window.location.href)
 
   const url = new URL(`${authBaseUrl}/auth/authorize`)
   url.searchParams.set('client_id', consoleApplicationId)
   url.searchParams.set('response_type', 'code')
-  url.searchParams.set('redirect_uri', callbackUrl())
+  url.searchParams.set('redirect_uri', getCallbackUrl())
   url.searchParams.set('scope', 'openid profile email phone')
   url.searchParams.set('state', state)
   url.searchParams.set('nonce', nonce)
@@ -94,21 +122,20 @@ export async function buildConsoleAuthorizationUrl(target?: string) {
 }
 
 export async function startConsoleAuthorization(target?: string) {
-  const url = await buildConsoleAuthorizationUrl(target)
-  window.location.assign(url)
+  window.location.assign(await buildConsoleAuthorizationUrl(target))
 }
 
 export function startConsoleLogout() {
   const url = new URL(`${portalBaseUrl}/portal/logout`)
-  url.searchParams.set('post_logout_redirect_uri', logoutRedirectUrl())
+  url.searchParams.set('post_logout_redirect_uri', getCallbackUrl())
   clearConsoleAuthSession()
   window.location.assign(url.toString())
 }
 
 export async function finishConsoleAuthorization(code: string, state: string) {
-  const expectedState = sessionStorage.getItem(stateKey) ?? ''
-  const verifier = sessionStorage.getItem(verifierKey) ?? ''
-  const target = sessionStorage.getItem(targetKey) ?? `${window.location.origin}/console/dashboard`
+  const expectedState = getSessionValue('state')
+  const verifier = getSessionValue('verifier')
+  const target = getSessionValue('target') || getDefaultTarget()
 
   if (!code) {
     throw new Error('missing authorization code')
@@ -120,32 +147,26 @@ export async function finishConsoleAuthorization(code: string, state: string) {
     throw new Error('missing pkce verifier')
   }
 
-  const body = new URLSearchParams()
-  body.set('grant_type', 'authorization_code')
-  body.set('client_id', consoleApplicationId)
-  body.set('code', code)
-  body.set('redirect_uri', callbackUrl())
-  body.set('code_verifier', verifier)
+  const body = new URLSearchParams({
+    grant_type: 'authorization_code',
+    client_id: consoleApplicationId,
+    code,
+    redirect_uri: getCallbackUrl(),
+    code_verifier: verifier
+  })
 
-  const response = await axios.post<TokenResponse>(`${authBaseUrl}/auth/token`, body, {
+  const tokenSet = await requestPost<TokenResponse>(`${authBaseUrl}/auth/token`, body, {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    skipAuthHeader: true,
+    skipUnauthorizedRedirect: true,
     withCredentials: true
   })
-  const tokenSet = response.data
+
   if (!tokenSet.access_token) {
     throw new Error('missing access_token')
   }
-  sessionStorage.setItem(accessTokenKey, tokenSet.access_token)
-  if (tokenSet.refresh_token) {
-    sessionStorage.setItem(refreshTokenKey, tokenSet.refresh_token)
-  } else {
-    sessionStorage.removeItem(refreshTokenKey)
-  }
-  if (tokenSet.id_token) {
-    sessionStorage.setItem(idTokenKey, tokenSet.id_token)
-  } else {
-    sessionStorage.removeItem(idTokenKey)
-  }
+
+  persistTokenSet(tokenSet)
   clearOAuthHandshake()
   return target
 }

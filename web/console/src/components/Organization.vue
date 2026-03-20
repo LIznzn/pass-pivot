@@ -13,8 +13,8 @@
             <i class="bi bi-chevron-down" aria-hidden="true"></i>
           </button>
           <div class="console-action-menu-list">
-            <button type="button" class="console-action-menu-item" @click="console.showOrganizationDisableNotice">停用</button>
-            <button type="button" class="console-action-menu-item console-action-menu-item-danger" @click="console.showOrganizationDeleteNotice">删除</button>
+            <button type="button" class="console-action-menu-item" @click="organizationStore.showOrganizationDisableNotice">停用</button>
+            <button type="button" class="console-action-menu-item console-action-menu-item-danger" @click="organizationStore.showOrganizationDeleteNotice">删除</button>
           </div>
         </div>
       </div>
@@ -74,23 +74,35 @@
             </div>
             <div class="d-flex gap-2 mt-3">
               <BButton variant="outline-secondary" @click="addOrganizationMetadataRow">新增条目</BButton>
-              <BButton variant="primary" @click="console.saveOrganizationMetadata(organizationMetadataRows)">保存元信息</BButton>
+              <BButton variant="primary" @click="organizationStore.saveOrganizationMetadata(organizationMetadataRows)">保存元信息</BButton>
             </div>
           </div>
         </div>
       </div>
-      <RightSide :items="moduleRecentChanges" :format-date-time="formatDateTime" />
+      <RightSide :items="moduleRecentChanges" />
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, watchEffect } from 'vue'
 import { BButton, BFormInput } from 'bootstrap-vue-next'
 import RightSide from '../layout/RightSide.vue'
-import { useConsoleLayout } from '../composables/useConsoleLayout'
+import { useAuditStore } from '../stores/audit'
+import { useConsoleStore } from '../stores/console'
+import { useOrganizationStore } from '../stores/organization'
+import { useRoleStore } from '../stores/role'
+import { useUserStore } from '../stores/user'
 
-const console = useConsoleLayout()
+const auditStore = useAuditStore()
+const console = useConsoleStore()
+const organizationStore = useOrganizationStore()
+const roleStore = useRoleStore()
+const userStore = useUserStore()
+
+watchEffect(() => {
+  console.setPageHeader('', '')
+})
 
 const organizationMetadataRows = ref<Array<{ id: string; key: string; value: string }>>([])
 
@@ -99,21 +111,21 @@ const currentModulePanels = [
 ]
 
 const currentModuleMetrics = computed(() => {
-  const projectCount = console.currentOrganization?.projects?.length ?? 0
-  const applicationCount = (console.currentOrganization?.projects ?? []).reduce((count: number, project: any) => count + (project.applications?.length ?? 0), 0)
+  const projectCount = organizationStore.currentOrganization?.projects?.length ?? 0
+  const applicationCount = (organizationStore.currentOrganization?.projects ?? []).reduce((count: number, project: any) => count + (project.applications?.length ?? 0), 0)
   return [
-    { label: '组织 ID', value: console.currentOrganization?.id || '-', copyable: Boolean(console.currentOrganization?.id), copyValue: console.currentOrganization?.id || '' },
+    { label: '组织 ID', value: organizationStore.currentOrganization?.id || '-', copyable: Boolean(organizationStore.currentOrganization?.id), copyValue: organizationStore.currentOrganization?.id || '' },
     { label: '项目数', value: String(projectCount) },
     { label: '应用数', value: String(applicationCount) },
-    { label: '用户数', value: String(console.users.length) },
-    { label: '角色数', value: String(console.roles.length) },
-    { label: '创建时间', value: console.formatDateTime(console.currentOrganization?.createdAt) },
-    { label: '更新时间', value: console.formatDateTime(console.currentOrganization?.updatedAt) }
+    { label: '用户数', value: String(userStore.users.length) },
+    { label: '角色数', value: String(roleStore.roles.length) },
+    { label: '创建时间', value: console.formatDateTime(organizationStore.currentOrganization?.createdAt) },
+    { label: '更新时间', value: console.formatDateTime(organizationStore.currentOrganization?.updatedAt) }
   ]
 })
 
 watch(
-  () => console.currentOrganization?.metadata,
+  () => organizationStore.currentOrganization?.metadata,
   (metadata) => {
     const normalized = (!metadata || typeof metadata !== 'object' || Array.isArray(metadata))
       ? {}
@@ -143,7 +155,7 @@ function removeOrganizationMetadataRow(index: number) {
   organizationMetadataRows.value.splice(index, 1)
 }
 
-const currentOrganization = computed(() => console.currentOrganization)
-const moduleRecentChanges = computed(() => console.moduleRecentChanges)
+const currentOrganization = computed(() => organizationStore.currentOrganization)
+const moduleRecentChanges = computed(() => auditStore.moduleRecentChanges)
 const formatDateTime = console.formatDateTime
 </script>

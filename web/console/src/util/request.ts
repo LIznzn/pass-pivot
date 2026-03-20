@@ -1,12 +1,28 @@
 import axios from 'axios'
-import type { AxiosError, AxiosInstance, AxiosRequestConfig } from 'axios'
-import { clearConsoleAuthSession, startConsoleAuthorization } from '../api/auth'
+import type { AxiosError, AxiosInstance, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios'
 
 const baseURL = import.meta.env.PPVT_CONSOLE_API_BASE_URL ?? 'http://localhost:8090'
+const authSessionKeys = [
+  'ppvt-oauth-state',
+  'ppvt-oauth-code-verifier',
+  'ppvt-oauth-nonce',
+  'ppvt-oauth-target',
+  'ppvt-access-token',
+  'ppvt-refresh-token',
+  'ppvt-id-token'
+] as const
+
+export type RequestConfig = AxiosRequestConfig & {
+  skipAuthHeader?: boolean
+  skipUnauthorizedRedirect?: boolean
+}
 
 function redirectToPortalLogin() {
-  clearConsoleAuthSession()
-  void startConsoleAuthorization(window.location.href)
+  for (const key of authSessionKeys) {
+    sessionStorage.removeItem(key)
+  }
+  const target = encodeURIComponent(window.location.href)
+  window.location.assign(`/console?target=${target}`)
 }
 
 const request: AxiosInstance = axios.create({
@@ -14,9 +30,9 @@ const request: AxiosInstance = axios.create({
   withCredentials: true
 })
 
-request.interceptors.request.use((config) => {
+request.interceptors.request.use((config: InternalAxiosRequestConfig & RequestConfig) => {
   const accessToken = sessionStorage.getItem('ppvt-access-token')
-  if (accessToken) {
+  if (accessToken && !config.skipAuthHeader) {
     config.headers.Authorization = `Bearer ${accessToken}`
   }
   return config
@@ -25,7 +41,8 @@ request.interceptors.request.use((config) => {
 request.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
-    if (error.response?.status === 401) {
+    const config = (error.config || {}) as RequestConfig
+    if (error.response?.status === 401 && !config.skipUnauthorizedRedirect) {
       redirectToPortalLogin()
     }
     const message = typeof error.response?.data === 'string'
@@ -35,12 +52,12 @@ request.interceptors.response.use(
   }
 )
 
-export async function requestGet<T>(url: string, config?: AxiosRequestConfig) {
+export async function requestGet<T>(url: string, config?: RequestConfig) {
   const response = await request.get<T>(url, config)
   return response.data
 }
 
-export async function requestPost<T>(url: string, data?: unknown, config?: AxiosRequestConfig) {
+export async function requestPost<T>(url: string, data?: unknown, config?: RequestConfig) {
   const response = await request.post<T>(url, data, config)
   return response.data
 }

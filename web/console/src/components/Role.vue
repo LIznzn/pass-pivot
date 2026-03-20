@@ -126,98 +126,98 @@
 
   <RoleDetail
     v-else
-    :roles="roles"
-    :selected-role-id="selectedRoleId"
-    :policies="policies"
+    :roles="roleStore.roles"
+    :selected-role-id="roleStore.selectedRoleId"
+    :policies="roleStore.policies"
     :selected-role="selectedRole"
     :selected-role-policies="selectedRolePolicies"
-    :role-form="roleForm"
+    :role-form="roleStore.roleForm"
     :role-type-options="roleTypeOptions"
-    :policy-form="policyForm"
-    :policy-check-form="policyCheckForm"
+    :policy-form="roleStore.policyForm"
+    :policy-check-form="roleStore.policyCheckForm"
     :decision-result="decisionResult"
-    :module-recent-changes="moduleRecentChanges"
-    :format-date-time="console.formatDateTime"
     @back="backToRoleList"
     @run-module-action="runModuleAction"
-    @copy-metric="copyMetricValue"
-    @scroll-to-panel="scrollToPanel"
     @select-role="selectRole"
-    @update-role="updateRole"
-    @save-policy="savePolicy"
+    @update-role="runWithFeedback(() => roleStore.updateRole())"
+    @save-policy="runWithFeedback(() => roleStore.savePolicy())"
     @evaluate-policy-check="evaluatePolicyCheck"
-    @edit-policy="editPolicy"
-    @delete-policy="deletePolicy"
-    @reset-policy-form="resetPolicyForm"
+    @edit-policy="roleStore.editPolicy"
+    @delete-policy="runWithFeedback(() => roleStore.deletePolicy($event))"
+    @reset-policy-form="roleStore.resetPolicyForm"
   />
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { BButton, BForm, BFormInput, BFormSelect } from 'bootstrap-vue-next'
 import { useToast } from '@shared/composables/toast'
-import { checkPolicy as apiCheckPolicy, createPolicy as apiCreatePolicy, deletePolicy as apiDeletePolicy, queryPolicies as apiQueryPolicies, updatePolicy as apiUpdatePolicy } from '../api/manage/policy'
-import { createRole as apiCreateRole, deleteRoles as apiDeleteRoles, queryRoles as apiQueryRoles, updateRole as apiUpdateRole } from '../api/manage/role'
 import RoleDetail from '../components/RoleDetail.vue'
-import { useConsoleLayout } from '../composables/useConsoleLayout'
+import { useConsoleStore } from '../stores/console'
+import { useOrganizationStore } from '../stores/organization'
+import { useRoleStore } from '../stores/role'
 
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
-const console = useConsoleLayout()
+const console = useConsoleStore()
+const organizationStore = useOrganizationStore()
+const roleStore = useRoleStore()
 
 const roleTypeOptions = [
   { value: 'user', text: '用户角色' },
   { value: 'application', text: '应用角色' }
 ]
 
-const roles = ref<any[]>([])
-const policies = ref<any[]>([])
-const decisionResult = ref<unknown>(null)
-const selectedRoleId = ref('')
 const roleViewMode = ref<'list' | 'detail'>('list')
 const selectedRoleIds = ref<string[]>([])
 const showCreateRoleForm = ref(false)
 const createRoleFormType = ref<'user' | 'application'>('user')
+const decisionResult = ref<unknown>(null)
 
-const roleForm = reactive({ organizationId: '', name: '', type: 'user', description: '' })
-const policyForm = reactive({ id: '', organizationId: '', roleId: '', name: '', effect: 'allow', priority: 10, apiRulesText: '[\n  {\n    "method": "POST",\n    "path": "/api/manage/v1/example/query"\n  }\n]' })
-const policyCheckForm = reactive({ subjectType: 'application', subjectId: '', method: 'POST', path: '/api/manage/v1/organization/query' })
-
-const selectedRole = computed(() => roles.value.find((item: any) => item.id === selectedRoleId.value) || roles.value[0])
-const selectedRolePolicies = computed(() => policies.value.filter((item: any) => item.roleId === selectedRole.value?.id))
-const applicationAssignableRoles = computed(() => roles.value.filter((item: any) => item.type === 'application'))
-const userAssignableRoles = computed(() => roles.value.filter((item: any) => item.type === 'user'))
-const moduleRecentChanges = computed(() => console.recentAuditLogs.slice(0, 6))
+const applicationAssignableRoles = computed(() => roleStore.roles.filter((item: any) => item.type === 'application'))
+const userAssignableRoles = computed(() => roleStore.roles.filter((item: any) => item.type === 'user'))
 const selectedUserRoleIds = computed(() => selectedRoleIds.value.filter((id) => userAssignableRoles.value.some((role) => role.id === id)))
 const selectedApplicationRoleIds = computed(() => selectedRoleIds.value.filter((id) => applicationAssignableRoles.value.some((role) => role.id === id)))
 const showCreateUserRoleForm = computed(() => showCreateRoleForm.value && createRoleFormType.value === 'user')
 const showCreateApplicationRoleForm = computed(() => showCreateRoleForm.value && createRoleFormType.value === 'application')
+const roles = computed(() => roleStore.roles)
+const policies = computed(() => roleStore.policies)
+const selectedRole = computed(() => roleStore.roles.find((item: any) => item.id === roleStore.selectedRoleId) || roleStore.roles[0])
+const selectedRolePolicies = computed(() => roleStore.policies.filter((item: any) => item.roleId === selectedRole.value?.id))
+const roleForm = roleStore.roleForm
+
+watchEffect(() => {
+  if (roleViewMode.value === 'detail') {
+    console.setPageHeader('', '')
+    return
+  }
+  console.setPageHeader('角色', '维护角色标签、策略规则与 Policy Check。')
+})
 
 watch(
   () => [console.currentOrganizationId, route.name, route.params.roleId],
   async ([organizationId, routeName, routeRoleId]) => {
     const nextOrganizationId = typeof organizationId === 'string' ? organizationId : ''
     if (!nextOrganizationId) {
-      roles.value = []
-      policies.value = []
-      selectedRoleId.value = ''
+      roleStore.clearRoleState()
+      decisionResult.value = null
       roleViewMode.value = 'list'
       return
     }
-    roleForm.organizationId = nextOrganizationId
-    policyForm.organizationId = nextOrganizationId
+    roleStore.roleForm.organizationId = nextOrganizationId
+    roleStore.policyForm.organizationId = nextOrganizationId
     roleViewMode.value = routeName === 'console-role-detail' ? 'detail' : 'list'
-    await Promise.all([loadRoles(), loadPolicies()])
+    await Promise.all([roleStore.loadRoles(), roleStore.loadPolicies()])
     if (typeof routeRoleId === 'string' && routeRoleId) {
-      selectedRoleId.value = routeRoleId
+      roleStore.setSelectedRoleId(routeRoleId)
     }
-    if (!selectedRoleId.value && roles.value.length) {
-      selectedRoleId.value = roles.value[0].id
+    if (!roleStore.selectedRoleId && roleStore.roles.length) {
+      roleStore.setSelectedRoleId(roleStore.roles[0].id)
     }
     if (selectedRole.value) {
-      syncRoleForms(selectedRole.value)
+      roleStore.syncRoleForms(selectedRole.value)
     }
   },
   { immediate: true }
@@ -232,20 +232,8 @@ watch(
   { immediate: true, deep: true }
 )
 
-function syncRoleForms(role?: any) {
-  if (!role) {
-    return
-  }
-  roleForm.organizationId = role.organizationId ?? console.currentOrganizationId
-  roleForm.name = role.name ?? ''
-  roleForm.type = role.type ?? 'user'
-  roleForm.description = role.description ?? ''
-  policyForm.roleId = role.id ?? ''
-  policyCheckForm.subjectType = role.type === 'application' ? 'application' : 'user'
-}
-
 function toggleCreateRoleForm(type: 'user' | 'application') {
-  roleForm.type = type
+  roleStore.roleForm.type = type
   if (showCreateRoleForm.value && createRoleFormType.value === type) {
     showCreateRoleForm.value = false
     return
@@ -273,60 +261,7 @@ function toggleRoleSelection(roleId: string, checked: boolean) {
   selectedRoleIds.value = selectedRoleIds.value.filter((id) => id !== roleId)
 }
 
-async function loadRoles() {
-  const response = await apiQueryRoles({ organizationId: console.currentOrganizationId })
-  roles.value = response.items
-  await console.loadRoles()
-  if (!roles.value.some((item: any) => item.id === selectedRoleId.value)) {
-    selectedRoleId.value = roles.value[0]?.id ?? ''
-  }
-  if (selectedRole.value) {
-    syncRoleForms(selectedRole.value)
-  }
-}
-
-async function loadPolicies() {
-  const response = await apiQueryPolicies({ organizationId: console.currentOrganizationId })
-  policies.value = response.items
-  console.policyCount = policies.value.length
-}
-
-function scrollToPanel(id: string) {
-  const target = document.getElementById(id)
-  if (!target) {
-    return
-  }
-  const topbar = document.querySelector('.admin-topbar') as HTMLElement | null
-  const offset = (topbar?.offsetHeight ?? 0) + 32
-  const targetTop = target.getBoundingClientRect().top + window.scrollY - offset
-  window.scrollTo({ top: Math.max(targetTop, 0), behavior: 'smooth' })
-}
-
-async function copyMetricValue(value: string) {
-  if (!value || value === '-') {
-    return
-  }
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(value)
-    } else {
-      const textarea = document.createElement('textarea')
-      textarea.value = value
-      textarea.setAttribute('readonly', 'true')
-      textarea.style.position = 'absolute'
-      textarea.style.left = '-9999px'
-      document.body.appendChild(textarea)
-      textarea.select()
-      document.execCommand('copy')
-      document.body.removeChild(textarea)
-    }
-    toast.success('已复制到剪贴板')
-  } catch (error) {
-    toast.error(String(error))
-  }
-}
-
-async function withFeedback(fn: () => Promise<void>, successMessage = '操作成功') {
+async function runWithFeedback(fn: () => Promise<unknown>, successMessage = '操作成功') {
   try {
     await fn()
     toast.success(successMessage)
@@ -337,12 +272,11 @@ async function withFeedback(fn: () => Promise<void>, successMessage = '操作成
 
 function selectRole(role: any) {
   roleViewMode.value = 'detail'
-  selectedRoleId.value = role.id ?? ''
-  syncRoleForms(role)
+  roleStore.setSelectedRoleId(role.id ?? '')
   void router.push({
     name: 'console-role-detail',
     params: {
-      organizationId: console.currentOrganizationId || console.currentOrganization?.id || '',
+      organizationId: console.currentOrganizationId || organizationStore.currentOrganization?.id || '',
       roleId: role.id ?? ''
     }
   })
@@ -353,20 +287,13 @@ function backToRoleList() {
   void router.push({
     name: 'console-role-list',
     params: {
-      organizationId: console.currentOrganizationId || console.currentOrganization?.id || ''
+      organizationId: console.currentOrganizationId || organizationStore.currentOrganization?.id || ''
     }
   })
 }
 
-async function createRole() {
-  await withFeedback(async () => {
-    await apiCreateRole(roleForm)
-    await Promise.all([loadRoles(), loadPolicies()])
-  })
-}
-
 async function submitRoleCreateFromList() {
-  await createRole()
+  await runWithFeedback(() => roleStore.createRole())
   showCreateRoleForm.value = false
 }
 
@@ -374,100 +301,23 @@ async function deleteSelectedRolesByType(_type: 'user' | 'application', roleIds:
   if (!roleIds.length) {
     return
   }
-  await withFeedback(async () => {
-    await apiDeleteRoles({ roleIds })
-    await loadRoles()
-  })
+  await runWithFeedback(() => roleStore.deleteRoles({ roleIds }))
 }
 
 async function deleteSingleRole(roleId: string) {
-  await withFeedback(async () => {
-    await apiDeleteRoles({ roleId })
-    await loadRoles()
-  })
-}
-
-async function updateRole() {
-  if (!selectedRole.value?.id) {
-    return
-  }
-  await withFeedback(async () => {
-    await apiUpdateRole({
-      id: selectedRole.value.id,
-      name: roleForm.name,
-      type: roleForm.type,
-      description: roleForm.description
-    })
-    await Promise.all([loadRoles(), loadPolicies()])
-  })
-}
-
-async function savePolicy() {
-  if (!selectedRole.value?.id) {
-    throw new Error('请先选择角色')
-  }
-  const payload = {
-    id: policyForm.id || undefined,
-    organizationId: console.currentOrganizationId || console.currentOrganization?.id || '',
-    roleId: selectedRole.value.id,
-    name: policyForm.name.trim(),
-    effect: policyForm.effect,
-    priority: Number(policyForm.priority),
-    apiRules: JSON.parse(policyForm.apiRulesText || '[]')
-  }
-  await withFeedback(async () => {
-    if (policyForm.id) {
-      await apiUpdatePolicy(payload)
-    } else {
-      await apiCreatePolicy(payload)
-    }
-    resetPolicyForm()
-    await loadPolicies()
-  })
-}
-
-function editPolicy(policy: any) {
-  policyForm.id = policy.id ?? ''
-  policyForm.organizationId = policy.organizationId ?? console.currentOrganizationId
-  policyForm.roleId = policy.roleId ?? selectedRole.value?.id ?? ''
-  policyForm.name = policy.name ?? ''
-  policyForm.effect = policy.effect ?? 'allow'
-  policyForm.priority = Number(policy.priority ?? 10)
-  policyForm.apiRulesText = JSON.stringify(policy.apiRules ?? [], null, 2)
-}
-
-function resetPolicyForm() {
-  policyForm.id = ''
-  policyForm.organizationId = console.currentOrganizationId || console.currentOrganization?.id || ''
-  policyForm.roleId = selectedRole.value?.id ?? ''
-  policyForm.name = ''
-  policyForm.effect = 'allow'
-  policyForm.priority = 10
-  policyForm.apiRulesText = '[\n  {\n    "method": "POST",\n    "path": "/api/manage/v1/example/query"\n  }\n]'
-}
-
-async function deletePolicy(policyId: string) {
-  await withFeedback(async () => {
-    await apiDeletePolicy(policyId)
-    if (policyForm.id === policyId) {
-      resetPolicyForm()
-    }
-    await loadPolicies()
-  })
-}
-
-async function evaluatePolicyCheck() {
-  await withFeedback(async () => {
-    decisionResult.value = await apiCheckPolicy({
-      subjectType: policyCheckForm.subjectType,
-      subjectId: policyCheckForm.subjectId.trim(),
-      method: policyCheckForm.method.trim() || 'POST',
-      path: policyCheckForm.path.trim()
-    })
-  })
+  await runWithFeedback(() => roleStore.deleteRoles({ roleId }))
 }
 
 async function runModuleAction() {
-  await Promise.all([loadRoles(), loadPolicies()])
+  await runWithFeedback(() => Promise.all([roleStore.loadRoles(), roleStore.loadPolicies()]))
+}
+
+async function evaluatePolicyCheck() {
+  try {
+    decisionResult.value = await roleStore.evaluatePolicyCheck()
+    toast.success('操作成功')
+  } catch (error) {
+    toast.error(String(error))
+  }
 }
 </script>

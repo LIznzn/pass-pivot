@@ -4,8 +4,8 @@
       <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
         <div class="section-title mb-0">组织列表</div>
         <div class="d-flex gap-2">
-          <BButton size="sm" variant="outline-primary" @click="console.loadOrganizations">刷新</BButton>
-          <BButton size="sm" variant="primary" @click="console.openCreateOrganizationModal">创建组织</BButton>
+          <BButton size="sm" variant="outline-primary" @click="organizationStore.loadOrganizations">刷新</BButton>
+          <BButton size="sm" variant="primary" @click="organizationStore.openCreateOrganizationModal">创建组织</BButton>
         </div>
       </div>
       <div class="record-meta mb-3">选择一个组织后，会将控制台上下文切换到该组织，并同步刷新项目、用户、角色和设置视图。</div>
@@ -16,7 +16,7 @@
           type="button"
           class="record-card record-card-button text-start"
           :class="{ 'record-card-active': organization.id === currentOrganizationId }"
-          @click="console.handleOrganizationSwitch(organization.id)"
+          @click="organizationStore.handleOrganizationSwitch(organization.id)"
         >
           <div class="project-card-id mb-1">{{ organization.id }}</div>
           <div class="record-head mb-1">
@@ -39,16 +39,23 @@
 </template>
 
 <script setup lang="ts">
+import { watchEffect } from 'vue'
 import { BButton } from 'bootstrap-vue-next'
-import { useConsoleLayout } from '../composables/useConsoleLayout'
+import { useConsoleStore } from '../stores/console'
+import { useOrganizationStore } from '../stores/organization'
 
-const console = useConsoleLayout()
+const console = useConsoleStore()
+const organizationStore = useOrganizationStore()
+
+watchEffect(() => {
+  console.setPageHeader('组织切换', '在这里切换当前控制台所属组织，必要时可直接创建新的组织；组织基础信息调整请前往该组织的设置页。')
+})
 
 function applicationCount(organization: any) {
   return (organization.projects ?? []).reduce((count: number, project: any) => count + (project.applications?.length ?? 0), 0)
 }
 
-const organizations = console.organizations
+const organizations = organizationStore.organizations
 const currentOrganizationId = console.currentOrganizationId
 const formatDateTime = console.formatDateTime
 </script>

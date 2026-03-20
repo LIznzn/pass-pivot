@@ -24,7 +24,7 @@
               type="button"
               class="console-module-metric-copy"
               :aria-label="`复制${item.label}`"
-              @click="emit('copy-metric', item.copyValue || item.value)"
+              @click="console.copyMetricValue(item.copyValue || item.value)"
             >
               <i class="bi bi-copy" aria-hidden="true"></i>
             </button>
@@ -34,7 +34,7 @@
     </div>
     <div class="console-module-workspace">
       <aside class="console-module-sidebar">
-        <button v-for="item in currentModulePanels" :key="item.id" type="button" class="console-module-sidebar-link" @click="emit('scroll-to-panel', item.id)">{{ item.label }}</button>
+        <button v-for="item in currentModulePanels" :key="item.id" type="button" class="console-module-sidebar-link" @click="console.scrollToPanel(item.id)">{{ item.label }}</button>
       </aside>
       <div class="console-module-main">
         <div id="user-basic" class="info-card">
@@ -56,7 +56,7 @@
               <div class="col-md-6">
                 <label class="form-label">手机</label>
                 <div class="phone-input-group">
-                  <BFormSelect v-model="userUpdatePhoneInput.countryCode" :options="phoneCountryOptions" class="phone-country-select" />
+                  <BFormSelect v-model="userUpdatePhoneInput.countryCode" :options="props.phoneCountryOptions" class="phone-country-select" />
                   <BFormInput v-model="userUpdatePhoneInput.localNumber" class="phone-local-input" />
                 </div>
               </div>
@@ -224,7 +224,7 @@
           </div>
         </div>
       </div>
-      <RightSide :items="moduleRecentChanges" :format-date-time="formatDateTime" />
+      <RightSide :items="moduleRecentChanges" />
     </div>
   </section>
 </template>
@@ -233,6 +233,8 @@
 import { computed } from 'vue'
 import { BButton, BForm, BFormInput, BFormSelect } from 'bootstrap-vue-next'
 import RightSide from '../layout/RightSide.vue'
+import { useAuditStore } from '../stores/audit'
+import { useConsoleStore } from '../stores/console'
 
 type MFAMethod = 'totp' | 'email_code' | 'sms_code' | 'u2f' | 'recovery_code'
 
@@ -248,9 +250,12 @@ const props = defineProps<{
   userRoleAssignments: string[]
   userAdminResult: unknown
   selectedUserId: string
-  moduleRecentChanges: any[]
-  formatDateTime: (value?: string) => string
 }>()
+
+const auditStore = useAuditStore()
+const console = useConsoleStore()
+const moduleRecentChanges = computed(() => auditStore.moduleRecentChanges)
+const formatDateTime = console.formatDateTime
 
 const currentModulePanels = [
   { id: 'user-basic', label: '基本信息' },
@@ -268,7 +273,7 @@ const currentModuleMetrics = computed(() => [
   { label: '通行密钥', value: String(props.userDetail?.secureKeys?.length ?? 0) },
   { label: '绑定数', value: String(props.userDetail?.bindings?.length ?? 0) },
   { label: '会话数', value: String(props.userDetail?.recentSessions?.length ?? 0) },
-  { label: '最近变更', value: props.formatDateTime(props.currentUserRecord?.updatedAt) }
+  { label: '最近变更', value: formatDateTime(props.currentUserRecord?.updatedAt) }
 ])
 
 const activeTotpEnrollments = computed(() => (props.userDetail?.mfaEnrollments || []).filter((item: any) => item.method === 'totp'))
@@ -311,7 +316,7 @@ const userMfaMethodRows = computed<Array<{ id: MFAMethod; label: string; summary
     id: 'recovery_code',
     label: '备用验证码',
     summary: (props.userDetail?.recoverySummary?.total ?? 0) > 0
-      ? `剩余有效码 ${props.userDetail?.recoverySummary?.available ?? 0} 个，最近生成于 ${props.formatDateTime(props.userDetail?.recoverySummary?.lastGeneratedAt)}`
+      ? `剩余有效码 ${props.userDetail?.recoverySummary?.available ?? 0} 个，最近生成于 ${formatDateTime(props.userDetail?.recoverySummary?.lastGeneratedAt)}`
       : '未开启',
     enabled: (props.userDetail?.recoverySummary?.total ?? 0) > 0
   }
@@ -371,8 +376,6 @@ function formatAdminResult(value: unknown) {
 const emit = defineEmits<{
   back: []
   'run-module-action': []
-  'copy-metric': [value: string]
-  'scroll-to-panel': [id: string]
   'update-user': []
   'reset-user-password': []
   'toggle-webauthn-login': [enabled: boolean]

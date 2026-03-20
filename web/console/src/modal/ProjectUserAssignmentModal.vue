@@ -58,16 +58,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { BButton, BModal } from 'bootstrap-vue-next'
+import { useUserStore } from '../stores/user'
 
 const props = defineProps<{
   visible: boolean
-  users: any[]
   selectedUserIds: string[]
   formatRoleLabels: (roles?: string[]) => string
 }>()
 
+const userStore = useUserStore()
+const users = computed(() => userStore.users)
 const draftUserIds = ref<string[]>([])
 
 watch(
@@ -97,12 +99,12 @@ function toggleUser(userId: string, checked: boolean) {
 }
 
 function selectAll() {
-  draftUserIds.value = props.users.map((item: any) => item.id)
+  draftUserIds.value = users.value.map((item: any) => item.id)
 }
 
 function invertSelection() {
   const selectedSet = new Set(draftUserIds.value)
-  draftUserIds.value = props.users
+  draftUserIds.value = users.value
     .map((item: any) => item.id)
     .filter((id: string) => !selectedSet.has(id))
 }

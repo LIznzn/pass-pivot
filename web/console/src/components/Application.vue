@@ -33,7 +33,7 @@
               type="button"
               class="console-module-metric-copy"
               :aria-label="`复制${item.label}`"
-              @click="emit('copy-metric', item.copyValue || item.value)"
+              @click="console.copyMetricValue(item.copyValue || item.value)"
             >
               <i class="bi bi-copy" aria-hidden="true"></i>
             </button>
@@ -43,7 +43,7 @@
     </div>
     <div class="console-module-workspace">
       <aside class="console-module-sidebar">
-        <button v-for="item in applicationDetailPanels" :key="item.id" type="button" class="console-module-sidebar-link" @click="emit('scroll-to-panel', item.id)">{{ item.label }}</button>
+        <button v-for="item in applicationDetailPanels" :key="item.id" type="button" class="console-module-sidebar-link" @click="console.scrollToPanel(item.id)">{{ item.label }}</button>
       </aside>
       <div class="console-module-main">
         <div id="application-protocol" class="info-card">
@@ -170,7 +170,7 @@
           </BForm>
         </div>
       </div>
-      <RightSide :items="moduleRecentChanges" :format-date-time="formatDateTime" />
+      <RightSide :items="moduleRecentChanges" />
     </div>
   </section>
 </template>
@@ -179,6 +179,8 @@
 import { computed, watch } from 'vue'
 import { BButton, BForm, BFormCheckbox, BFormInput, BFormSelect } from 'bootstrap-vue-next'
 import RightSide from '../layout/RightSide.vue'
+import { useAuditStore } from '../stores/audit'
+import { useConsoleStore } from '../stores/console'
 
 const props = defineProps<{
   currentApplication: any
@@ -201,14 +203,17 @@ const props = defineProps<{
   tokenTypeOptions: Array<{ value: string; text: string }>
   clientAuthenticationTypeOptions: Array<{ value: string; text: string }>
   applicationAssignableRoles: any[]
-  moduleRecentChanges: any[]
-  formatDateTime: (value?: string) => string
   formatApplicationType: (value?: string) => string
   formatApplicationTokenType: (value?: string | string[]) => string
   formatApplicationGrantType: (value?: string | string[]) => string
   formatApplicationClientAuthenticationType: (value?: string) => string
   formatRoleLabels: (roles?: string[]) => string
 }>()
+
+const auditStore = useAuditStore()
+const console = useConsoleStore()
+const moduleRecentChanges = computed(() => auditStore.moduleRecentChanges)
+const formatDateTime = console.formatDateTime
 
 const tokenTypeOptionsByGrantType: Record<string, string[]> = {
   authorization_code: ['access_token', 'id_token'],
@@ -242,8 +247,8 @@ const applicationDetailMetrics = computed(() => [
   { label: '授权流程', value: props.formatApplicationGrantType(props.currentApplication?.grantType) },
   { label: '客户端认证', value: props.formatApplicationClientAuthenticationType(props.currentApplication?.clientAuthenticationType) },
   { label: '应用角色', value: props.formatRoleLabels(props.currentApplication?.roles) },
-  { label: '创建时间', value: props.formatDateTime(props.currentApplication?.createdAt) },
-  { label: '最近变更', value: props.formatDateTime(props.currentApplication?.updatedAt) }
+  { label: '创建时间', value: formatDateTime(props.currentApplication?.createdAt) },
+  { label: '最近变更', value: formatDateTime(props.currentApplication?.updatedAt) }
 ])
 
 const currentApplicationProtocolHint = computed(() => {
@@ -365,8 +370,6 @@ const emit = defineEmits<{
   back: []
   disable: []
   delete: []
-  'copy-metric': [value: string]
-  'scroll-to-panel': [id: string]
   'update-application': []
   'reset-application-key': []
 }>()

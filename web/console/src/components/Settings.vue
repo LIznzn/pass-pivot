@@ -82,21 +82,21 @@
                 <input id="setting-allow-username" v-model="organizationLoginPolicyForm.allowUsername" class="form-check-input" type="checkbox" />
                 <label class="form-check-label" for="setting-allow-username">支持用户名</label>
               </div>
-              <BFormSelect v-model="organizationLoginPolicyForm.usernameMode" :options="console.fieldVisibilityOptions" />
+              <BFormSelect v-model="organizationLoginPolicyForm.usernameMode" :options="fieldVisibilityOptions" />
             </div>
             <div class="col-md-4">
               <div class="form-check mb-2">
                 <input id="setting-allow-email" v-model="organizationLoginPolicyForm.allowEmail" class="form-check-input" type="checkbox" />
                 <label class="form-check-label" for="setting-allow-email">支持邮箱</label>
               </div>
-              <BFormSelect v-model="organizationLoginPolicyForm.emailMode" :options="console.fieldVisibilityOptions" />
+              <BFormSelect v-model="organizationLoginPolicyForm.emailMode" :options="fieldVisibilityOptions" />
             </div>
             <div class="col-md-4">
               <div class="form-check mb-2">
                 <input id="setting-allow-phone" v-model="organizationLoginPolicyForm.allowPhone" class="form-check-input" type="checkbox" />
                 <label class="form-check-label" for="setting-allow-phone">支持手机</label>
               </div>
-              <BFormSelect v-model="organizationLoginPolicyForm.phoneMode" :options="console.fieldVisibilityOptions" />
+              <BFormSelect v-model="organizationLoginPolicyForm.phoneMode" :options="fieldVisibilityOptions" />
             </div>
           </div>
           <div class="d-flex justify-content-end mt-3">
@@ -249,18 +249,32 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch, watchEffect } from 'vue'
 import { useToast } from '@shared/composables/toast'
-import { createExternalIdp as apiCreateExternalIdp, queryExternalIdps as apiQueryExternalIdps, updateExternalIdp as apiUpdateExternalIdp } from '../api/manage/external_idp'
-import { updateOrganization as apiUpdateOrganization } from '../api/manage/organization'
 import ExternalIdpConfigModal from '../modal/ExternalIdpConfigModal.vue'
-import { useConsoleLayout } from '../composables/useConsoleLayout'
+import {
+  createExternalIdp as apiCreateExternalIdp,
+  queryExternalIdps as apiQueryExternalIdps,
+  updateExternalIdp as apiUpdateExternalIdp
+} from '../api/manage/external_idp'
+import { useConsoleStore } from '../stores/console'
+import { useOrganizationStore } from '../stores/organization'
 import { BButton, BForm, BFormInput, BFormSelect } from 'bootstrap-vue-next'
 
 const toast = useToast()
-const console = useConsoleLayout()
+const console = useConsoleStore()
+const organizationStore = useOrganizationStore()
 
-const externalIDPs = ref<any[]>([])
+watchEffect(() => {
+  console.setPageHeader('设置', '配置外部 OAuth/OIDC 联邦与身份绑定。')
+})
+
+const fieldVisibilityOptions = [
+  { value: 'hidden', text: '隐藏' },
+  { value: 'optional', text: '选填' },
+  { value: 'required', text: '必填' }
+]
+const externalIdps = ref<any[]>([])
 const externalIDPConfigModalVisible = ref(false)
 const currentExternalIDPKind = ref<'google' | 'github' | 'apple' | 'qq' | 'weibo' | 'custom_oauth' | 'custom_oidc'>('google')
 const organizationDomainRows = ref<OrganizationDomainRow[]>([])
@@ -415,13 +429,13 @@ const externalIdpProviderRows = computed(() => providerKinds.map((kind) => {
   }
 }))
 
-const customExternalIdps = computed(() => externalIDPs.value.filter((item: any) => {
+const customExternalIdps = computed(() => externalIdps.value.filter((item: any) => {
   const kind = normalizeProviderKind(item)
   return kind === 'custom_oauth' || kind === 'custom_oidc'
 }))
 
 watch(
-  () => console.currentOrganization,
+  () => organizationStore.currentOrganization,
   (organization) => {
     const settings = parseOrganizationConsoleSettings(organization)
     externalIDPForm.organizationId = organization?.id || externalIDPForm.organizationId
@@ -473,10 +487,10 @@ watch(
   async (organizationId) => {
     externalIDPForm.organizationId = organizationId || ''
     if (!organizationId) {
-      externalIDPs.value = []
+      externalIdps.value = []
       return
     }
-    await loadExternalIDPs()
+    await loadExternalIdps(organizationId)
   },
   { immediate: true }
 )
@@ -518,7 +532,7 @@ function findExistingExternalIdp(kind: typeof providerKinds[number]) {
   if (kind === 'custom_oauth' || kind === 'custom_oidc') {
     return null
   }
-  return externalIDPs.value.find((item: any) => {
+  return externalIdps.value.find((item: any) => {
     const normalizedKind = normalizeProviderKind(item)
     const normalizedName = normalizeProviderName(item?.name)
     return normalizedKind === kind || normalizedName === kind
@@ -651,23 +665,17 @@ async function withFeedback(fn: () => Promise<void>, successMessage = '操作成
   }
 }
 
-async function loadExternalIDPs() {
-  const response = await apiQueryExternalIdps(console.currentOrganizationId)
-  externalIDPs.value = response.items
-  console.externalIdpCount = externalIDPs.value.length
+async function loadExternalIdps(organizationId = console.currentOrganizationId) {
+  if (!organizationId) {
+    externalIdps.value = []
+    return
+  }
+  const response = await apiQueryExternalIdps(organizationId)
+  externalIdps.value = response.items
 }
 
 async function saveOrganizationConsoleSettings(options: { name?: string; description?: string } = {}) {
-  if (!console.currentOrganization?.id) {
-    return
-  }
-  await apiUpdateOrganization({
-    id: console.currentOrganization.id,
-    name: options.name ?? '',
-    description: options.description ?? '',
-    consoleSettings: buildOrganizationConsoleSettings()
-  })
-  await console.loadOrganizations()
+  await organizationStore.saveOrganizationConsoleSettings(buildOrganizationConsoleSettings(), options)
 }
 
 function parseOrganizationConsoleSettings(organization?: any): OrganizationConsoleSettings {
@@ -876,7 +884,7 @@ async function createExternalIDP(form: {
         providerKind: currentExternalIDPKind.value
       }
     })
-    await loadExternalIDPs()
+    await loadExternalIdps()
   })
 }
 
@@ -911,7 +919,7 @@ async function updateExternalIDP(form: {
         providerKind: currentExternalIDPKind.value
       }
     })
-    await loadExternalIDPs()
+    await loadExternalIdps()
   })
 }
 

@@ -82,6 +82,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { BButton, BForm, BFormInput, BFormSelect, BModal } from 'bootstrap-vue-next'
+import { useConsoleStore } from '../stores/console'
 
 const props = defineProps<{
   visible: boolean
@@ -94,12 +95,18 @@ const props = defineProps<{
   totpVerifyForm: { code: string }
   currentUserRecord: any
   mfaSettingForm: { emailEnabled: string; smsEnabled: string }
-  booleanSettingOptions: Array<{ value: string; text: string }>
   u2fSecureKeys: any[]
   userDetail: any
   generatedRecoveryCodeList: string[]
-  formatDateTime: (value?: string) => string
 }>()
+
+const console = useConsoleStore()
+const formatDateTime = console.formatDateTime
+
+const booleanSettingOptions = [
+  { value: 'active', text: '开启' },
+  { value: 'disabled', text: '关闭' }
+]
 
 const currentTitle = computed(() => {
   if (props.method === 'totp') return '身份验证器（TOTP）'

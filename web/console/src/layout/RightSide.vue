@@ -16,8 +16,12 @@
 </template>
 
 <script setup lang="ts">
+import { useConsoleStore } from '../stores/console'
+
 defineProps<{
   items: any[]
-  formatDateTime: (value?: string) => string
 }>()
+
+const console = useConsoleStore()
+const formatDateTime = console.formatDateTime
 </script>

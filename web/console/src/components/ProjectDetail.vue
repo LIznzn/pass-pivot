@@ -2,7 +2,6 @@
   <section class="console-module-shell">
     <ProjectUserAssignmentModal
       :visible="projectUserAssignmentModalVisible"
-      :users="users"
       :selected-user-ids="localAssignedUserIds"
       :format-role-labels="formatRoleLabels"
       @update:visible="projectUserAssignmentModalVisible = $event"
@@ -41,7 +40,7 @@
               type="button"
               class="console-module-metric-copy"
               :aria-label="`复制${item.label}`"
-              @click="emit('copy-metric', item.copyValue || item.value)"
+              @click="console.copyMetricValue(item.copyValue || item.value)"
             >
               <i class="bi bi-copy" aria-hidden="true"></i>
             </button>
@@ -51,7 +50,7 @@
     </div>
     <div class="console-module-workspace">
       <aside class="console-module-sidebar">
-        <button v-for="item in currentModulePanels" :key="item.id" type="button" class="console-module-sidebar-link" @click="emit('scroll-to-panel', item.id)">{{ item.label }}</button>
+        <button v-for="item in currentModulePanels" :key="item.id" type="button" class="console-module-sidebar-link" @click="console.scrollToPanel(item.id)">{{ item.label }}</button>
       </aside>
       <div class="console-module-main">
         <div id="project-application" class="info-card">
@@ -159,7 +158,7 @@
           </BForm>
         </div>
       </div>
-      <RightSide :items="moduleRecentChanges" :format-date-time="formatDateTime" />
+      <RightSide :items="moduleRecentChanges" />
     </div>
   </section>
 </template>
@@ -169,20 +168,27 @@ import { computed, ref, watch } from 'vue'
 import { BButton, BForm, BFormCheckbox, BFormInput } from 'bootstrap-vue-next'
 import RightSide from '../layout/RightSide.vue'
 import ProjectUserAssignmentModal from '../modal/ProjectUserAssignmentModal.vue'
+import { useAuditStore } from '../stores/audit'
+import { useConsoleStore } from '../stores/console'
+import { useUserStore } from '../stores/user'
 
 const props = defineProps<{
   currentProject: any
   applications: any[]
   projectUpdateForm: { name: string; description: string; userAclEnabled: boolean }
   projectAssignedUserIds: string[]
-  users: any[]
-  moduleRecentChanges: any[]
-  formatDateTime: (value?: string) => string
   formatApplicationTokenType: (value?: string | string[]) => string
   formatApplicationGrantType: (value?: string | string[]) => string
   formatRoleLabels: (roles?: string[]) => string
   formatApplicationClientAuthenticationType: (value?: string) => string
 }>()
+
+const auditStore = useAuditStore()
+const console = useConsoleStore()
+const userStore = useUserStore()
+const users = computed(() => userStore.users)
+const moduleRecentChanges = computed(() => auditStore.moduleRecentChanges)
+const formatDateTime = console.formatDateTime
 
 const currentModulePanels = [
   { id: 'project-application', label: '应用列表' },
@@ -193,8 +199,8 @@ const currentModulePanels = [
 const currentModuleMetrics = computed(() => [
   { label: '项目 ID', value: props.currentProject?.id || '-', copyable: Boolean(props.currentProject?.id), copyValue: props.currentProject?.id || '' },
   { label: '应用数', value: String(props.currentProject?.applications?.length ?? props.applications.length) },
-  { label: '创建时间', value: props.formatDateTime(props.currentProject?.createdAt) },
-  { label: '最近变更', value: props.formatDateTime(props.currentProject?.updatedAt) }
+  { label: '创建时间', value: formatDateTime(props.currentProject?.createdAt) },
+  { label: '最近变更', value: formatDateTime(props.currentProject?.updatedAt) }
 ])
 
 const localAssignedUserIds = ref<string[]>([])
@@ -208,7 +214,7 @@ watch(
   { immediate: true, deep: true }
 )
 
-const assignedProjectUsers = computed(() => props.users.filter((item: any) => localAssignedUserIds.value.includes(item.id)))
+const assignedProjectUsers = computed(() => users.value.filter((item: any) => localAssignedUserIds.value.includes(item.id)))
 
 function removeProjectAssignedUser(userId: string) {
   localAssignedUserIds.value = localAssignedUserIds.value.filter((item) => item !== userId)
@@ -223,8 +229,6 @@ const emit = defineEmits<{
   back: []
   disable: []
   delete: []
-  'copy-metric': [value: string]
-  'scroll-to-panel': [id: string]
   'go-application-detail': [application: any]
   'go-application-create': []
   'save-project-user-assignments': [userIds: string[]]
