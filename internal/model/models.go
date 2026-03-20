@@ -26,6 +26,7 @@ func (b *BaseModel) BeforeCreate(tx *gorm.DB) error {
 type Organization struct {
 	BaseModel
 	Name              string                     `gorm:"size:128" json:"name"`
+	Description       string                     `gorm:"size:255" json:"description"`
 	Status            string                     `gorm:"size:32;default:active" json:"status"`
 	Metadata          map[string]string          `gorm:"serializer:json;type:json" json:"metadata"`
 	AllowJWTAccess    bool                       `json:"allowJwtAccess"`

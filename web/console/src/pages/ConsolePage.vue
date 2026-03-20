@@ -18,7 +18,7 @@
             </nav>
           </div>
           <div class="admin-toolbar-group">
-            <BDropdown right no-caret variant="link" toggle-class="organization-context-toggle">
+            <BDropdown right no-caret variant="link" class="organization-context-dropdown" toggle-class="organization-context-toggle" menu-class="organization-context-menu">
               <template #button-content>
                 <span class="organization-context">
                   <span class="organization-context-name">{{ currentOrganizationLabel }}</span>
@@ -40,7 +40,7 @@
               <BDropdownDivider />
               <BDropdownItem class="organization-context-manage" @click="toggleManageOrganization">管理组织</BDropdownItem>
             </BDropdown>
-            <BDropdown right no-caret variant="link" toggle-class="user-context-toggle">
+            <BDropdown right no-caret variant="link" class="user-context-dropdown" toggle-class="user-context-toggle" menu-class="user-context-menu">
               <template #button-content>
                 <span class="user-context">
                   <span class="user-context-avatar">{{ currentUserInitials }}</span>
@@ -233,33 +233,39 @@
 
       <section v-else-if="currentView === 'organization-manage'" class="section-grid">
         <div class="info-card">
-          <div class="section-title">Organization 列表</div>
-          <BButton size="sm" variant="outline-primary" class="mb-3" @click="loadOrganizations">刷新</BButton>
-          <div class="record-list">
-            <div v-for="organization in organizations" :key="organization.id" class="record-card">
-              <div class="record-head">
-                <strong>{{ organization.name || organization.id }}</strong>
-                <code>{{ organization.id }}</code>
-              </div>
-              <div class="record-meta">Projects: {{ organization.projects?.length ?? 0 }}</div>
-              <div class="record-meta">Organization ID: {{ organization.id }}</div>
+          <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+            <div class="section-title mb-0">组织列表</div>
+            <div class="d-flex gap-2">
+              <BButton size="sm" variant="outline-primary" @click="loadOrganizations">刷新</BButton>
+              <BButton size="sm" variant="primary" @click="openCreateOrganizationModal">创建组织</BButton>
             </div>
           </div>
-        </div>
-        <div class="info-card">
-          <div class="section-title">创建 Organization</div>
-          <BForm @submit.prevent="createOrganization">
-            <BFormInput v-model="organizationForm.name" placeholder="organization name" class="mb-2" />
-            <BButton type="submit" variant="primary">创建 Organization</BButton>
-          </BForm>
-        </div>
-        <div class="info-card">
-          <div class="section-title">更新 Organization</div>
-          <BForm @submit.prevent="updateOrganization">
-            <BFormInput v-model="organizationUpdateForm.id" placeholder="organizationId" class="mb-2" />
-            <BFormInput v-model="organizationUpdateForm.name" placeholder="organization name" class="mb-2" />
-            <BButton type="submit" variant="outline-primary">更新 Organization</BButton>
-          </BForm>
+          <div class="record-meta mb-3">选择一个组织后，会将控制台上下文切换到该组织，并同步刷新项目、用户、角色和设置视图。</div>
+          <div class="record-list">
+            <button
+              v-for="organization in organizations"
+              :key="organization.id"
+              type="button"
+              class="record-card record-card-button text-start"
+              :class="{ 'record-card-active': organization.id === currentOrganizationId }"
+              @click="handleOrganizationSwitch(organization.id)"
+            >
+              <div class="project-card-id mb-1">{{ organization.id }}</div>
+              <div class="record-head mb-1">
+                <strong>{{ organization.name || organization.id }}</strong>
+                <span v-if="organization.id === currentOrganizationId" class="badge text-bg-primary">当前组织</span>
+              </div>
+              <div class="record-meta">{{ organization.description || '暂无组织简介' }}</div>
+              <div class="record-meta">创建时间：{{ formatDateTime(organization.createdAt) }}</div>
+              <div class="record-meta">最近变更：{{ formatDateTime(organization.updatedAt) }}</div>
+              <div class="record-meta">
+                角色数 {{ organization.roles?.length ?? 0 }} · 用户数 {{ organization.users?.length ?? 0 }} · 项目数 {{ organization.projects?.length ?? 0 }} · 应用数 {{ (organization.projects ?? []).reduce((count: number, project: any) => count + (project.applications?.length ?? 0), 0) }}
+              </div>
+            </button>
+            <div v-if="organizations.length === 0" class="detail-card">
+              <div class="record-meta">当前还没有可切换的组织。</div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -846,16 +852,16 @@
         </div>
       </section>
 
-      <section v-else-if="tab === 'role' && roleViewMode === 'list'" class="section-grid">
+      <section v-else-if="tab === 'role' && roleViewMode === 'list'" class="card-stack">
         <div class="info-card">
           <div class="section-title">当前组织下可用的用户角色</div>
           <div class="d-flex align-items-center justify-content-between gap-3 mb-3 flex-wrap">
             <div class="d-flex align-items-center gap-2 flex-wrap">
-              <BButton size="sm" variant="outline-danger" :disabled="selectedRoleIds.length === 0" @click="deleteSelectedRoles">删除角色</BButton>
+              <BButton size="sm" variant="outline-danger" :disabled="selectedRoleIdsByType('user').length === 0" @click="deleteSelectedRolesByType('user')">删除角色</BButton>
             </div>
-            <BButton size="sm" variant="primary" @click="showCreateRoleForm = !showCreateRoleForm">{{ showCreateRoleForm ? '收起添加角色' : '添加角色' }}</BButton>
+            <BButton size="sm" variant="primary" @click="toggleCreateRoleForm('user')">{{ showCreateRoleForm && createRoleFormType === 'user' ? '收起添加角色' : '添加角色' }}</BButton>
           </div>
-          <div v-if="showCreateRoleForm" class="detail-card mb-3">
+          <div v-if="showCreateRoleForm && createRoleFormType === 'user'" class="detail-card mb-3">
             <BForm @submit.prevent="submitRoleCreateFromList">
               <BFormInput v-model="roleForm.name" placeholder="role label" class="mb-2" />
               <BFormSelect v-model="roleForm.type" :options="roleTypeOptions" class="mb-2" />
@@ -910,6 +916,23 @@
         </div>
         <div class="info-card">
           <div class="section-title">当前组织下可用的应用角色</div>
+          <div class="d-flex align-items-center justify-content-between gap-3 mb-3 flex-wrap">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              <BButton size="sm" variant="outline-danger" :disabled="selectedRoleIdsByType('application').length === 0" @click="deleteSelectedRolesByType('application')">删除角色</BButton>
+            </div>
+            <BButton size="sm" variant="primary" @click="toggleCreateRoleForm('application')">{{ showCreateRoleForm && createRoleFormType === 'application' ? '收起添加角色' : '添加角色' }}</BButton>
+          </div>
+          <div v-if="showCreateRoleForm && createRoleFormType === 'application'" class="detail-card mb-3">
+            <BForm @submit.prevent="submitRoleCreateFromList">
+              <BFormInput v-model="roleForm.name" placeholder="role label" class="mb-2" />
+              <BFormSelect v-model="roleForm.type" :options="roleTypeOptions" class="mb-2" />
+              <BFormInput v-model="roleForm.description" placeholder="description" class="mb-2" />
+              <div class="d-flex gap-2">
+                <BButton type="submit" variant="primary">创建角色</BButton>
+                <BButton type="button" variant="outline-secondary" @click="showCreateRoleForm = false">取消</BButton>
+              </div>
+            </BForm>
+          </div>
           <div class="table-responsive">
             <table class="table align-middle console-list-table mb-0">
               <thead>
@@ -1602,8 +1625,13 @@
             <BForm @submit.prevent="saveOrganizationBasicSettings">
               <div class="row g-3">
                 <div class="col-md-6">
-                  <label class="form-label">组织名称</label>
+                  <label class="form-label">组织标识</label>
                   <BFormInput v-model="organizationBasicSettingForm.name" />
+                  <div class="record-meta mt-2">仅支持字母、数字和 `-`，建议保持稳定，作为组织的系统标识使用。</div>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">组织简介</label>
+                  <BFormInput v-model="organizationBasicSettingForm.description" />
                 </div>
                 <div class="col-md-6">
                   <label class="form-label">企业支持邮箱</label>
@@ -2022,6 +2050,21 @@
           </div>
         </template>
       </BModal>
+      <BModal v-model="createOrganizationModalVisible" title="创建组织" centered @hidden="resetCreateOrganizationForm">
+        <BForm @submit.prevent="createOrganization">
+          <label class="form-label">组织标识</label>
+          <BFormInput v-model="organizationForm.name" placeholder="仅支持字母、数字和 -" autofocus class="mb-3" />
+          <div class="record-meta mb-3">组织标识会作为系统内的唯一名称使用，建议采用 `internal-team` 这样的格式。</div>
+          <label class="form-label">组织简介</label>
+          <BFormInput v-model="organizationForm.description" placeholder="请输入组织简介" />
+        </BForm>
+        <template #footer>
+          <div class="d-flex justify-content-end gap-2 w-100">
+            <BButton type="button" variant="outline-secondary" @click="createOrganizationModalVisible = false">取消</BButton>
+            <BButton type="button" variant="primary" @click="createOrganization">创建组织</BButton>
+          </div>
+        </template>
+      </BModal>
     </main>
   </div>
 </template>
@@ -2065,6 +2108,7 @@ const externalIDPConfigModalVisible = ref(false)
 const currentExternalIDPKind = ref<'google' | 'github' | 'apple' | 'qq' | 'weibo' | 'custom_oauth' | 'custom_oidc'>('google')
 const applicationKeyModalVisible = ref(false)
 const projectUserAssignmentModalVisible = ref(false)
+const createOrganizationModalVisible = ref(false)
 const applicationKeyModalTitle = ref('应用私钥')
 const applicationPrivateKeySnapshot = ref('')
 const selectedUserId = ref('')
@@ -2083,6 +2127,7 @@ const projectAssignedUserIds = ref<string[]>([])
 const projectAssignmentDraftUserIds = ref<string[]>([])
 const showCreateUserForm = ref(false)
 const showCreateRoleForm = ref(false)
+const createRoleFormType = ref<'user' | 'application'>('user')
 const organizationMetadataRows = ref<Array<{ id: string; key: string; value: string }>>([])
 const userRoleAssignments = ref<string[]>([])
 
@@ -2149,8 +2194,8 @@ type OrganizationConsoleSettings = {
   }
 }
 
-const organizationForm = reactive({ name: '' })
-const organizationUpdateForm = reactive({ id: '', name: '', metadata: {} as Record<string, string> })
+const organizationForm = reactive({ name: '', description: '' })
+const organizationUpdateForm = reactive({ id: '', name: '', description: '', metadata: {} as Record<string, string> })
 const projectForm = reactive({ organizationId: '', name: '', userAclEnabled: false })
 const projectUpdateForm = reactive({ id: '', name: '', description: '', userAclEnabled: false })
 const applicationForm = reactive({
@@ -2325,6 +2370,7 @@ const externalIDPForm = reactive({
 const externalBindingForm = reactive({ organizationId: '', userId: '', externalIdpId: '', issuer: '', subject: '' })
 const organizationBasicSettingForm = reactive({
   name: '',
+  description: '',
   tosUrl: '',
   privacyPolicyUrl: '',
   supportEmail: '',
@@ -2589,7 +2635,7 @@ const currentView = computed(() => {
 })
 const currentTabLabel = computed(() => {
   if (currentView.value === 'my') return '个人中心'
-  if (currentView.value === 'organization-manage') return '组织管理'
+  if (currentView.value === 'organization-manage') return '组织切换'
   if (currentView.value === 'project-create') return '创建项目'
   if (currentView.value === 'application-create') return '创建应用'
   if (currentView.value === 'application-detail') return '应用详情'
@@ -2603,7 +2649,7 @@ const currentTabLabel = computed(() => {
 })
 const currentTabDescription = computed(() => {
   if (currentView.value === 'my') return '查看并维护当前登录用户的基本信息、登录方式、账号绑定、两步验证与设备会话。'
-  if (currentView.value === 'organization-manage') return '仅内部管理员可以创建和维护组织。'
+  if (currentView.value === 'organization-manage') return '在这里切换当前控制台所属组织，必要时可直接创建新的组织；组织基础信息调整请前往该组织的设置页。'
   if (currentView.value === 'project-create') return '在当前组织下创建新的项目。'
   if (currentView.value === 'application-create') return '在当前项目下创建新的应用。'
   if (currentView.value === 'application-detail') return '查看并维护当前应用的接入配置。'
@@ -2667,6 +2713,85 @@ const currentModuleEntityTitle = computed(() => {
   if (tab.value === 'audit') return currentOrganization.value?.name || '审计'
   if (tab.value === 'setting') return currentOrganization.value?.name || '外部联邦'
   return '实例概览'
+})
+const browserPageTitle = computed(() => {
+  if (currentRouteName.value === 'console-dashboard') return 'Dashboard'
+  if (currentRouteName.value === 'console-organization-manage') return '组织切换'
+  if (currentRouteName.value === 'console-organization') return '组织'
+  if (currentRouteName.value === 'console-project-list') return '项目列表'
+  if (currentRouteName.value === 'console-project-create') return '创建项目'
+  if (currentRouteName.value === 'console-project-detail') return '项目详情'
+  if (currentRouteName.value === 'console-application-create') return '创建应用'
+  if (currentRouteName.value === 'console-application-detail') return '应用详情'
+  if (currentRouteName.value === 'console-user-list') return '用户列表'
+  if (currentRouteName.value === 'console-user-detail') return '用户详情'
+  if (currentRouteName.value === 'console-role-list') return '角色列表'
+  if (currentRouteName.value === 'console-role-detail') return '角色详情'
+  if (currentRouteName.value === 'console-audit') return '审计'
+  if (currentRouteName.value === 'console-settings') return '设置'
+  if (currentRouteName.value === 'console-my') return '个人中心'
+  return 'Console'
+})
+const consoleBreadcrumbTitle = computed(() => {
+  const organizationLabel = currentOrganization.value?.name || currentOrganization.value?.id || ''
+  const projectLabel = currentProject.value?.name || currentProject.value?.id || ''
+  const applicationLabel = currentApplication.value?.name || currentApplication.value?.id || ''
+  const userLabel = currentUserRecord.value?.name || currentUserRecord.value?.username || currentUserRecord.value?.email || currentUserRecord.value?.id || ''
+  const roleLabel = selectedRole.value?.name || selectedRole.value?.id || ''
+  const segments: string[] = []
+
+  if (currentView.value === 'my') {
+    if (userLabel) {
+      segments.push(userLabel)
+    }
+  } else if (currentView.value === 'organization-manage') {
+    if (organizationLabel) {
+      segments.push(organizationLabel)
+    }
+  } else if (tab.value === 'organization' || tab.value === 'audit' || tab.value === 'setting') {
+    if (organizationLabel) {
+      segments.push(organizationLabel)
+    }
+  } else if (tab.value === 'project') {
+    if (organizationLabel) {
+      segments.push(organizationLabel)
+    }
+    if (projectViewMode.value === 'detail' && projectLabel) {
+      segments.push(projectLabel)
+    }
+    if ((currentView.value === 'application-create' || currentView.value === 'application-detail') && applicationLabel) {
+      segments.push(applicationLabel)
+    }
+  } else if (tab.value === 'user') {
+    if (organizationLabel) {
+      segments.push(organizationLabel)
+    }
+    if (userViewMode.value === 'detail' && userLabel) {
+      segments.push(userLabel)
+    }
+  } else if (tab.value === 'role') {
+    if (organizationLabel) {
+      segments.push(organizationLabel)
+    }
+    if (roleViewMode.value === 'detail' && roleLabel) {
+      segments.push(roleLabel)
+    }
+  } else if (organizationLabel) {
+    segments.push(organizationLabel)
+  }
+
+  if (!segments.length) {
+    return 'Console'
+  }
+  return `${segments.join(' > ')} | Console`
+})
+const browserDocumentTitle = computed(() => {
+  const pageTitle = browserPageTitle.value
+  const breadcrumb = consoleBreadcrumbTitle.value
+  if (!breadcrumb || breadcrumb === 'Console') {
+    return `${pageTitle} | Console`
+  }
+  return `${pageTitle} | ${breadcrumb}`
 })
 const currentModuleSummaryText = computed(() => {
   if (tab.value === 'organization') {
@@ -3130,6 +3255,14 @@ watch(
   { immediate: true }
 )
 
+watch(
+  browserDocumentTitle,
+  (value) => {
+    document.title = value
+  },
+  { immediate: true }
+)
+
 watch(message, (value) => {
   if (!value) {
     return
@@ -3519,10 +3652,37 @@ function toggleRoleSelection(roleId: string, checked: boolean) {
   selectedRoleIds.value = selectedRoleIds.value.filter((id) => id !== roleId)
 }
 
+function selectedRoleIdsByType(type: 'user' | 'application') {
+  const targetIds = new Set(roles.value.filter((item: any) => item.type === type).map((item: any) => item.id))
+  return selectedRoleIds.value.filter((id) => targetIds.has(id))
+}
+
+function toggleCreateRoleForm(type: 'user' | 'application') {
+  roleForm.type = type
+  if (showCreateRoleForm.value && createRoleFormType.value === type) {
+    showCreateRoleForm.value = false
+    return
+  }
+  createRoleFormType.value = type
+  showCreateRoleForm.value = true
+}
+
 async function deleteSelectedRoles() {
   await withFeedback(async () => {
     await apiPost('/api/manage/v1/role/delete', { roleIds: selectedRoleIds.value })
     selectedRoleIds.value = []
+    await loadRoles()
+  })
+}
+
+async function deleteSelectedRolesByType(type: 'user' | 'application') {
+  const roleIds = selectedRoleIdsByType(type)
+  if (!roleIds.length) {
+    return
+  }
+  await withFeedback(async () => {
+    await apiPost('/api/manage/v1/role/delete', { roleIds })
+    selectedRoleIds.value = selectedRoleIds.value.filter((id) => !roleIds.includes(id))
     await loadRoles()
   })
 }
@@ -3874,16 +4034,31 @@ async function loadExternalIDPs() {
 
 async function createOrganization() {
   await withFeedback(async () => {
-    await apiPost('/api/manage/v1/organization/create', organizationForm)
+    const name = organizationForm.name.trim()
+    const description = organizationForm.description.trim()
+    if (!name) {
+      throw new Error('organization name is required')
+    }
+    if (!/^[A-Za-z0-9-]+$/.test(name)) {
+      throw new Error('organization name must contain only letters, numbers, and hyphens')
+    }
+    await apiPost('/api/manage/v1/organization/create', { name, description })
     await loadOrganizations()
+    organizationForm.name = ''
+    organizationForm.description = ''
+    createOrganizationModalVisible.value = false
   })
 }
 
-async function updateOrganization() {
-  await withFeedback(async () => {
-    await apiPost('/api/manage/v1/organization/update', organizationUpdateForm)
-    await loadOrganizations()
-  })
+function openCreateOrganizationModal() {
+  organizationForm.name = ''
+  organizationForm.description = ''
+  createOrganizationModalVisible.value = true
+}
+
+function resetCreateOrganizationForm() {
+  organizationForm.name = ''
+  organizationForm.description = ''
 }
 
 function addOrganizationMetadataRow() {
@@ -3925,8 +4100,13 @@ async function saveOrganizationMetadata() {
 
 async function saveOrganizationBasicSettings() {
   await withFeedback(async () => {
+    const name = organizationBasicSettingForm.name.trim()
+    if (!/^[A-Za-z0-9-]+$/.test(name)) {
+      throw new Error('organization name must contain only letters, numbers, and hyphens')
+    }
     await saveOrganizationConsoleSettings({
-      name: organizationBasicSettingForm.name.trim()
+      name,
+      description: organizationBasicSettingForm.description.trim()
     })
   })
 }
@@ -4809,6 +4989,7 @@ function syncOrganizationSettingForms(organization?: any) {
   const settings = parseOrganizationConsoleSettings(organization)
   externalIDPForm.organizationId = organization?.id || externalIDPForm.organizationId
   organizationBasicSettingForm.name = organization?.name || ''
+  organizationBasicSettingForm.description = organization?.description || ''
   organizationBasicSettingForm.tosUrl = settings.tosUrl
   organizationBasicSettingForm.privacyPolicyUrl = settings.privacyPolicyUrl
   organizationBasicSettingForm.supportEmail = settings.supportEmail
@@ -4952,13 +5133,14 @@ function buildOrganizationConsoleSettings(): OrganizationConsoleSettings {
   }
 }
 
-async function saveOrganizationConsoleSettings(options: { name?: string } = {}) {
+async function saveOrganizationConsoleSettings(options: { name?: string; description?: string } = {}) {
   if (!currentOrganization.value?.id) {
     return
   }
   await apiPost('/api/manage/v1/organization/update', {
     id: currentOrganization.value.id,
     name: options.name ?? '',
+    description: options.description ?? '',
     consoleSettings: buildOrganizationConsoleSettings()
   })
   await loadOrganizations()
@@ -5178,8 +5360,8 @@ async function showOrganizationDeleteNotice() {
   const deletedOrganizationId = currentOrganization.value.id
   await withFeedback(async () => {
     await apiPost('/api/manage/v1/organization/delete', { organizationId: deletedOrganizationId })
-    await Promise.all([loadOrganizations(), loadUsers(), loadRoles(), loadPolicies(), loadExternalIDPs(), loadAudit()])
-    const fallbackOrganization = organizations.value.find((item: any) => item.id !== deletedOrganizationId) || organizations.value[0]
+    organizations.value = organizations.value.filter((item: any) => item.id !== deletedOrganizationId)
+    const fallbackOrganization = organizations.value[0]
     currentOrganizationId.value = fallbackOrganization?.id ?? ''
     organizationSwitcher.value = currentOrganizationId.value
     projectQuery.organizationId = currentOrganizationId.value
@@ -5190,6 +5372,7 @@ async function showOrganizationDeleteNotice() {
     userForm.organizationId = currentOrganizationId.value
     externalIDPForm.organizationId = currentOrganizationId.value
     externalBindingForm.organizationId = currentOrganizationId.value
+    await Promise.all([loadOrganizations(), loadUsers(), loadRoles(), loadPolicies(), loadExternalIDPs(), loadAudit()])
     if (currentOrganizationId.value) {
       await Promise.all([loadProjects(), loadApplications()])
       await router.push({ name: 'console-organization', params: { organizationId: currentOrganizationId.value } })

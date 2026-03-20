@@ -51,5 +51,5 @@ func CurrentUserIDOrTarget(identity *coreservice.AccessTokenIdentity, targetUser
 	if targetUserID == "" || targetUserID == identity.User.ID {
 		return identity.User.ID, true
 	}
-	return targetUserID, HasRole(identity, "console:admin")
+	return targetUserID, HasAnyOrganizationManagementRole(identity)
 }

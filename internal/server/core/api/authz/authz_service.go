@@ -14,6 +14,7 @@ import (
 	internalcasbin "pass-pivot/internal/casbin"
 	ppvtmodel "pass-pivot/internal/model"
 	coreservice "pass-pivot/internal/server/core/service"
+	sharedhandler "pass-pivot/internal/server/shared/handler"
 )
 
 type AuthzService struct {
@@ -48,9 +49,23 @@ func NewAuthzService(db *gorm.DB, audit *coreservice.AuditService) *AuthzService
 	return &AuthzService{db: db, audit: audit}
 }
 
+func ensureCanManageOrganization(ctx context.Context, organizationID string) error {
+	identity, ok := sharedhandler.AccessTokenIdentityFromContext(ctx)
+	if !ok || identity.User == nil {
+		return nil
+	}
+	if sharedhandler.HasOrganizationManagementRole(identity, organizationID) {
+		return nil
+	}
+	return errors.New("organization management role is required")
+}
+
 func (s *AuthzService) CreateRole(ctx context.Context, role ppvtmodel.Role) (*ppvtmodel.Role, error) {
 	if strings.TrimSpace(role.OrganizationID) == "" || strings.TrimSpace(role.Name) == "" {
 		return nil, errors.New("organizationId and name are required")
+	}
+	if err := ensureCanManageOrganization(ctx, role.OrganizationID); err != nil {
+		return nil, err
 	}
 	if !roleTypeOptions[strings.TrimSpace(role.Type)] {
 		return nil, errors.New("invalid role type")
@@ -75,6 +90,9 @@ func (s *AuthzService) UpdateRole(ctx context.Context, role ppvtmodel.Role) (*pp
 	}
 	var existing ppvtmodel.Role
 	if err := s.db.WithContext(ctx).First(&existing, "id = ?", role.ID).Error; err != nil {
+		return nil, err
+	}
+	if err := ensureCanManageOrganization(ctx, existing.OrganizationID); err != nil {
 		return nil, err
 	}
 	nextName := coalesceString(role.Name, existing.Name)
@@ -109,6 +127,11 @@ func (s *AuthzService) DeleteRoles(ctx context.Context, roleIDs []string) error 
 		if len(roles) == 0 {
 			return errors.New("role not found")
 		}
+		for _, role := range roles {
+			if err := ensureCanManageOrganization(ctx, role.OrganizationID); err != nil {
+				return err
+			}
+		}
 		if err := tx.Where("role_id IN ?", roleIDs).Delete(&ppvtmodel.Policy{}).Error; err != nil {
 			return err
 		}
@@ -133,7 +156,15 @@ func (s *AuthzService) ListRoles(ctx context.Context, organizationID string) ([]
 	var items []ppvtmodel.Role
 	query := s.db.WithContext(ctx)
 	if organizationID != "" {
+		if err := ensureCanManageOrganization(ctx, organizationID); err != nil {
+			return nil, err
+		}
 		query = query.Where("organization_id = ?", organizationID)
+	} else if identity, ok := sharedhandler.AccessTokenIdentityFromContext(ctx); ok && identity.User != nil {
+		managedOrganizationIDs := sharedhandler.ManagedOrganizationIDs(identity)
+		if len(managedOrganizationIDs) > 0 {
+			query = query.Where("organization_id IN ?", managedOrganizationIDs)
+		}
 	}
 	err := query.Order("type asc, name asc").Find(&items).Error
 	return items, err
@@ -142,6 +173,9 @@ func (s *AuthzService) ListRoles(ctx context.Context, organizationID string) ([]
 func (s *AuthzService) CreatePolicy(ctx context.Context, policy ppvtmodel.Policy) (*ppvtmodel.Policy, error) {
 	if strings.TrimSpace(policy.OrganizationID) == "" || strings.TrimSpace(policy.RoleID) == "" || strings.TrimSpace(policy.Name) == "" {
 		return nil, errors.New("organizationId, roleId and name are required")
+	}
+	if err := ensureCanManageOrganization(ctx, policy.OrganizationID); err != nil {
+		return nil, err
 	}
 	var role ppvtmodel.Role
 	if err := s.db.WithContext(ctx).First(&role, "id = ?", policy.RoleID).Error; err != nil {
@@ -165,6 +199,9 @@ func (s *AuthzService) UpdatePolicy(ctx context.Context, policy ppvtmodel.Policy
 	}
 	var existing ppvtmodel.Policy
 	if err := s.db.WithContext(ctx).First(&existing, "id = ?", policy.ID).Error; err != nil {
+		return nil, err
+	}
+	if err := ensureCanManageOrganization(ctx, existing.OrganizationID); err != nil {
 		return nil, err
 	}
 	var role ppvtmodel.Role
@@ -208,14 +245,33 @@ func (s *AuthzService) DeletePolicies(ctx context.Context, policyIDs []string) e
 	if len(policyIDs) == 0 {
 		return errors.New("policyIds is required")
 	}
-	return s.db.WithContext(ctx).Where("id IN ?", policyIDs).Delete(&ppvtmodel.Policy{}).Error
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var policies []ppvtmodel.Policy
+		if err := tx.Where("id IN ?", policyIDs).Find(&policies).Error; err != nil {
+			return err
+		}
+		for _, policy := range policies {
+			if err := ensureCanManageOrganization(ctx, policy.OrganizationID); err != nil {
+				return err
+			}
+		}
+		return tx.Where("id IN ?", policyIDs).Delete(&ppvtmodel.Policy{}).Error
+	})
 }
 
 func (s *AuthzService) ListPolicies(ctx context.Context, organizationID, roleID string) ([]ppvtmodel.Policy, error) {
 	var items []ppvtmodel.Policy
 	query := s.db.WithContext(ctx)
 	if organizationID != "" {
+		if err := ensureCanManageOrganization(ctx, organizationID); err != nil {
+			return nil, err
+		}
 		query = query.Where("organization_id = ?", organizationID)
+	} else if identity, ok := sharedhandler.AccessTokenIdentityFromContext(ctx); ok && identity.User != nil {
+		managedOrganizationIDs := sharedhandler.ManagedOrganizationIDs(identity)
+		if len(managedOrganizationIDs) > 0 {
+			query = query.Where("organization_id IN ?", managedOrganizationIDs)
+		}
 	}
 	if roleID != "" {
 		query = query.Where("role_id = ?", roleID)

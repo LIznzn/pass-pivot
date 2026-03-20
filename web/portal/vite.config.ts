@@ -2,9 +2,10 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import path from 'node:path'
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   root: path.resolve(__dirname),
   envPrefix: 'PPVT_PORTAL_',
+  base: command === 'build' ? '/portal/' : '/',
   plugins: [vue()],
   server: {
     host: '0.0.0.0',
@@ -19,4 +20,4 @@ export default defineConfig({
     outDir: path.resolve(__dirname, 'dist'),
     emptyOutDir: true
   }
-})
+}))

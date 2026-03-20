@@ -142,8 +142,19 @@ func (h *Handler) EnrollTOTP(w http.ResponseWriter, r *http.Request) {
 	if identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r); ok && identity.User != nil {
 		targetUserID, allowed := sharedhandler.CurrentUserIDOrTarget(identity, payload.UserID)
 		if !allowed {
-			sharedweb.Error(w, http.StatusForbidden, "console:admin role is required")
+			sharedweb.Error(w, http.StatusForbidden, "organization management role is required")
 			return
+		}
+		if targetUserID != identity.User.ID {
+			allowed, err = h.service.CanManageUser(r.Context(), identity.User.Roles, targetUserID)
+			if err != nil {
+				sharedweb.Error(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			if !allowed {
+				sharedweb.Error(w, http.StatusForbidden, "organization management role is required")
+				return
+			}
 		}
 		result, err = h.service.EnrollTOTP(r.Context(), targetUserID, payload.ApplicationID)
 	} else {
@@ -186,8 +197,19 @@ func (h *Handler) VerifyTOTPEnrollment(w http.ResponseWriter, r *http.Request) {
 	if identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r); ok && identity.User != nil {
 		targetUserID, allowed := sharedhandler.CurrentUserIDOrTarget(identity, payload.UserID)
 		if !allowed {
-			sharedweb.Error(w, http.StatusForbidden, "console:admin role is required")
+			sharedweb.Error(w, http.StatusForbidden, "organization management role is required")
 			return
+		}
+		if targetUserID != identity.User.ID {
+			allowed, err = h.service.CanManageUser(r.Context(), identity.User.Roles, targetUserID)
+			if err != nil {
+				sharedweb.Error(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			if !allowed {
+				sharedweb.Error(w, http.StatusForbidden, "organization management role is required")
+				return
+			}
 		}
 		err = h.service.VerifyTOTPEnrollment(r.Context(), targetUserID, payload.EnrollmentID, payload.Code)
 	} else {
@@ -231,8 +253,19 @@ func (h *Handler) GenerateRecoveryCodes(w http.ResponseWriter, r *http.Request) 
 	if identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r); ok && identity.User != nil {
 		targetUserID, allowed := sharedhandler.CurrentUserIDOrTarget(identity, payload.UserID)
 		if !allowed {
-			sharedweb.Error(w, http.StatusForbidden, "console:admin role is required")
+			sharedweb.Error(w, http.StatusForbidden, "organization management role is required")
 			return
+		}
+		if targetUserID != identity.User.ID {
+			allowed, err = h.service.CanManageUser(r.Context(), identity.User.Roles, targetUserID)
+			if err != nil {
+				sharedweb.Error(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			if !allowed {
+				sharedweb.Error(w, http.StatusForbidden, "organization management role is required")
+				return
+			}
 		}
 		codes, err = h.service.GenerateRecoveryCodes(r.Context(), targetUserID)
 	} else {

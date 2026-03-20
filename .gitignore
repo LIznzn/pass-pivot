@@ -2,7 +2,7 @@
 .gomodcache/
 node_modules/
 web/node_modules/
-web/dist/
+web/*/dist/
 .DS_Store
 .idea/
 .env
