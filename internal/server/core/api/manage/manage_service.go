@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -48,6 +49,7 @@ func organizationIsDisabled(status string) bool {
 }
 
 var (
+	organizationNamePattern = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
 	applicationTypeOptions = map[string]bool{
 		"web":    true,
 		"native": true,
@@ -209,7 +211,7 @@ func (s *Service) loadUserForManagement(ctx context.Context, userID string) (*mo
 
 func (s *Service) ListOrganizations(ctx context.Context) ([]model.Organization, error) {
 	var items []model.Organization
-	if err := s.db.WithContext(ctx).Preload("Projects.Applications").Find(&items).Error; err != nil {
+	if err := s.db.WithContext(ctx).Preload("Projects.Applications").Preload("Users").Preload("Roles").Find(&items).Error; err != nil {
 		return nil, err
 	}
 	managedOrganizationIDs := s.managedOrganizationIDs(ctx)
@@ -311,11 +313,19 @@ func (s *Service) ListPublicExternalIDPsByApplication(ctx context.Context, appli
 }
 
 func (s *Service) CreateOrganization(ctx context.Context, org model.Organization) (*model.Organization, error) {
+	org.Name = strings.TrimSpace(org.Name)
+	org.Description = strings.TrimSpace(org.Description)
 	if org.Name == "" {
 		return nil, errors.New("name is required")
 	}
+	if !organizationNamePattern.MatchString(org.Name) {
+		return nil, errors.New("name must contain only letters, numbers, and hyphens")
+	}
 	if err := s.ensureCanManageInternalOrganization(ctx); err != nil {
 		return nil, err
+	}
+	if strings.TrimSpace(org.ID) == "" {
+		org.ID = uuid.NewString()
 	}
 	if strings.TrimSpace(org.Status) == "" {
 		org.Status = "active"
@@ -355,7 +365,7 @@ func (s *Service) CreateOrganization(ctx context.Context, org model.Organization
 			if !containsString(creator.Roles, ownerRoleName) {
 				creator.Roles = append(creator.Roles, ownerRoleName)
 				creator.Roles = normalizeRoleNames(creator.Roles)
-				if err := tx.Model(&creator).Update("roles", creator.Roles).Error; err != nil {
+				if err := tx.Model(&creator).Updates(model.User{Roles: creator.Roles}).Error; err != nil {
 					return err
 				}
 			}
@@ -364,16 +374,18 @@ func (s *Service) CreateOrganization(ctx context.Context, org model.Organization
 			return nil
 		}
 		settings := coreservice.NormalizeOrganizationConsoleSettings(org.ConsoleSettings)
-		return tx.Model(&org).Updates(map[string]any{
-			"tos_url":            settings.TOSURL,
-			"privacy_policy_url": settings.PrivacyPolicyURL,
-			"support_email":      settings.SupportEmail,
-			"logo_url":           settings.LogoURL,
-			"domains":            settings.Domains,
-			"login_policy":       settings.LoginPolicy,
-			"password_policy":    settings.PasswordPolicy,
-			"mfa_policy":         settings.MFAPolicy,
-		}).Error
+		return tx.Model(&org).
+			Select("TOSURL", "PrivacyPolicyURL", "SupportEmail", "LogoURL", "Domains", "LoginPolicy", "PasswordPolicy", "MFAPolicy").
+			Updates(model.Organization{
+				TOSURL:           settings.TOSURL,
+				PrivacyPolicyURL: settings.PrivacyPolicyURL,
+				SupportEmail:     settings.SupportEmail,
+				LogoURL:          settings.LogoURL,
+				Domains:          settings.Domains,
+				LoginPolicy:      settings.LoginPolicy,
+				PasswordPolicy:   settings.PasswordPolicy,
+				MFAPolicy:        settings.MFAPolicy,
+			}).Error
 	}); err != nil {
 		return nil, err
 	}
@@ -395,6 +407,8 @@ func (s *Service) UpdateOrganization(ctx context.Context, org model.Organization
 	if org.ID == "" {
 		return nil, errors.New("id is required")
 	}
+	org.Name = strings.TrimSpace(org.Name)
+	org.Description = strings.TrimSpace(org.Description)
 	if err := s.ensureCanManageOrganization(ctx, org.ID); err != nil {
 		return nil, err
 	}
@@ -404,29 +418,54 @@ func (s *Service) UpdateOrganization(ctx context.Context, org model.Organization
 	}
 	metadata := normalizeMetadata(org.Metadata, existing.Metadata)
 	delete(metadata, "console_settings")
-	updates := map[string]any{
-		"name":                 coalesceString(org.Name, existing.Name),
-		"metadata":             metadata,
-		"allow_jwt_access":     org.AllowJWTAccess,
-		"allow_basic_access":   org.AllowBasicAccess,
-		"allow_no_auth_access": org.AllowNoAuthAccess,
-		"allow_refresh_token":  org.AllowRefreshToken,
-		"allow_auth_code":      org.AllowAuthCode,
-		"allow_pkce":           org.AllowPKCE,
+	updateModel := model.Organization{
+		Name:              coalesceString(org.Name, existing.Name),
+		Description:       coalesceString(org.Description, existing.Description),
+		Metadata:          metadata,
+		AllowJWTAccess:    org.AllowJWTAccess,
+		AllowBasicAccess:  org.AllowBasicAccess,
+		AllowNoAuthAccess: org.AllowNoAuthAccess,
+		AllowRefreshToken: org.AllowRefreshToken,
+		AllowAuthCode:     org.AllowAuthCode,
+		AllowPKCE:         org.AllowPKCE,
+	}
+	selectedFields := []string{
+		"Name",
+		"Description",
+		"Metadata",
+		"AllowJWTAccess",
+		"AllowBasicAccess",
+		"AllowNoAuthAccess",
+		"AllowRefreshToken",
+		"AllowAuthCode",
+		"AllowPKCE",
 	}
 	if org.ConsoleSettings != nil {
 		settings := coreservice.NormalizeOrganizationConsoleSettings(org.ConsoleSettings)
-		updates["tos_url"] = settings.TOSURL
-		updates["privacy_policy_url"] = settings.PrivacyPolicyURL
-		updates["support_email"] = settings.SupportEmail
-		updates["logo_url"] = settings.LogoURL
-		updates["domains"] = settings.Domains
-		updates["login_policy"] = settings.LoginPolicy
-		updates["password_policy"] = settings.PasswordPolicy
-		updates["mfa_policy"] = settings.MFAPolicy
+		updateModel.TOSURL = settings.TOSURL
+		updateModel.PrivacyPolicyURL = settings.PrivacyPolicyURL
+		updateModel.SupportEmail = settings.SupportEmail
+		updateModel.LogoURL = settings.LogoURL
+		updateModel.Domains = settings.Domains
+		updateModel.LoginPolicy = settings.LoginPolicy
+		updateModel.PasswordPolicy = settings.PasswordPolicy
+		updateModel.MFAPolicy = settings.MFAPolicy
+		selectedFields = append(selectedFields,
+			"TOSURL",
+			"PrivacyPolicyURL",
+			"SupportEmail",
+			"LogoURL",
+			"Domains",
+			"LoginPolicy",
+			"PasswordPolicy",
+			"MFAPolicy",
+		)
+	}
+	if !organizationNamePattern.MatchString(updateModel.Name) {
+		return nil, errors.New("name must contain only letters, numbers, and hyphens")
 	}
 	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return tx.Model(&existing).Updates(updates).Error
+		return tx.Model(&existing).Select(selectedFields).Updates(updateModel).Error
 	}); err != nil {
 		return nil, err
 	}
@@ -518,11 +557,6 @@ func (s *Service) DeleteOrganization(ctx context.Context, organizationID string)
 		if err := tx.Model(&model.User{}).Where("organization_id = ?", organization.ID).Pluck("id", &userIDs).Error; err != nil {
 			return err
 		}
-		var externalIDPIDs []string
-		if err := tx.Model(&model.ExternalIDP{}).Where("organization_id = ?", organization.ID).Pluck("id", &externalIDPIDs).Error; err != nil {
-			return err
-		}
-
 		if len(appIDs) > 0 {
 			if err := tx.Where("application_id IN ?", appIDs).Delete(&model.AuthorizationCode{}).Error; err != nil {
 				return err
@@ -559,14 +593,6 @@ func (s *Service) DeleteOrganization(ctx context.Context, organizationID string)
 			if err := tx.Where("id IN ?", userIDs).Delete(&model.User{}).Error; err != nil {
 				return err
 			}
-		}
-		if len(externalIDPIDs) > 0 {
-			if err := tx.Where("provider_id IN ?", externalIDPIDs).Delete(&model.ExternalAuthState{}).Error; err != nil {
-				return err
-			}
-		}
-		if err := tx.Where("organization_id = ?", organization.ID).Delete(&model.ExternalAuthState{}).Error; err != nil {
-			return err
 		}
 		if err := tx.Where("organization_id = ?", organization.ID).Delete(&model.Session{}).Error; err != nil {
 			return err
@@ -628,7 +654,7 @@ func (s *Service) DeleteOrganization(ctx context.Context, organizationID string)
 				nextRoles = append(nextRoles, roleName)
 			}
 			if changed {
-				if err := tx.Model(&user).Update("roles", normalizeRoleNames(nextRoles)).Error; err != nil {
+				if err := tx.Model(&user).Updates(model.User{Roles: normalizeRoleNames(nextRoles)}).Error; err != nil {
 					return err
 				}
 			}
@@ -1001,29 +1027,29 @@ func (s *Service) UpdateApplication(ctx context.Context, app model.Application) 
 	if err != nil {
 		return nil, err
 	}
-	updates := map[string]any{
-		"name":                       coalesceString(app.Name, existing.Name),
-		"description":                coalesceString(app.Description, existing.Description),
-		"redirect_uris":              coalesceString(app.RedirectURIs, existing.RedirectURIs),
-		"application_type":           coalesceString(app.ApplicationType, existing.ApplicationType),
-		"grant_type":                 coalesceGrantTypes(app.GrantType, existing.GrantType),
-		"enable_refresh_token":       app.EnableRefreshToken,
-		"client_authentication_type": coalesceString(app.ClientAuthenticationType, existing.ClientAuthenticationType),
-		"token_type":                 coalesceTokenTypes(app.TokenType, existing.TokenType),
-		"roles":                      coalesceApplicationRoles(app.Roles, existing.Roles),
-		"access_token_ttl_minutes":   coalesceInt(app.AccessTokenTTLMinutes, existing.AccessTokenTTLMinutes),
-		"refresh_token_ttl_hours":    coalesceInt(app.RefreshTokenTTLHours, existing.RefreshTokenTTLHours),
+	updateModel := model.Application{
+		Name:                     coalesceString(app.Name, existing.Name),
+		Description:              coalesceString(app.Description, existing.Description),
+		RedirectURIs:             coalesceString(app.RedirectURIs, existing.RedirectURIs),
+		ApplicationType:          coalesceString(app.ApplicationType, existing.ApplicationType),
+		GrantType:                coalesceGrantTypes(app.GrantType, existing.GrantType),
+		EnableRefreshToken:       app.EnableRefreshToken,
+		ClientAuthenticationType: coalesceString(app.ClientAuthenticationType, existing.ClientAuthenticationType),
+		TokenType:                coalesceTokenTypes(app.TokenType, existing.TokenType),
+		Roles:                    coalesceApplicationRoles(app.Roles, existing.Roles),
+		AccessTokenTTLMinutes:    coalesceInt(app.AccessTokenTTLMinutes, existing.AccessTokenTTLMinutes),
+		RefreshTokenTTLHours:     coalesceInt(app.RefreshTokenTTLHours, existing.RefreshTokenTTLHours),
 	}
 	candidate := *existing
-	candidate.Name = updates["name"].(string)
-	candidate.Description = updates["description"].(string)
-	candidate.RedirectURIs = updates["redirect_uris"].(string)
-	candidate.ApplicationType = updates["application_type"].(string)
-	candidate.GrantType = updates["grant_type"].([]string)
-	candidate.EnableRefreshToken = updates["enable_refresh_token"].(bool)
-	candidate.ClientAuthenticationType = updates["client_authentication_type"].(string)
-	candidate.TokenType = updates["token_type"].([]string)
-	candidate.Roles = updates["roles"].([]string)
+	candidate.Name = updateModel.Name
+	candidate.Description = updateModel.Description
+	candidate.RedirectURIs = updateModel.RedirectURIs
+	candidate.ApplicationType = updateModel.ApplicationType
+	candidate.GrantType = updateModel.GrantType
+	candidate.EnableRefreshToken = updateModel.EnableRefreshToken
+	candidate.ClientAuthenticationType = updateModel.ClientAuthenticationType
+	candidate.TokenType = updateModel.TokenType
+	candidate.Roles = updateModel.Roles
 	applyApplicationDefaults(&candidate)
 	validatedRoles, err := s.validateRoleAssignments(ctx, project.OrganizationID, candidate.Roles, "application")
 	if err != nil {
@@ -1034,23 +1060,39 @@ func (s *Service) UpdateApplication(ctx context.Context, app model.Application) 
 		return nil, err
 	}
 	generatedPrivateKey := ""
-	updates["application_type"] = candidate.ApplicationType
-	updates["grant_type"] = candidate.GrantType
-	updates["enable_refresh_token"] = candidate.EnableRefreshToken
-	updates["client_authentication_type"] = candidate.ClientAuthenticationType
-	updates["token_type"] = candidate.TokenType
-	updates["roles"] = candidate.Roles
+	updateModel.ApplicationType = candidate.ApplicationType
+	updateModel.GrantType = candidate.GrantType
+	updateModel.EnableRefreshToken = candidate.EnableRefreshToken
+	updateModel.ClientAuthenticationType = candidate.ClientAuthenticationType
+	updateModel.TokenType = candidate.TokenType
+	updateModel.Roles = candidate.Roles
 	if candidate.ClientAuthenticationType == "private_key_jwt" && strings.TrimSpace(existing.PublicKey) == "" {
 		publicKey, privateKey, err := util.GenerateEd25519KeyMaterial()
 		if err != nil {
 			return nil, err
 		}
-		updates["public_key"] = publicKey
+		updateModel.PublicKey = publicKey
 		generatedPrivateKey = privateKey
 	} else if candidate.ClientAuthenticationType != "private_key_jwt" {
-		updates["public_key"] = ""
+		updateModel.PublicKey = ""
 	}
-	if err := s.db.WithContext(ctx).Model(existing).Updates(updates).Error; err != nil {
+	selectedFields := []string{
+		"Name",
+		"Description",
+		"RedirectURIs",
+		"ApplicationType",
+		"GrantType",
+		"EnableRefreshToken",
+		"ClientAuthenticationType",
+		"TokenType",
+		"Roles",
+		"AccessTokenTTLMinutes",
+		"RefreshTokenTTLHours",
+	}
+	if candidate.ClientAuthenticationType == "private_key_jwt" || strings.TrimSpace(existing.PublicKey) != "" {
+		selectedFields = append(selectedFields, "PublicKey")
+	}
+	if err := s.db.WithContext(ctx).Model(existing).Select(selectedFields).Updates(updateModel).Error; err != nil {
 		return nil, err
 	}
 	if err := s.db.WithContext(ctx).First(existing, "id = ?", app.ID).Error; err != nil {
@@ -1779,15 +1821,18 @@ func (s *Service) UpdateUser(ctx context.Context, user model.User) (*model.User,
 	if err != nil {
 		return nil, err
 	}
-	updates := map[string]any{
-		"username":     coalesceString(user.Username, existing.Username),
-		"name":         coalesceString(user.Name, existing.Name),
-		"email":        coalesceString(user.Email, existing.Email),
-		"phone_number": coalesceString(user.PhoneNumber, existing.PhoneNumber),
-		"roles":        validatedRoles,
-		"status":       coalesceString(user.Status, existing.Status),
+	updateModel := model.User{
+		Username:    coalesceString(user.Username, existing.Username),
+		Name:        coalesceString(user.Name, existing.Name),
+		Email:       coalesceString(user.Email, existing.Email),
+		PhoneNumber: coalesceString(user.PhoneNumber, existing.PhoneNumber),
+		Roles:       validatedRoles,
+		Status:      coalesceString(user.Status, existing.Status),
 	}
-	if err := s.db.WithContext(ctx).Model(existing).Updates(updates).Error; err != nil {
+	if err := s.db.WithContext(ctx).
+		Model(existing).
+		Select("Username", "Name", "Email", "PhoneNumber", "Roles", "Status").
+		Updates(updateModel).Error; err != nil {
 		return nil, err
 	}
 	if err := s.db.WithContext(ctx).First(existing, "id = ?", user.ID).Error; err != nil {
@@ -2390,22 +2435,35 @@ func (s *Service) UpdateExternalIDP(ctx context.Context, provider model.External
 	if err := s.ensureCanManageOrganization(ctx, existing.OrganizationID); err != nil {
 		return nil, err
 	}
-	updates := map[string]any{
-		"protocol":          coalesceString(provider.Protocol, existing.Protocol),
-		"name":              coalesceString(provider.Name, existing.Name),
-		"issuer":            coalesceString(provider.Issuer, existing.Issuer),
-		"client_id":         coalesceString(provider.ClientID, existing.ClientID),
-		"authorization_url": coalesceString(provider.AuthorizationURL, existing.AuthorizationURL),
-		"token_url":         coalesceString(provider.TokenURL, existing.TokenURL),
-		"userinfo_url":      coalesceString(provider.UserInfoURL, existing.UserInfoURL),
-		"jwks_url":          coalesceString(provider.JWKSURL, existing.JWKSURL),
-		"scopes":            coalesceString(provider.Scopes, existing.Scopes),
-		"metadata":          normalizeMetadata(provider.Metadata, existing.Metadata),
+	updateModel := model.ExternalIDP{
+		Protocol:         coalesceString(provider.Protocol, existing.Protocol),
+		Name:             coalesceString(provider.Name, existing.Name),
+		Issuer:           coalesceString(provider.Issuer, existing.Issuer),
+		ClientID:         coalesceString(provider.ClientID, existing.ClientID),
+		AuthorizationURL: coalesceString(provider.AuthorizationURL, existing.AuthorizationURL),
+		TokenURL:         coalesceString(provider.TokenURL, existing.TokenURL),
+		UserInfoURL:      coalesceString(provider.UserInfoURL, existing.UserInfoURL),
+		JWKSURL:          coalesceString(provider.JWKSURL, existing.JWKSURL),
+		Scopes:           coalesceString(provider.Scopes, existing.Scopes),
+		Metadata:         normalizeMetadata(provider.Metadata, existing.Metadata),
+	}
+	selectedFields := []string{
+		"Protocol",
+		"Name",
+		"Issuer",
+		"ClientID",
+		"AuthorizationURL",
+		"TokenURL",
+		"UserInfoURL",
+		"JWKSURL",
+		"Scopes",
+		"Metadata",
 	}
 	if provider.ClientSecret != "" {
-		updates["client_secret"] = provider.ClientSecret
+		updateModel.ClientSecret = provider.ClientSecret
+		selectedFields = append(selectedFields, "ClientSecret")
 	}
-	if err := s.db.WithContext(ctx).Model(&existing).Updates(updates).Error; err != nil {
+	if err := s.db.WithContext(ctx).Model(&existing).Select(selectedFields).Updates(updateModel).Error; err != nil {
 		return nil, err
 	}
 	if err := s.db.WithContext(ctx).First(&existing, "id = ?", provider.ID).Error; err != nil {

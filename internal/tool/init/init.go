@@ -307,6 +307,7 @@ func seed(ctx context.Context, database *gorm.DB, cfg config.Config) error {
 		organization := model.Organization{
 			BaseModel:         model.BaseModel{ID: cfg.InternalOrganizationID},
 			Name:              "internal",
+			Description:       "Internal organization",
 			Status:            "active",
 			Metadata:          map[string]string{},
 			AllowJWTAccess:    true,

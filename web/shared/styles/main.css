@@ -237,6 +237,16 @@ body {
   box-shadow: none;
 }
 
+.organization-context-dropdown {
+  min-width: 250px;
+}
+
+.organization-context-menu {
+  min-width: 100%;
+  width: 100%;
+  margin-top: 0.45rem !important;
+}
+
 .organization-context-name {
   display: block;
   max-width: 250px;
@@ -285,6 +295,10 @@ body {
 
 .organization-context-manage {
   font-weight: 600;
+}
+
+.user-context-dropdown .dropdown-menu {
+  margin-top: 0.7rem !important;
 }
 
 .user-context-toggle {
@@ -1062,6 +1076,10 @@ body {
 }
 
 @media (max-width: 900px) {
+  .organization-context-dropdown {
+    min-width: 220px;
+  }
+
   .organization-context {
     min-width: 220px;
   }
