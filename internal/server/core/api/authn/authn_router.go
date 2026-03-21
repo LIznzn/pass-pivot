@@ -26,6 +26,7 @@ func RegisterRoutes(mux *http.ServeMux, system systemHandler, authn *Handler, oi
 	mux.HandleFunc("POST /api/authn/v1/webauthn/login/finish", webAuthn.FinishLogin)
 	mux.HandleFunc("POST /api/authn/v1/session/u2f/begin", mfaU2F.BeginAssertion)
 	mux.HandleFunc("POST /api/authn/v1/session/u2f/finish", mfaU2F.FinishAssertion)
+	mux.HandleFunc("POST /api/authn/v1/recovery_code/query", authn.QueryRecoveryCodes)
 }
 
 type systemHandler interface {

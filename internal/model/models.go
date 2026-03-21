@@ -236,6 +236,7 @@ type MFARecoveryCode struct {
 	BaseModel
 	UserID         string     `gorm:"index;size:36" json:"userId"`
 	OrganizationID string     `gorm:"index;size:36" json:"organizationId"`
+	Code           string     `gorm:"size:64" json:"code"`
 	CodeHash       string     `gorm:"size:255" json:"-"`
 	ConsumedAt     *time.Time `json:"consumedAt"`
 }

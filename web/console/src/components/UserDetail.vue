@@ -9,7 +9,7 @@
           <div>
             <div class="console-module-eyebrow">用户</div>
             <h2 class="console-module-title">{{ currentUserRecord?.name || currentUserRecord?.username || currentUserRecord?.email || '用户' }}</h2>
-            <p class="console-module-subtitle">{{ currentUserRecord?.name || currentUserRecord?.email ? '从用户列表选择条目后，在详情区维护基本信息、登录设置、账号绑定、两步验证、会话与角色分配。' : '管理用户、通行密钥、身份验证器、备用验证码与管理员动作。' }}</p>
+            <p class="console-module-subtitle">{{ currentUserRecord?.name || currentUserRecord?.email ? '从用户列表选择条目后，在详情区维护基本信息、登录设置、账号绑定、多因素验证、会话与角色分配。' : '管理用户、通行密钥、身份验证器、备用验证码与管理员动作。' }}</p>
           </div>
         </div>
         <BButton variant="primary" @click="emit('run-module-action')">刷新用户</BButton>
@@ -73,31 +73,44 @@
           <div class="row g-3">
             <div class="col-lg-6">
               <div class="detail-card h-100">
-                <div class="record-meta mb-3">密码登录：{{ userDetail?.passwordCredential ? '已启用' : '未配置' }}</div>
+                <div class="login-card-title">登录方式</div>
+                <div class="login-toggle-list">
+                  <div class="login-setting-row">
+                    <div>
+                      <div class="login-setting-name">密码登录</div>
+                      <div class="record-meta">{{ userDetail?.passwordCredential ? '已启用' : '未配置' }}</div>
+                    </div>
+                    <span class="record-meta">{{ userDetail?.passwordCredential ? '当前账号已设置密码' : '当前账号尚未设置密码' }}</span>
+                  </div>
+                  <div class="login-setting-row">
+                      <div>
+                        <div class="login-setting-name">通行密钥登录</div>
+                        <div class="record-meta">{{ webauthnLoginEnabled ? '已启用' : '未启用' }}</div>
+                      </div>
+                    <BButton size="sm" :variant="webauthnLoginEnabled ? 'outline-danger' : 'outline-primary'" @click="handleWebauthnToggleClick">
+                      {{ webauthnLoginEnabled ? '关闭' : '开启' }}
+                    </BButton>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-lg-6">
+              <div class="detail-card h-100">
+                <div class="login-card-title">密码修改</div>
                 <BForm @submit.prevent="emit('reset-user-password')">
                   <BFormInput v-model="userAdminForm.password" type="password" placeholder="新密码" class="mb-2" />
                   <BButton type="submit" variant="outline-primary" size="sm">重置密码</BButton>
                 </BForm>
               </div>
             </div>
-            <div class="col-lg-6">
-              <div class="detail-card h-100">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                  <div class="record-meta mb-0">通行密钥数：{{ loginSecureKeys.length }} · {{ webauthnLoginEnabled ? '已启用登录' : '已关闭登录' }}</div>
-                  <div class="d-flex gap-2">
-                    <BButton size="sm" :variant="webauthnLoginEnabled ? 'outline-danger' : 'outline-secondary'" :disabled="!loginSecureKeys.length" @click="emit('toggle-webauthn-login', !webauthnLoginEnabled)">
-                      {{ webauthnLoginEnabled ? '关闭登录' : '启用登录' }}
-                    </BButton>
-                    <BButton size="sm" variant="outline-primary" @click="emit('register-secure-key', 'webauthn')">注册通行密钥</BButton>
-                  </div>
-                </div>
-                <div v-if="!loginSecureKeys.length" class="record-meta">当前没有通行密钥，注册后才可启用通行密钥登录。</div>
-                <div v-for="secureKey in loginSecureKeys" :key="secureKey.id" class="record-row">
+            <div class="col-12">
+              <div class="detail-card">
+                <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
                   <div>
-                    <strong>{{ secureKey.identifier || '通行密钥' }}</strong>
-                    <div class="record-meta">{{ secureKey.publicKeyId }}</div>
+                    <div class="login-card-title mb-1">密钥管理</div>
+                    <div class="record-meta">{{ allSecureKeys.length ? `当前账号已绑定 ${allSecureKeys.length} 把密钥，可查看每把密钥支持的能力。` : '当前账号还没有绑定密钥。' }}</div>
                   </div>
-                  <code>{{ formatDateTime(secureKey.createdAt) }}</code>
+                  <BButton size="sm" variant="outline-primary" @click="showKeyModal = true">管理密钥</BButton>
                 </div>
               </div>
             </div>
@@ -141,22 +154,34 @@
         </div>
 
         <div id="user-mfa" class="info-card">
-          <div class="section-title">两步验证</div>
-          <div class="record-list">
+          <div class="section-title">多因素验证</div>
+          <div class="record-row record-row-plain mb-3">
+            <div>
+              <strong>启用多因素验证</strong>
+              <div class="record-meta">{{ mfaSummaryText }}</div>
+            </div>
+            <div class="d-flex gap-2">
+              <BButton v-if="mfaEnabled" size="sm" variant="outline-primary" @click="emit('open-mfa-modal', 'recovery_code')">查看备用验证码</BButton>
+              <BButton size="sm" :variant="mfaEnabled ? 'outline-danger' : 'outline-primary'" @click="emit('toggle-mfa-enabled', !mfaEnabled)">
+                {{ mfaEnabled ? '关闭' : '开启' }}
+              </BButton>
+            </div>
+          </div>
+          <div v-if="mfaEnabled" class="record-list">
             <div v-for="item in userMfaMethodRows" :key="item.id" class="record-row">
               <div>
                 <strong>{{ item.label }}</strong>
                 <div class="record-meta">{{ item.summary }}</div>
               </div>
               <BButton
-                v-if="item.id === 'email_code' || item.id === 'sms_code'"
+                v-if="item.id === 'email_code' || item.id === 'sms_code' || item.id === 'u2f'"
                 size="sm"
                 :variant="item.enabled ? 'outline-danger' : 'outline-primary'"
-                @click="emit('handle-inline-mfa-method-action', item)"
+                @click="handleInlineMfaAction(item)"
               >
                 {{ item.enabled ? '关闭' : '开启' }}
               </BButton>
-              <BButton v-else size="sm" variant="outline-primary" @click="emit('open-mfa-modal', item.id)">{{ item.enabled ? '配置' : '开启' }}</BButton>
+              <BButton v-else size="sm" variant="outline-primary" @click="emit('open-mfa-modal', item.id)">配置</BButton>
             </div>
           </div>
         </div>
@@ -226,12 +251,41 @@
       </div>
       <RightSide :items="moduleRecentChanges" />
     </div>
+    <BModal v-model="showKeyModal" title="密钥管理" size="lg" centered>
+      <div class="d-flex gap-2 flex-wrap mb-3">
+        <BButton size="sm" variant="outline-primary" @click="emit('register-secure-key', 'webauthn')">注册为通行密钥（WebAuthn）</BButton>
+        <BButton size="sm" variant="outline-secondary" @click="emit('register-secure-key', 'u2f')">注册为安全密钥（U2F）</BButton>
+      </div>
+      <div v-if="!allSecureKeys.length" class="record-meta">当前没有已注册的密钥。</div>
+      <div v-for="secureKey in allSecureKeys" :key="secureKey.id" class="record-card mb-2">
+        <div class="record-head">
+          <div>
+            <BFormInput
+              :model-value="keyNameDrafts[secureKey.id] ?? secureKey.identifier ?? ''"
+              placeholder="密钥名称"
+              class="mb-2"
+              @update:model-value="setKeyNameDraft(secureKey.id, $event)"
+            />
+            <div class="record-meta">{{ keyCapabilityLabel(secureKey) }}</div>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <BButton size="sm" variant="outline-primary" @click="emit('update-secure-key', { credentialId: secureKey.id, identifier: keyNameDrafts[secureKey.id] ?? secureKey.identifier ?? '' })">保存名称</BButton>
+            <BButton size="sm" variant="outline-danger" @click="emit('delete-secure-key', secureKey.id)">删除密钥</BButton>
+          </div>
+        </div>
+        <div class="record-meta">{{ secureKey.publicKeyId }}</div>
+        <div class="record-meta mt-2">注册时间：{{ formatDateTime(secureKey.createdAt) }}</div>
+      </div>
+      <template #footer>
+        <BButton type="button" variant="outline-secondary" @click="showKeyModal = false">关闭</BButton>
+      </template>
+    </BModal>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { BButton, BForm, BFormInput, BFormSelect } from 'bootstrap-vue-next'
+import { computed, reactive, ref, watch } from 'vue'
+import { BButton, BForm, BFormInput, BFormSelect, BModal } from 'bootstrap-vue-next'
 import RightSide from '../layout/RightSide.vue'
 import { useAuditStore } from '../stores/audit'
 import { useConsoleStore } from '../stores/console'
@@ -256,12 +310,14 @@ const auditStore = useAuditStore()
 const consoleStore = useConsoleStore()
 const moduleRecentChanges = computed(() => auditStore.moduleRecentChanges)
 const formatDateTime = consoleStore.formatDateTime
+const showKeyModal = ref(false)
+const keyNameDrafts = reactive<Record<string, string>>({})
 
 const currentModulePanels = [
   { id: 'user-basic', label: '基本信息' },
   { id: 'user-login-setting', label: '登录设置' },
   { id: 'user-binding', label: '账号绑定' },
-  { id: 'user-mfa', label: '两步验证' },
+  { id: 'user-mfa', label: '多因素验证' },
   { id: 'user-session', label: '会话管理' },
   { id: 'user-role-assignment', label: '角色分配' },
   { id: 'user-danger-zone', label: '危险区' }
@@ -277,19 +333,22 @@ const currentModuleMetrics = computed(() => [
 ])
 
 const activeTotpEnrollments = computed(() => (props.userDetail?.mfaEnrollments || []).filter((item: any) => item.method === 'totp'))
+const mfaEnrollment = computed(() => (props.userDetail?.mfaEnrollments || []).find((item: any) => item.method === 'mfa' && item.status === 'active'))
 const emailCodeEnrollment = computed(() => (props.userDetail?.mfaEnrollments || []).find((item: any) => item.method === 'email_code'))
 const smsCodeEnrollment = computed(() => (props.userDetail?.mfaEnrollments || []).find((item: any) => item.method === 'sms_code'))
 const webauthnEnrollment = computed(() => (props.userDetail?.mfaEnrollments || []).find((item: any) => item.method === 'webauthn'))
+const allSecureKeys = computed(() => props.userDetail?.secureKeys || [])
 const loginSecureKeys = computed(() => (props.userDetail?.secureKeys || []).filter((item: any) => item.webauthnEnable))
 const u2fSecureKeys = computed(() => (props.userDetail?.secureKeys || []).filter((item: any) => item.u2fEnable))
 const u2fEnrollment = computed(() => (props.userDetail?.mfaEnrollments || []).find((item: any) => item.method === 'u2f'))
 const webauthnLoginEnabled = computed(() => webauthnEnrollment.value?.status === 'active' && loginSecureKeys.value.length > 0)
+const mfaEnabled = computed(() => Boolean(mfaEnrollment.value))
 
 const userMfaMethodRows = computed<Array<{ id: MFAMethod; label: string; summary: string; enabled: boolean; disabled?: boolean }>>(() => [
   {
     id: 'totp',
     label: '身份验证器（TOTP）',
-    summary: activeTotpEnrollments.value.length > 0 ? '已配置' : '未开启',
+    summary: activeTotpEnrollments.value.length > 0 ? '已配置身份验证器' : '使用身份验证器 App 生成动态验证码',
     enabled: activeTotpEnrollments.value.length > 0
   },
   {
@@ -309,18 +368,37 @@ const userMfaMethodRows = computed<Array<{ id: MFAMethod; label: string; summary
   {
     id: 'u2f',
     label: '安全密钥',
-    summary: u2fEnrollment.value?.status === 'active' && u2fSecureKeys.value.length > 0 ? `已注册 ${u2fSecureKeys.value.length} 个密钥` : '未开启',
+    summary: u2fSecureKeys.value.length ? `已登记 ${u2fSecureKeys.value.length} 把安全密钥` : '当前没有可用于安全密钥验证的密钥',
     enabled: u2fEnrollment.value?.status === 'active' && u2fSecureKeys.value.length > 0
   },
-  {
-    id: 'recovery_code',
-    label: '备用验证码',
-    summary: (props.userDetail?.recoverySummary?.total ?? 0) > 0
-      ? `剩余有效码 ${props.userDetail?.recoverySummary?.available ?? 0} 个，最近生成于 ${formatDateTime(props.userDetail?.recoverySummary?.lastGeneratedAt)}`
-      : '未开启',
-    enabled: (props.userDetail?.recoverySummary?.total ?? 0) > 0
-  }
 ])
+const configuredPrimaryMfaCount = computed(() => userMfaMethodRows.value.filter((item) => item.enabled).length)
+const recoveryCodeCount = computed(() => props.userDetail?.recoverySummary?.available ?? 0)
+const mfaSummaryText = computed(() => {
+  if (!mfaEnabled.value) {
+    return '开启后可配置主验证方式，并自动准备备用验证码。'
+  }
+  if (configuredPrimaryMfaCount.value === 0) {
+    return `已生成 ${recoveryCodeCount.value} 个备用验证码，但尚未配置其他验证方式；当前登录不会触发多因素验证。`
+  }
+  return `已配置 ${configuredPrimaryMfaCount.value} 种主验证方式，备用验证码剩余 ${recoveryCodeCount.value} 个。`
+})
+
+function handleInlineMfaAction(item: { id: MFAMethod; enabled: boolean; disabled?: boolean }) {
+  if (item.id === 'u2f' && !item.enabled && u2fSecureKeys.value.length === 0) {
+    showKeyModal.value = true
+    return
+  }
+  emit('handle-inline-mfa-method-action', item)
+}
+
+function handleWebauthnToggleClick() {
+  if (!webauthnLoginEnabled.value && loginSecureKeys.value.length === 0) {
+    showKeyModal.value = true
+    return
+  }
+  emit('toggle-webauthn-login', !webauthnLoginEnabled.value)
+}
 
 const userDeviceList = computed(() => (props.userDetail?.devices || []).map((device: any) => ({
   id: device.id,
@@ -333,6 +411,17 @@ const userDeviceList = computed(() => (props.userDetail?.devices || []).map((dev
   firstLoginAt: device.firstLoginAt || '',
   fingerprint: device.deviceFingerprint || ''
 })))
+
+watch(
+  allSecureKeys,
+  (items) => {
+    Object.keys(keyNameDrafts).forEach((key) => delete keyNameDrafts[key])
+    for (const item of items || []) {
+      keyNameDrafts[item.id] = item.identifier || ''
+    }
+  },
+  { immediate: true }
+)
 
 function syncExternalBindingIssuer() {
   const provider = props.userDetail?.externalIdps?.find((item: any) => item.id === props.externalBindingForm.externalIdpId)
@@ -373,13 +462,33 @@ function formatAdminResult(value: unknown) {
   return JSON.stringify(value)
 }
 
+function setKeyNameDraft(credentialId: string, value: unknown) {
+  keyNameDrafts[credentialId] = String(value || '')
+}
+
+function keyCapabilityLabel(secureKey: any) {
+  if (secureKey.webauthnEnable && secureKey.u2fEnable) {
+    return '支持通行密钥登录与安全密钥验证'
+  }
+  if (secureKey.webauthnEnable) {
+    return '仅支持通行密钥登录'
+  }
+  if (secureKey.u2fEnable) {
+    return '仅支持安全密钥验证'
+  }
+  return '能力未识别'
+}
+
 const emit = defineEmits<{
   back: []
   'run-module-action': []
   'update-user': []
   'reset-user-password': []
   'toggle-webauthn-login': [enabled: boolean]
+  'toggle-mfa-enabled': [enabled: boolean]
   'register-secure-key': [purpose: 'webauthn' | 'u2f']
+  'delete-secure-key': [credentialId: string]
+  'update-secure-key': [payload: { credentialId: string; identifier: string }]
   'delete-external-binding': [bindingId: string]
   'create-external-binding': []
   'handle-inline-mfa-method-action': [item: { id: MFAMethod; enabled: boolean; disabled?: boolean }]

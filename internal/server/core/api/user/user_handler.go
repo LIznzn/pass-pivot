@@ -165,6 +165,27 @@ func (h *Handler) DeleteCurrentUserSecureKey(w http.ResponseWriter, r *http.Requ
 	sharedweb.JSON(w, http.StatusOK, map[string]any{"deleted": true})
 }
 
+func (h *Handler) UpdateCurrentUserSecureKey(w http.ResponseWriter, r *http.Request) {
+	identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r)
+	if !ok || identity.User == nil {
+		sharedweb.Error(w, http.StatusUnauthorized, "access token is required")
+		return
+	}
+	var payload struct {
+		CredentialID string `json:"credentialId"`
+		Identifier   string `json:"identifier"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if err := h.service.platform.UpdateCurrentUserSecureKey(r.Context(), identity.Token.SessionID, payload.CredentialID, payload.Identifier); err != nil {
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"updated": true})
+}
+
 func (h *Handler) BeginCurrentUserSecureKeyRegistration(w http.ResponseWriter, r *http.Request) {
 	identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r)
 	if !ok || identity.User == nil {

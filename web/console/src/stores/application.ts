@@ -22,8 +22,8 @@ export const useApplicationStore = defineStore('application', () => {
     displayName: '',
     displayNameEn: '',
     displayNameJa: '',
-    displayNameZhs: '',
-    displayNameZht: '',
+    displayNameChs: '',
+    displayNameCht: '',
     redirectUris: '',
     applicationType: 'web',
     tokenType: ['access_token'] as string[],
@@ -42,8 +42,8 @@ export const useApplicationStore = defineStore('application', () => {
     displayName: '',
     displayNameEn: '',
     displayNameJa: '',
-    displayNameZhs: '',
-    displayNameZht: '',
+    displayNameChs: '',
+    displayNameCht: '',
     redirectUris: '',
     applicationType: 'web',
     tokenType: ['access_token'] as string[],
@@ -67,8 +67,8 @@ export const useApplicationStore = defineStore('application', () => {
       applicationUpdateForm.displayName = ''
       applicationUpdateForm.displayNameEn = ''
       applicationUpdateForm.displayNameJa = ''
-      applicationUpdateForm.displayNameZhs = ''
-      applicationUpdateForm.displayNameZht = ''
+      applicationUpdateForm.displayNameChs = ''
+      applicationUpdateForm.displayNameCht = ''
       applicationUpdateForm.redirectUris = ''
       applicationUpdateForm.applicationType = 'web'
       applicationUpdateForm.grantType = ['authorization_code_pkce']
@@ -87,8 +87,8 @@ export const useApplicationStore = defineStore('application', () => {
     applicationUpdateForm.displayName = applicationUpdateForm.metadata.displayName ?? ''
     applicationUpdateForm.displayNameEn = applicationUpdateForm.metadata['displayName.en'] ?? ''
     applicationUpdateForm.displayNameJa = applicationUpdateForm.metadata['displayName.ja'] ?? ''
-    applicationUpdateForm.displayNameZhs = applicationUpdateForm.metadata['displayName.zhs'] ?? ''
-    applicationUpdateForm.displayNameZht = applicationUpdateForm.metadata['displayName.zht'] ?? ''
+    applicationUpdateForm.displayNameChs = applicationUpdateForm.metadata['displayName.chs'] ?? ''
+    applicationUpdateForm.displayNameCht = applicationUpdateForm.metadata['displayName.cht'] ?? ''
     applicationUpdateForm.redirectUris = application.redirectUris ?? ''
     applicationUpdateForm.applicationType = application.applicationType ?? 'web'
     applicationUpdateForm.grantType = [...(application.grantType ?? ['authorization_code_pkce'])]
@@ -114,8 +114,8 @@ export const useApplicationStore = defineStore('application', () => {
     applicationForm.displayName = ''
     applicationForm.displayNameEn = ''
     applicationForm.displayNameJa = ''
-    applicationForm.displayNameZhs = ''
-    applicationForm.displayNameZht = ''
+    applicationForm.displayNameChs = ''
+    applicationForm.displayNameCht = ''
     applicationForm.redirectUris = ''
     applicationForm.applicationType = 'web'
     applicationForm.tokenType = ['access_token']
@@ -153,8 +153,8 @@ export const useApplicationStore = defineStore('application', () => {
       displayName: applicationForm.displayName,
       'displayName.en': applicationForm.displayNameEn,
       'displayName.ja': applicationForm.displayNameJa,
-      'displayName.zhs': applicationForm.displayNameZhs,
-      'displayName.zht': applicationForm.displayNameZht
+      'displayName.chs': applicationForm.displayNameChs,
+      'displayName.cht': applicationForm.displayNameCht
     })
     const created = await apiCreateApplication({
       ...applicationForm,
@@ -196,8 +196,8 @@ export const useApplicationStore = defineStore('application', () => {
     applicationUpdateForm.displayName = applicationUpdateForm.metadata.displayName ?? ''
     applicationUpdateForm.displayNameEn = applicationUpdateForm.metadata['displayName.en'] ?? ''
     applicationUpdateForm.displayNameJa = applicationUpdateForm.metadata['displayName.ja'] ?? ''
-    applicationUpdateForm.displayNameZhs = applicationUpdateForm.metadata['displayName.zhs'] ?? ''
-    applicationUpdateForm.displayNameZht = applicationUpdateForm.metadata['displayName.zht'] ?? ''
+    applicationUpdateForm.displayNameChs = applicationUpdateForm.metadata['displayName.chs'] ?? ''
+    applicationUpdateForm.displayNameCht = applicationUpdateForm.metadata['displayName.cht'] ?? ''
     return updateApplication()
   }
 

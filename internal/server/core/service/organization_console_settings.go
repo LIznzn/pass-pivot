@@ -14,8 +14,8 @@ const (
 	OrganizationMetadataDisplayName      = "displayName"
 	OrganizationMetadataDisplayNameEN    = "displayName.en"
 	OrganizationMetadataDisplayNameJA    = "displayName.ja"
-	OrganizationMetadataDisplayNameZHS   = "displayName.zhs"
-	OrganizationMetadataDisplayNameZHT   = "displayName.zht"
+	OrganizationMetadataDisplayNameCHS   = "displayName.chs"
+	OrganizationMetadataDisplayNameCHT   = "displayName.cht"
 	OrganizationMetadataWebsiteURL       = "websiteUrl"
 	OrganizationMetadataTermsOfServiceURL = "termsOfServiceUrl"
 	OrganizationMetadataPrivacyPolicyURL = "privacyPolicyUrl"
@@ -79,8 +79,8 @@ func defaultOrganizationMetadata() map[string]string {
 		OrganizationMetadataDisplayName:      "",
 		OrganizationMetadataDisplayNameEN:    "",
 		OrganizationMetadataDisplayNameJA:    "",
-		OrganizationMetadataDisplayNameZHS:   "",
-		OrganizationMetadataDisplayNameZHT:   "",
+		OrganizationMetadataDisplayNameCHS:   "",
+		OrganizationMetadataDisplayNameCHT:   "",
 		OrganizationMetadataWebsiteURL:       "http://example.com",
 		OrganizationMetadataTermsOfServiceURL: "http://example.com/terms-of-service",
 		OrganizationMetadataPrivacyPolicyURL: "http://example.com/privacy-policy",
@@ -102,6 +102,43 @@ func NormalizeOrganizationMetadata(candidate map[string]string, fallback map[str
 		result[key] = value
 	}
 	return result
+}
+
+func BuildOrganizationDisplayNameMap(metadata map[string]string) map[string]string {
+	normalized := NormalizeOrganizationMetadata(metadata, nil)
+	return map[string]string{
+		"default": OrganizationDisplayNameForLocale(normalized, "", ""),
+		"en":      OrganizationDisplayNameForLocale(normalized, "en", ""),
+		"ja":      OrganizationDisplayNameForLocale(normalized, "ja", ""),
+		"chs":     OrganizationDisplayNameForLocale(normalized, "chs", ""),
+		"cht":     OrganizationDisplayNameForLocale(normalized, "cht", ""),
+	}
+}
+
+func OrganizationDisplayNameForLocale(metadata map[string]string, locale string, fallback string) string {
+	normalized := NormalizeOrganizationMetadata(metadata, nil)
+	switch strings.TrimSpace(locale) {
+	case "en", "en-US":
+		if value := strings.TrimSpace(normalized[OrganizationMetadataDisplayNameEN]); value != "" {
+			return value
+		}
+	case "ja", "ja-JP":
+		if value := strings.TrimSpace(normalized[OrganizationMetadataDisplayNameJA]); value != "" {
+			return value
+		}
+	case "chs":
+		if value := strings.TrimSpace(normalized[OrganizationMetadataDisplayNameCHS]); value != "" {
+			return value
+		}
+	case "cht":
+		if value := strings.TrimSpace(normalized[OrganizationMetadataDisplayNameCHT]); value != "" {
+			return value
+		}
+	}
+	if value := strings.TrimSpace(normalized[OrganizationMetadataDisplayName]); value != "" {
+		return value
+	}
+	return strings.TrimSpace(fallback)
 }
 
 func parseLegacyOrganizationConsoleSettings(organization model.Organization) *model.OrganizationSetting {

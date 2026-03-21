@@ -19,6 +19,7 @@ type authorizeInteractionResponse struct {
 	Action             string                   `json:"action"`
 	RedirectTarget     string                   `json:"redirectTarget,omitempty"`
 	Stage              string                   `json:"stage,omitempty"`
+	SessionRef         string                   `json:"sessionRef,omitempty"`
 	SecondFactorMethod string                   `json:"secondFactorMethod,omitempty"`
 	MFAOptions         []string                 `json:"mfaOptions,omitempty"`
 	Target             *coreservice.LoginTarget `json:"target,omitempty"`
@@ -102,8 +103,16 @@ func (h *OIDCHandler) QueryAuthorizeInteractionAPI(w http.ResponseWriter, r *htt
 	if sessionID == "" {
 		sessionID = sharedhandler.ReadPortalSessionCookie(r)
 	}
+	pendingChallenge := ""
+	if sessionID == "" {
+		pendingChallenge = sharedhandler.ReadPendingLoginChallengeCookie(r)
+		sessionID = pendingChallenge
+	}
 	if sessionID != "" {
 		if session, err := h.oidc.GetSession(r.Context(), sessionID); err == nil {
+			if pendingChallenge != "" {
+				sharedhandler.ClearPendingLoginChallengeCookie(w, r)
+			}
 			switch session.State {
 			case "authenticated":
 				if payload.SkipAccountSelection {
@@ -146,6 +155,7 @@ func (h *OIDCHandler) QueryAuthorizeInteractionAPI(w http.ResponseWriter, r *htt
 				sharedweb.JSON(w, http.StatusOK, authorizeInteractionResponse{
 					Action:             "render",
 					Stage:              "confirmation",
+					SessionRef:         session.LoginChallenge,
 					SecondFactorMethod: session.SecondFactorMethod,
 					MFAOptions:         mfaOptions,
 					Target:             target,
@@ -160,6 +170,7 @@ func (h *OIDCHandler) QueryAuthorizeInteractionAPI(w http.ResponseWriter, r *htt
 				sharedweb.JSON(w, http.StatusOK, authorizeInteractionResponse{
 					Action:             "render",
 					Stage:              "mfa",
+					SessionRef:         session.LoginChallenge,
 					SecondFactorMethod: session.SecondFactorMethod,
 					MFAOptions:         mfaOptions,
 					Target:             target,

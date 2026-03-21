@@ -96,7 +96,10 @@
       @update-user="updateUser"
       @reset-user-password="resetUserPassword"
       @toggle-webauthn-login="toggleWebAuthnLogin"
+      @toggle-mfa-enabled="toggleMFAEnabled"
       @register-secure-key="registerSecureKey"
+      @delete-secure-key="deleteSecureKey"
+      @update-secure-key="updateSecureKey"
       @delete-external-binding="deleteExternalBinding"
       @create-external-binding="createExternalBinding"
       @handle-inline-mfa-method-action="handleInlineMFAMethodAction"
@@ -124,7 +127,7 @@
       :mfa-setting-form="mfaSettingForm"
       :u2f-secure-keys="u2fSecureKeys"
       :user-detail="userStore.userDetail"
-      :generated-recovery-code-list="generatedRecoveryCodeList"
+      :recovery-code-list="generatedRecoveryCodeList"
       @update:visible="mfaConfigModalVisible = $event"
       @delete-totp-enrollments="deleteTotpEnrollments"
       @delete-secure-key="deleteSecureKey"
@@ -426,7 +429,7 @@ async function createExternalBinding() {
   })
 }
 
-async function registerSecureKey(purpose: 'webauthn' | 'u2f' = 'webauthn') {
+async function registerSecureKey(purpose: 'webauthn' | 'u2f') {
   const userId = userStore.selectedUserId
   if (!userId) {
     return
@@ -443,7 +446,7 @@ async function registerSecureKey(purpose: 'webauthn' | 'u2f' = 'webauthn') {
       throw new Error('Secure key registration was cancelled')
     }
     await userStore.finishRegisterSecureKey(begin.challengeId, serializeCredential(credential as PublicKeyCredential))
-  })
+  }, purpose === 'webauthn' ? '通行密钥已注册' : '安全密钥已注册')
 }
 
 async function enrollTotp() {
@@ -477,6 +480,13 @@ async function generateRecoveryCodes() {
   })
 }
 
+async function queryRecoveryCodes() {
+  if (!userStore.selectedUserId) {
+    return
+  }
+  recoveryCodes.value = await userStore.queryRecoveryCodes() as { codes?: string[] } | null
+}
+
 async function saveMFAEmailSetting() {
   if (!userStore.selectedUserId) {
     return
@@ -498,7 +508,7 @@ async function saveMFASMSSetting() {
 }
 
 async function toggleInlineMFAMethod(method: MFAMethod, enabled: boolean) {
-  if (method !== 'email_code' && method !== 'sms_code') {
+  if (method !== 'email_code' && method !== 'sms_code' && method !== 'u2f') {
     return
   }
   if (!userStore.selectedUserId) {
@@ -510,7 +520,7 @@ async function toggleInlineMFAMethod(method: MFAMethod, enabled: boolean) {
 }
 
 async function handleInlineMFAMethodAction(item: { id: MFAMethod; enabled: boolean; disabled?: boolean }) {
-  if (item.id !== 'email_code' && item.id !== 'sms_code') {
+  if (item.id !== 'email_code' && item.id !== 'sms_code' && item.id !== 'u2f') {
     return
   }
   if (item.disabled) {
@@ -518,6 +528,22 @@ async function handleInlineMFAMethodAction(item: { id: MFAMethod; enabled: boole
     return
   }
   await toggleInlineMFAMethod(item.id, !item.enabled)
+}
+
+async function toggleMFAEnabled(enabled: boolean) {
+  if (!userStore.selectedUserId) {
+    return
+  }
+  await withFeedback(async () => {
+    await userStore.updateUserMfaMethod('mfa', enabled)
+    if (enabled) {
+      await queryRecoveryCodes()
+      currentMFAMethod.value = 'recovery_code'
+      mfaConfigModalVisible.value = true
+    } else {
+      recoveryCodes.value = null
+    }
+  }, enabled ? '已更新多因素验证主开关，并已准备备用验证码' : '已关闭多因素验证')
 }
 
 async function submitCurrentMFAModal() {
@@ -531,10 +557,6 @@ async function submitCurrentMFAModal() {
   }
   if (currentMFAMethod.value === 'sms_code') {
     await saveMFASMSSetting()
-    return
-  }
-  if (currentMFAMethod.value === 'u2f') {
-    await registerSecureKey('u2f')
     return
   }
   if (currentMFAMethod.value === 'recovery_code') {
@@ -562,6 +584,15 @@ async function deleteSecureKey(credentialId: string) {
   await withFeedback(async () => {
     await userStore.deleteSecureKey(credentialId)
   })
+}
+
+async function updateSecureKey(payload: { credentialId: string; identifier: string }) {
+  if (!userStore.selectedUserId) {
+    return
+  }
+  await withFeedback(async () => {
+    await userStore.updateSecureKey(payload.credentialId, payload.identifier)
+  }, '密钥名称已更新')
 }
 
 async function toggleWebAuthnLogin(enabled: boolean) {
@@ -664,6 +695,9 @@ async function openMFAModal(method: MFAMethod) {
   mfaConfigModalVisible.value = true
   if (method === 'totp' && activeTOTPEnrollments.value.length === 0 && !pendingTotpProvisioningUri.value) {
     await enrollTotp()
+  }
+  if (method === 'recovery_code') {
+    await queryRecoveryCodes()
   }
 }
 

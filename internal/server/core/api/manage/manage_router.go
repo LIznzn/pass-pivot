@@ -28,11 +28,13 @@ func RegisterRoutes(mux *http.ServeMux, manage *Handler, authn authnHandler, aut
 	mux.HandleFunc("POST /api/manage/v1/user/mfa_method/update", manage.UpdateUserMFAMethod)
 	mux.HandleFunc("POST /api/manage/v1/user/mfa_enrollment/delete", manage.DeleteUserMFAEnrollment)
 	mux.HandleFunc("POST /api/manage/v1/user/securekey/delete", manage.DeleteUserSecureKey)
+	mux.HandleFunc("POST /api/manage/v1/user/securekey/update", manage.UpdateUserSecureKey)
 	mux.HandleFunc("POST /api/manage/v1/user/securekey/register/begin", manage.BeginUserSecureKeyRegistration)
 	mux.HandleFunc("POST /api/manage/v1/user/securekey/register/finish", manage.FinishUserSecureKeyRegistration)
 	mux.HandleFunc("POST /api/manage/v1/user/totp/enroll", authn.EnrollTOTP)
 	mux.HandleFunc("POST /api/manage/v1/user/totp/verify", authn.VerifyTOTPEnrollment)
 	mux.HandleFunc("POST /api/manage/v1/user/recovery_code/generate", authn.GenerateRecoveryCodes)
+	mux.HandleFunc("POST /api/manage/v1/user/recovery_code/query", authn.QueryRecoveryCodes)
 	mux.HandleFunc("POST /api/manage/v1/user/recovery_code/delete", manage.DeleteUserRecoveryCodes)
 	mux.HandleFunc("POST /api/manage/v1/user/detail/query", manage.GetUserDetail)
 	mux.HandleFunc("POST /api/manage/v1/user/delete", manage.DeleteUser)
@@ -63,6 +65,7 @@ type authnHandler interface {
 	EnrollTOTP(http.ResponseWriter, *http.Request)
 	VerifyTOTPEnrollment(http.ResponseWriter, *http.Request)
 	GenerateRecoveryCodes(http.ResponseWriter, *http.Request)
+	QueryRecoveryCodes(http.ResponseWriter, *http.Request)
 }
 
 type authzHandler interface {

@@ -42,10 +42,10 @@
             <BFormInput v-model="applicationForm.displayNameJa" placeholder="显示名称（ja）" />
           </div>
           <div class="col-md-6">
-            <BFormInput v-model="applicationForm.displayNameZhs" placeholder="显示名称（zhs）" />
+            <BFormInput v-model="applicationForm.displayNameChs" placeholder="显示名称（chs）" />
           </div>
           <div class="col-md-6">
-            <BFormInput v-model="applicationForm.displayNameZht" placeholder="显示名称（zht）" />
+            <BFormInput v-model="applicationForm.displayNameCht" placeholder="显示名称（cht）" />
           </div>
         </div>
         <BFormSelect v-model="applicationForm.applicationType" :options="applicationTypeOptions" class="mb-2" />
@@ -128,8 +128,8 @@ const props = defineProps<{
     displayName: string
     displayNameEn: string
     displayNameJa: string
-    displayNameZhs: string
-    displayNameZht: string
+    displayNameChs: string
+    displayNameCht: string
     redirectUris: string
     applicationType: string
     tokenType: string[]
@@ -205,8 +205,8 @@ function applyRecommendedApplicationProtocol() {
     props.applicationForm.displayName = ''
     props.applicationForm.displayNameEn = ''
     props.applicationForm.displayNameJa = ''
-    props.applicationForm.displayNameZhs = ''
-    props.applicationForm.displayNameZht = ''
+    props.applicationForm.displayNameChs = ''
+    props.applicationForm.displayNameCht = ''
     props.applicationForm.tokenType = ['access_token']
     props.applicationForm.enableRefreshToken = false
     props.applicationForm.grantType = ['client_credentials']

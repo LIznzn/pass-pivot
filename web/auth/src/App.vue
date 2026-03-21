@@ -194,7 +194,7 @@ import { normalizeRequestOptions, serializeCredential } from '@shared/api/webaut
 import ToastHost from '@shared/components/ToastHost.vue'
 import { useToast } from '@shared/composables/toast'
 
-type LocaleKey = 'en-US' | 'ja-JP' | 'zh-CN'
+type LocaleKey = 'en' | 'ja' | 'chs' | 'cht'
 type AuthStage = 'login' | 'account' | 'confirmation' | 'mfa'
 
 type TranslationShape = {
@@ -241,7 +241,7 @@ type TranslationShape = {
 }
 
 const translations: Record<LocaleKey, TranslationShape> = {
-  'en-US': {
+  en: {
     productTagline: 'Secure authorization workspace',
     language: 'Language',
     securityLabel: 'Authorization',
@@ -321,7 +321,7 @@ const translations: Record<LocaleKey, TranslationShape> = {
       'webauthn challenge expired': 'The passkey challenge has expired.'
     }
   },
-  'zh-CN': {
+  chs: {
     productTagline: '安全授权工作台',
     language: '语言',
     securityLabel: '授权流程',
@@ -401,7 +401,87 @@ const translations: Record<LocaleKey, TranslationShape> = {
       'webauthn challenge expired': '通行密钥挑战已过期。'
     }
   },
-  'ja-JP': {
+  cht: {
+    productTagline: '安全授權工作台',
+    language: '語言',
+    securityLabel: '授權流程',
+    stageTitles: {
+      login: (appName: string) => `登入到 ${appName}`,
+      account: () => '選擇帳號',
+      confirmation: () => '裝置信任',
+      mfa: () => '多因素驗證'
+    },
+    stageHints: {
+      login: '使用你的 Pass Pivot 帳號完成身份驗證。',
+      account: '目前已存在登入工作階段，請確認是否繼續使用該帳號。',
+      confirmation: '選擇是否將目前瀏覽器加入可信裝置。',
+      mfa: '為目前工作階段選擇一種可用的驗證方式。'
+    },
+    accountTitle: '目前已登入帳號',
+    continueAsCurrentAccount: '使用目前帳號繼續登入',
+    logoutAndSwitchAccount: '退出目前帳號並切換登入',
+    identifier: '帳號',
+    identifierPlaceholder: '請輸入帳號',
+    password: '密碼',
+    passwordPlaceholder: '請輸入密碼',
+    signIn: '登入',
+    or: '或',
+    continueWithProvider: (providerName: string) => `使用 ${providerName} 繼續`,
+    signInWithPasskey: '使用通行密鑰登入',
+    confirmationTitle: '是否將目前瀏覽器加入可信裝置？',
+    confirmationItems: {
+      trustedDevice: '加入可信後，後續在此瀏覽器登入可跳過 MFA。',
+      futureSkip: '僅建議在你本人長期使用的瀏覽器上啟用。',
+      continueWithoutTrust: '你也可以不加入可信裝置，直接繼續本次登入。'
+    },
+    confirmTrustDevice: '加入可信裝置並繼續',
+    confirmContinueWithoutTrust: '不加入可信裝置，繼續登入',
+    verificationMethod: '驗證方式',
+    verificationCode: '驗證碼',
+    verificationCodePlaceholder: '請輸入驗證碼',
+    verifyAndContinue: '驗證並繼續',
+    sendVerificationCode: '發送驗證碼',
+    useSecurityKey: '使用安全密鑰',
+    securedBy: '由 PassPivot 提供安全防護',
+    tos: '服務條款',
+    privacyPolicy: '隱私政策',
+    developedBy: (appName: string, organizationName: string) => `${appName} 由 ${organizationName} 開發`,
+    challengeSent: '驗證碼已發送。',
+    challengeSentWithDemoCode: (code: string) => `驗證碼已生成，示範碼：${code}`,
+    passkeyRequiresIdentifier: '請先輸入帳號，再使用通行密鑰登入。',
+    mfaMethodLabels: {
+      totp: '身份驗證器（TOTP）',
+      email_code: '郵箱驗證碼',
+      sms_code: '手機驗證碼',
+      recovery_code: '備用驗證碼',
+      u2f: '安全密鑰',
+      webauthn: '通行密鑰'
+    },
+    errorFallback: '請求暫時無法完成。',
+    errorTranslations: {
+      'authn.invalid_credentials': '帳號或密碼不正確。',
+      'authn.user_inactive': '目前帳號未處於可登入狀態。',
+      'authn.organization_disabled': '目前組織已被停用。',
+      'authn.application_disabled': '目前應用已被停用。',
+      'authn.application_access_denied': '目前帳號未被分配到目標應用。',
+      'authn.session_state_invalid': '目前工作階段已不再等待兩步驗證。',
+      'authn.mfa_code_invalid': '驗證碼不正確。',
+      'authn.mfa_challenge_expired': '驗證碼挑戰已過期。',
+      'authn.mfa_challenge_not_found': '未找到有效的驗證碼挑戰。',
+      'authn.webauthn_login_disabled': '目前帳號未啟用通行密鑰登入。',
+      'authn.webauthn_challenge_not_found': '未找到通行密鑰挑戰。',
+      'authn.webauthn_challenge_expired': '通行密鑰挑戰已過期。',
+      'authn.external_idp_identity_unbound': '該外部身份尚未綁定到現有帳號。',
+      'invalid JSON body': '請求體格式不正確。',
+      'invalid credentials': '帳號或密碼不正確。',
+      'invalid TOTP code': '驗證碼不正確。',
+      'invalid challenge code': '驗證碼不正確。',
+      'invalid recovery code': '備用驗證碼不正確。',
+      'webauthn challenge not found': '未找到通行密鑰挑戰。',
+      'webauthn challenge expired': '通行密鑰挑戰已過期。'
+    }
+  },
+  ja: {
     productTagline: 'セキュア認可ワークスペース',
     language: '言語',
     securityLabel: '認可フロー',
@@ -472,9 +552,10 @@ const translations: Record<LocaleKey, TranslationShape> = {
 }
 
 const localeOptions = [
-  { value: 'en-US', label: 'English' },
-  { value: 'ja-JP', label: '日本語' },
-  { value: 'zh-CN', label: '简体中文' }
+  { value: 'en', label: 'English' },
+  { value: 'ja', label: '日本語' },
+  { value: 'chs', label: '简体中文' },
+  { value: 'cht', label: '繁體中文' }
 ] as const
 
 const toast = useToast()
@@ -492,11 +573,13 @@ const supportsSessionU2F = Boolean(bootstrap.api.sessionU2fBegin && bootstrap.ap
 const supportsEmailChallenge = Boolean(bootstrap.api.mfaChallenge)
 const termsOfServiceUrl = computed(() => String(bootstrap.target.termsOfServiceUrl || '').trim())
 const privacyPolicyUrl = computed(() => String(bootstrap.target.privacyPolicyUrl || '').trim())
-const organizationDisplayName = computed(() =>
-  String(bootstrap.target.displayName || bootstrap.target.organizationName || '').trim()
-)
+const organizationDisplayName = computed(() => {
+  const localized = bootstrap.target.organizationDisplayNames?.[toLocaleShortKey(locale.value)]
+  const fallbackDisplayName = bootstrap.target.organizationDisplayNames?.default
+  return localized || fallbackDisplayName || bootstrap.target.displayName || bootstrap.target.organizationName || ''
+})
 const applicationName = computed(() => {
-  const localized = bootstrap.target.applicationDisplayNames?.[toApplicationLocaleKey(locale.value)]
+  const localized = bootstrap.target.applicationDisplayNames?.[toLocaleShortKey(locale.value)]
   const fallbackDisplayName = bootstrap.target.applicationDisplayNames?.default
   return localized || fallbackDisplayName || bootstrap.target.applicationName || 'Pass Pivot'
 })
@@ -546,18 +629,17 @@ watch(
 
 function resolveInitialLocale(): LocaleKey {
   if (typeof navigator === 'undefined') {
-    return 'en-US'
+    return 'en'
   }
   const candidate = (navigator.language || 'en-US').toLowerCase()
-  if (candidate.startsWith('ja')) return 'ja-JP'
-  if (candidate.startsWith('zh')) return 'zh-CN'
-  return 'en-US'
+  if (candidate.startsWith('ja')) return 'ja'
+  if (candidate.startsWith('zh-hant') || candidate.startsWith('zh-tw') || candidate.startsWith('zh-hk') || candidate.startsWith('zh-mo')) return 'cht'
+  if (candidate.startsWith('zh')) return 'chs'
+  return 'en'
 }
 
-function toApplicationLocaleKey(locale: LocaleKey): 'en' | 'ja' | 'zhs' {
-  if (locale === 'ja-JP') return 'ja'
-  if (locale === 'zh-CN') return 'zhs'
-  return 'en'
+function toLocaleShortKey(locale: LocaleKey): 'en' | 'ja' | 'chs' | 'cht' {
+  return locale
 }
 
 function localizeError(input?: string): string {

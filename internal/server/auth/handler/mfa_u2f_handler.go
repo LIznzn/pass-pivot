@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	sharedauthn "pass-pivot/internal/server/shared/authn"
 	authnapi "pass-pivot/internal/server/shared/authnapi"
@@ -13,6 +14,16 @@ import (
 
 type MFAU2FHandler struct {
 	service u2fAssertionService
+}
+
+func resolveSessionReference(r *http.Request, explicit string) string {
+	if value := strings.TrimSpace(explicit); value != "" {
+		return value
+	}
+	if value := strings.TrimSpace(sharedhandler.ReadPendingLoginChallengeCookie(r)); value != "" {
+		return value
+	}
+	return sharedhandler.ReadPortalSessionCookie(r)
 }
 
 type u2fAssertionService interface {
@@ -32,10 +43,7 @@ func (h *MFAU2FHandler) BeginAssertion(w http.ResponseWriter, r *http.Request) {
 		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
 		return
 	}
-	sessionID := payload.SessionID
-	if sessionID == "" {
-		sessionID = sharedhandler.ReadPortalSessionCookie(r)
-	}
+	sessionID := resolveSessionReference(r, payload.SessionID)
 	challengeID, options, err := h.service.BeginU2FAssertion(r.Context(), sessionID)
 	if err != nil {
 		authnapi.WriteKnown(w, err)
@@ -59,6 +67,12 @@ func (h *MFAU2FHandler) FinishAssertion(w http.ResponseWriter, r *http.Request) 
 		authnapi.WriteKnown(w, err)
 		return
 	}
-	sharedhandler.WritePortalSessionCookie(w, r, result.Session.ID)
+	if result.NextStep == "done" {
+		sharedhandler.ClearPendingLoginChallengeCookie(w, r)
+		sharedhandler.WritePortalSessionCookie(w, r, result.Session.ID)
+	} else {
+		sharedhandler.ClearPortalSessionCookie(w, r)
+		sharedhandler.WritePendingLoginChallengeCookie(w, r, result.Session.LoginChallenge)
+	}
 	sharedweb.JSON(w, http.StatusOK, result)
 }

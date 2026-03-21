@@ -423,6 +423,23 @@ func (h *Handler) DeleteUserSecureKey(w http.ResponseWriter, r *http.Request) {
 	sharedweb.JSON(w, http.StatusOK, map[string]any{"deleted": true})
 }
 
+func (h *Handler) UpdateUserSecureKey(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		UserID       string `json:"userId"`
+		CredentialID string `json:"credentialId"`
+		Identifier   string `json:"identifier"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if err := h.service.UpdateUserSecureKey(r.Context(), payload.UserID, payload.CredentialID, payload.Identifier); err != nil {
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"updated": true})
+}
+
 func (h *Handler) BeginUserSecureKeyRegistration(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		UserID  string `json:"userId"`

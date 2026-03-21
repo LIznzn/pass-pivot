@@ -696,6 +696,33 @@ body {
   padding: 12px 14px;
 }
 
+.login-setting-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid #edf0f2;
+}
+
+.login-setting-name {
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.login-card-title {
+  margin-bottom: 0.75rem;
+}
+
+.login-setting-row:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.login-setting-row:last-child {
+  padding-bottom: 0;
+}
+
 .record-card-active {
   border-color: rgba(13, 110, 253, 0.5);
   box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.12);

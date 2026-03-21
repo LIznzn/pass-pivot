@@ -47,9 +47,10 @@ request.interceptors.response.use(
     if (error.response?.status === 401 && !config.skipUnauthorizedRedirect) {
       redirectToPortalLogin()
     }
-    const message = typeof error.response?.data === 'string'
-      ? error.response.data
-      : error.message
+    const responseData = error.response?.data as { message?: string; code?: string } | string | undefined
+    const message = typeof responseData === 'string'
+      ? responseData
+      : responseData?.message || error.message
     return Promise.reject(new Error(message))
   }
 )

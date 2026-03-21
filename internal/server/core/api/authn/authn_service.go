@@ -276,7 +276,21 @@ func (s *AuthnService) evaluateMFALoginRequirement(ctx context.Context, user mod
 	if err != nil {
 		return false, "", err
 	}
-	methods := make([]string, 0, 4)
+	mfaRequired := settings.MFAPolicy.RequireForAllUsers
+	if !mfaRequired {
+		var enabledCount int64
+		if err := s.db.WithContext(ctx).Model(&model.MFAEnrollment{}).
+			Where("user_id = ? AND method = ? AND status = ? AND deleted_at IS NULL", user.ID, "mfa", "active").
+			Count(&enabledCount).Error; err != nil {
+			return false, "", err
+		}
+		mfaRequired = enabledCount > 0
+	}
+	if !mfaRequired {
+		return false, "", nil
+	}
+	primaryMethods := make([]string, 0, 5)
+	hasRecoveryCode := false
 
 	if settings.MFAPolicy.AllowU2F {
 		var u2fCount int64
@@ -292,7 +306,7 @@ func (s *AuthnService) evaluateMFALoginRequirement(ctx context.Context, user mod
 			return false, "", err
 		}
 		if u2fCount > 0 && u2fEnrollmentCount > 0 {
-			methods = append(methods, "u2f")
+			primaryMethods = append(primaryMethods, "u2f")
 		}
 	}
 
@@ -304,7 +318,7 @@ func (s *AuthnService) evaluateMFALoginRequirement(ctx context.Context, user mod
 			return false, "", err
 		}
 		if webauthnEnrollmentCount > 0 {
-			methods = append(methods, "webauthn")
+			primaryMethods = append(primaryMethods, "webauthn")
 		}
 	}
 
@@ -316,7 +330,7 @@ func (s *AuthnService) evaluateMFALoginRequirement(ctx context.Context, user mod
 			return false, "", err
 		}
 		if totpCount > 0 {
-			methods = append(methods, "totp")
+			primaryMethods = append(primaryMethods, "totp")
 		}
 	}
 
@@ -328,7 +342,7 @@ func (s *AuthnService) evaluateMFALoginRequirement(ctx context.Context, user mod
 			return false, "", err
 		}
 		if recoveryCount > 0 {
-			methods = append(methods, "recovery_code")
+			hasRecoveryCode = true
 		}
 	}
 
@@ -338,27 +352,30 @@ func (s *AuthnService) evaluateMFALoginRequirement(ctx context.Context, user mod
 		strings.TrimSpace(settings.MFAPolicy.EmailChannel.From) != "" &&
 		strings.TrimSpace(settings.MFAPolicy.EmailChannel.Host) != "" &&
 		settings.MFAPolicy.EmailChannel.Port > 0 {
-		methods = append(methods, "email_code")
+		primaryMethods = append(primaryMethods, "email_code")
 	}
 
 	if settings.MFAPolicy.AllowSmsCode && strings.TrimSpace(user.PhoneNumber) != "" {
-		methods = append(methods, "sms_code")
+		primaryMethods = append(primaryMethods, "sms_code")
 	}
 
-	if len(methods) == 0 {
+	if len(primaryMethods) == 0 {
 		return false, "", nil
 	}
-	return true, methods[0], nil
+	if hasRecoveryCode {
+		primaryMethods = append(primaryMethods, "recovery_code")
+	}
+	return true, primaryMethods[0], nil
 }
 
 func (s *AuthnService) ConfirmSession(ctx context.Context, sessionID string, accept bool, trustDevice bool) (*sharedauthn.LoginResult, error) {
-	var session model.Session
-	if err := s.db.WithContext(ctx).First(&session, "id = ?", sessionID).Error; err != nil {
+	session, err := s.findSessionByReference(ctx, sessionID)
+	if err != nil {
 		return nil, err
 	}
 	if !accept {
 		session.State = "rejected"
-		if err := s.db.WithContext(ctx).Save(&session).Error; err != nil {
+		if err := s.db.WithContext(ctx).Save(session).Error; err != nil {
 			return nil, err
 		}
 		return nil, errors.New("confirmation rejected")
@@ -374,29 +391,29 @@ func (s *AuthnService) ConfirmSession(ctx context.Context, sessionID string, acc
 	} else {
 		session.State = "authenticated"
 	}
-	if err := s.db.WithContext(ctx).Save(&session).Error; err != nil {
+	if err := s.db.WithContext(ctx).Save(session).Error; err != nil {
 		return nil, err
 	}
 	if session.RequiresMFA {
-		return &sharedauthn.LoginResult{Session: session, NextStep: "mfa"}, nil
+		return &sharedauthn.LoginResult{Session: *session, NextStep: "mfa"}, nil
 	}
 	var user model.User
 	if err := s.db.WithContext(ctx).First(&user, "id = ?", session.UserID).Error; err != nil {
 		return nil, err
 	}
-	s.recordLoginSucceeded(ctx, session, user.ID, session.IPAddress, session.UserAgent, map[string]any{
+	s.recordLoginSucceeded(ctx, *session, user.ID, session.IPAddress, session.UserAgent, map[string]any{
 		"trustedDevice": trustDevice,
 	})
-	tokens, err := s.issueTokens(ctx, user, session, "openid profile email phone")
+	tokens, err := s.issueTokens(ctx, user, *session, "openid profile email phone")
 	if err != nil {
 		return nil, err
 	}
-	return &sharedauthn.LoginResult{Session: session, NextStep: "done", Tokens: tokens}, nil
+	return &sharedauthn.LoginResult{Session: *session, NextStep: "done", Tokens: tokens}, nil
 }
 
 func (s *AuthnService) VerifyMFA(ctx context.Context, sessionID, method, code string, trustDevice bool) (*sharedauthn.LoginResult, error) {
-	var session model.Session
-	if err := s.db.WithContext(ctx).First(&session, "id = ?", sessionID).Error; err != nil {
+	session, err := s.findSessionByReference(ctx, sessionID)
+	if err != nil {
 		return nil, err
 	}
 	if session.State != "mfa_required" && session.State != "confirmation_required" {
@@ -410,16 +427,16 @@ func (s *AuthnService) VerifyMFA(ctx context.Context, sessionID, method, code st
 	case "u2f", "webauthn":
 		return nil, errors.New("use WebAuthn completion endpoint for webauthn/u2f verification")
 	default:
-		if err := s.mfa.Verify(ctx, sessionID, method, code); err != nil {
+		if err := s.mfa.Verify(ctx, session.ID, method, code); err != nil {
 			return nil, err
 		}
 	}
-	return s.completeMFASession(ctx, user, &session, method, trustDevice)
+	return s.completeMFASession(ctx, user, session, method, trustDevice)
 }
 
 func (s *AuthnService) CompleteWebAuthnMFA(ctx context.Context, sessionID, method string, trustDevice bool) (*sharedauthn.LoginResult, error) {
-	var session model.Session
-	if err := s.db.WithContext(ctx).First(&session, "id = ?", sessionID).Error; err != nil {
+	session, err := s.findSessionByReference(ctx, sessionID)
+	if err != nil {
 		return nil, err
 	}
 	if session.State != "mfa_required" && session.State != "confirmation_required" {
@@ -429,7 +446,7 @@ func (s *AuthnService) CompleteWebAuthnMFA(ctx context.Context, sessionID, metho
 	if err := s.db.WithContext(ctx).First(&user, "id = ?", session.UserID).Error; err != nil {
 		return nil, err
 	}
-	return s.completeMFASession(ctx, user, &session, method, trustDevice)
+	return s.completeMFASession(ctx, user, session, method, trustDevice)
 }
 
 func (s *AuthnService) completeMFASession(ctx context.Context, user model.User, session *model.Session, method string, trustDevice bool) (*sharedauthn.LoginResult, error) {
@@ -576,18 +593,39 @@ func (s *AuthnService) fingerprintForDevice(device *model.Device) (string, error
 }
 
 func (s *AuthnService) RequestMFAChallenge(ctx context.Context, sessionID, method string) (*model.MFAChallenge, string, error) {
-	return s.mfa.CreateDeliveryChallenge(ctx, sessionID, method)
+	session, err := s.findSessionByReference(ctx, sessionID)
+	if err != nil {
+		return nil, "", err
+	}
+	return s.mfa.CreateDeliveryChallenge(ctx, session.ID, method)
 }
 
 func (s *AuthnService) userIDFromSession(ctx context.Context, sessionID string) (string, error) {
 	if sessionID == "" {
 		return "", errors.New("sessionId is required")
 	}
-	var session model.Session
-	if err := s.db.WithContext(ctx).First(&session, "id = ?", sessionID).Error; err != nil {
+	session, err := s.findSessionByReference(ctx, sessionID)
+	if err != nil {
 		return "", err
 	}
 	return session.UserID, nil
+}
+
+func (s *AuthnService) findSessionByReference(ctx context.Context, sessionRef string) (*model.Session, error) {
+	ref := strings.TrimSpace(sessionRef)
+	if ref == "" {
+		return nil, errors.New("session is required")
+	}
+	var session model.Session
+	if err := s.db.WithContext(ctx).First(&session, "id = ?", ref).Error; err == nil {
+		return &session, nil
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	if err := s.db.WithContext(ctx).Where("login_challenge = ?", ref).First(&session).Error; err != nil {
+		return nil, err
+	}
+	return &session, nil
 }
 
 func (s *AuthnService) EnrollTOTP(ctx context.Context, userID, applicationID string) (*authservice.TOTPEnrollmentResult, error) {
@@ -624,6 +662,18 @@ func (s *AuthnService) GenerateCurrentUserRecoveryCodes(ctx context.Context, ses
 		return nil, err
 	}
 	return s.GenerateRecoveryCodes(ctx, userID)
+}
+
+func (s *AuthnService) QueryRecoveryCodes(ctx context.Context, userID string) ([]string, error) {
+	return s.mfa.QueryRecoveryCodes(ctx, userID)
+}
+
+func (s *AuthnService) QueryCurrentUserRecoveryCodes(ctx context.Context, sessionID string) ([]string, error) {
+	userID, err := s.userIDFromSession(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	return s.QueryRecoveryCodes(ctx, userID)
 }
 
 func (s *AuthnService) CanManageUser(ctx context.Context, roleNames []string, userID string) (bool, error) {

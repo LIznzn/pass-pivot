@@ -4,6 +4,7 @@ type OAuthBootstrapTarget = {
   organizationId: string
   organizationName: string
   displayName: string
+  organizationDisplayNames: Record<string, string>
   websiteUrl: string
   termsOfServiceUrl: string
   privacyPolicyUrl: string

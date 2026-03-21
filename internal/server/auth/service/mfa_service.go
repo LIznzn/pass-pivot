@@ -200,18 +200,36 @@ func (s *MFAService) GenerateRecoveryCodes(ctx context.Context, userID string) (
 	_ = s.db.WithContext(ctx).Where("user_id = ?", user.ID).Delete(&model.MFARecoveryCode{}).Error
 	codes := sharedauthn.RecoveryCodes()
 	for _, code := range codes {
-		hash, err := util.HashSecret(code)
-		if err != nil {
-			return nil, err
-		}
 		entry := model.MFARecoveryCode{
 			UserID:         user.ID,
 			OrganizationID: user.OrganizationID,
-			CodeHash:       hash,
+			Code:           code,
 		}
 		if err := s.db.WithContext(ctx).Create(&entry).Error; err != nil {
 			return nil, err
 		}
+	}
+	return codes, nil
+}
+
+func (s *MFAService) QueryRecoveryCodes(ctx context.Context, userID string) ([]string, error) {
+	var user model.User
+	if err := s.db.WithContext(ctx).First(&user, "id = ?", userID).Error; err != nil {
+		return nil, err
+	}
+	var records []model.MFARecoveryCode
+	if err := s.db.WithContext(ctx).
+		Where("user_id = ? AND consumed_at IS NULL AND deleted_at IS NULL", user.ID).
+		Order("created_at asc").
+		Find(&records).Error; err != nil {
+		return nil, err
+	}
+	codes := make([]string, 0, len(records))
+	for _, item := range records {
+		if strings.TrimSpace(item.Code) == "" {
+			continue
+		}
+		codes = append(codes, item.Code)
 	}
 	return codes, nil
 }
@@ -355,7 +373,7 @@ func (s *MFAService) Verify(ctx context.Context, sessionID, method, code string)
 			return err
 		}
 		for _, item := range codes {
-			if util.CheckSecret(item.CodeHash, code) {
+			if strings.TrimSpace(item.Code) == code || (strings.TrimSpace(item.Code) == "" && util.CheckSecret(item.CodeHash, code)) {
 				now := time.Now()
 				return s.db.WithContext(ctx).Model(&item).Update("consumed_at", &now).Error
 			}

@@ -6,8 +6,8 @@ const (
 	ApplicationMetadataDisplayName     = "displayName"
 	ApplicationMetadataDisplayNameEN   = "displayName.en"
 	ApplicationMetadataDisplayNameJA   = "displayName.ja"
-	ApplicationMetadataDisplayNameZHS  = "displayName.zhs"
-	ApplicationMetadataDisplayNameZHT  = "displayName.zht"
+	ApplicationMetadataDisplayNameCHS  = "displayName.chs"
+	ApplicationMetadataDisplayNameCHT  = "displayName.cht"
 )
 
 func defaultApplicationMetadata() map[string]string {
@@ -15,8 +15,8 @@ func defaultApplicationMetadata() map[string]string {
 		ApplicationMetadataDisplayName:    "",
 		ApplicationMetadataDisplayNameEN:  "",
 		ApplicationMetadataDisplayNameJA:  "",
-		ApplicationMetadataDisplayNameZHS: "",
-		ApplicationMetadataDisplayNameZHT: "",
+		ApplicationMetadataDisplayNameCHS: "",
+		ApplicationMetadataDisplayNameCHT: "",
 	}
 }
 
@@ -43,8 +43,8 @@ func BuildApplicationDisplayNameMap(metadata map[string]string) map[string]strin
 		"default": ApplicationDisplayNameForLocale(normalized, "", ""),
 		"en":      ApplicationDisplayNameForLocale(normalized, "en", ""),
 		"ja":      ApplicationDisplayNameForLocale(normalized, "ja", ""),
-		"zhs":     ApplicationDisplayNameForLocale(normalized, "zhs", ""),
-		"zht":     ApplicationDisplayNameForLocale(normalized, "zht", ""),
+		"chs":     ApplicationDisplayNameForLocale(normalized, "chs", ""),
+		"cht":     ApplicationDisplayNameForLocale(normalized, "cht", ""),
 	}
 }
 
@@ -59,12 +59,12 @@ func ApplicationDisplayNameForLocale(metadata map[string]string, locale string, 
 		if value := strings.TrimSpace(normalized[ApplicationMetadataDisplayNameJA]); value != "" {
 			return value
 		}
-	case "zhs", "zh-CN":
-		if value := strings.TrimSpace(normalized[ApplicationMetadataDisplayNameZHS]); value != "" {
+	case "chs":
+		if value := strings.TrimSpace(normalized[ApplicationMetadataDisplayNameCHS]); value != "" {
 			return value
 		}
-	case "zht", "zh-TW", "zh-HK":
-		if value := strings.TrimSpace(normalized[ApplicationMetadataDisplayNameZHT]); value != "" {
+	case "cht":
+		if value := strings.TrimSpace(normalized[ApplicationMetadataDisplayNameCHT]); value != "" {
 			return value
 		}
 	}

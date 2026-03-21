@@ -54,9 +54,14 @@ func upsertCredentialEnrollment(ctx context.Context, db *gorm.DB, user model.Use
 		}
 		return db.WithContext(ctx).Create(&enrollment).Error
 	}
-	updates := map[string]any{"label": label, "method": targetMethod}
-	if !enabled {
-		updates["status"] = "disabled"
+	status := "disabled"
+	if enabled {
+		status = "active"
+	}
+	updates := map[string]any{
+		"label":  label,
+		"method": targetMethod,
+		"status": status,
 	}
 	return db.WithContext(ctx).Model(&enrollment).Updates(updates).Error
 }

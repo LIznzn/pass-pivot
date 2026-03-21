@@ -51,7 +51,21 @@ func (s *OIDCService) AvailableMFAMethodsForSession(ctx context.Context, session
 	if err != nil {
 		return nil, err
 	}
-	methods := make([]string, 0, 5)
+	mfaRequired := settings.MFAPolicy.RequireForAllUsers
+	if !mfaRequired {
+		var enabledCount int64
+		if err := s.db.WithContext(ctx).Model(&model.MFAEnrollment{}).
+			Where("user_id = ? AND method = ? AND status = ? AND deleted_at IS NULL", user.ID, "mfa", "active").
+			Count(&enabledCount).Error; err != nil {
+			return nil, err
+		}
+		mfaRequired = enabledCount > 0
+	}
+	if !mfaRequired {
+		return []string{}, nil
+	}
+	primaryMethods := make([]string, 0, 5)
+	hasRecoveryCode := false
 
 	if settings.MFAPolicy.AllowU2F {
 		var u2fCount int64
@@ -67,7 +81,7 @@ func (s *OIDCService) AvailableMFAMethodsForSession(ctx context.Context, session
 			return nil, err
 		}
 		if u2fCount > 0 && u2fEnrollmentCount > 0 {
-			methods = append(methods, "u2f")
+			primaryMethods = append(primaryMethods, "u2f")
 		}
 	}
 
@@ -79,7 +93,7 @@ func (s *OIDCService) AvailableMFAMethodsForSession(ctx context.Context, session
 			return nil, err
 		}
 		if totpCount > 0 {
-			methods = append(methods, "totp")
+			primaryMethods = append(primaryMethods, "totp")
 		}
 	}
 
@@ -89,11 +103,11 @@ func (s *OIDCService) AvailableMFAMethodsForSession(ctx context.Context, session
 		strings.TrimSpace(settings.MFAPolicy.EmailChannel.From) != "" &&
 		strings.TrimSpace(settings.MFAPolicy.EmailChannel.Host) != "" &&
 		settings.MFAPolicy.EmailChannel.Port > 0 {
-		methods = append(methods, "email_code")
+		primaryMethods = append(primaryMethods, "email_code")
 	}
 
 	if settings.MFAPolicy.AllowSmsCode && strings.TrimSpace(user.PhoneNumber) != "" {
-		methods = append(methods, "sms_code")
+		primaryMethods = append(primaryMethods, "sms_code")
 	}
 
 	if settings.MFAPolicy.AllowRecoveryCode {
@@ -104,11 +118,17 @@ func (s *OIDCService) AvailableMFAMethodsForSession(ctx context.Context, session
 			return nil, err
 		}
 		if recoveryCount > 0 {
-			methods = append(methods, "recovery_code")
+			hasRecoveryCode = true
 		}
 	}
 
-	return methods, nil
+	if len(primaryMethods) == 0 {
+		return []string{}, nil
+	}
+	if hasRecoveryCode {
+		primaryMethods = append(primaryMethods, "recovery_code")
+	}
+	return primaryMethods, nil
 }
 
 type AuthorizeInput struct {

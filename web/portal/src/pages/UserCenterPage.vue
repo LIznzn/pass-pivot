@@ -17,8 +17,8 @@
 
       <div class="row g-4">
         <aside class="col-lg-3">
-          <div class="portal-nav-card">
-            <button v-for="section in sections" :key="section.id" type="button" class="portal-nav-link" @click="scrollTo(section.id)">
+          <div class="console-module-sidebar">
+            <button v-for="section in sections" :key="section.id" type="button" class="console-module-sidebar-link" @click="scrollTo(section.id)">
               {{ section.label }}
             </button>
           </div>
@@ -58,7 +58,30 @@
               <div class="row g-3">
                 <div class="col-lg-6">
                   <div class="detail-card h-100">
-                    <div class="record-meta mb-3">密码登录：{{ detail?.passwordCredential ? '已启用' : '未配置' }}</div>
+                    <div class="login-card-title">登录方式</div>
+                    <div class="login-toggle-list">
+                      <div class="login-setting-row">
+                        <div>
+                          <div class="login-setting-name">密码登录</div>
+                          <div class="record-meta">{{ detail?.passwordCredential ? '已启用' : '未配置' }}</div>
+                        </div>
+                        <span class="record-meta">{{ detail?.passwordCredential ? '当前账号已设置密码' : '当前账号尚未设置密码' }}</span>
+                      </div>
+                      <div class="login-setting-row">
+                        <div>
+                          <div class="login-setting-name">通行密钥登录</div>
+                          <div class="record-meta">{{ webauthnLoginEnabled ? '已启用' : '未启用' }}</div>
+                        </div>
+                        <BButton size="sm" :variant="webauthnLoginEnabled ? 'outline-danger' : 'outline-primary'" @click="toggleWebAuthnLogin(!webauthnLoginEnabled)">
+                          {{ webauthnLoginEnabled ? '关闭' : '开启' }}
+                        </BButton>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-lg-6">
+                  <div class="detail-card h-100">
+                    <div class="login-card-title">密码修改</div>
                     <BForm @submit.prevent="savePassword">
                       <BFormInput v-model="passwordForm.currentPassword" type="password" placeholder="当前密码" class="mb-2" />
                       <BFormInput v-model="passwordForm.newPassword" type="password" placeholder="新密码" class="mb-3" />
@@ -66,24 +89,14 @@
                     </BForm>
                   </div>
                 </div>
-                <div class="col-lg-6">
-                  <div class="detail-card h-100">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                      <div class="record-meta mb-0">通行密钥：{{ loginSecureKeys.length }} · {{ webauthnLoginEnabled ? '已启用登录' : '已关闭登录' }}</div>
-                      <div class="d-flex gap-2">
-                        <BButton size="sm" :variant="webauthnLoginEnabled ? 'outline-danger' : 'outline-secondary'" :disabled="!loginSecureKeys.length" @click="toggleWebAuthnLogin(!webauthnLoginEnabled)">
-                          {{ webauthnLoginEnabled ? '关闭登录' : '启用登录' }}
-                        </BButton>
-                        <BButton size="sm" variant="outline-primary" @click="registerSecureKey('webauthn')">注册通行密钥</BButton>
-                      </div>
-                    </div>
-                    <div v-if="!loginSecureKeys.length" class="record-meta">当前没有通行密钥，注册后才可启用通行密钥登录。</div>
-                    <div v-for="secureKey in loginSecureKeys" :key="secureKey.id" class="record-row">
+                <div class="col-12">
+                  <div class="detail-card">
+                    <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
                       <div>
-                        <strong>{{ secureKey.identifier || '通行密钥' }}</strong>
-                        <div class="record-meta small-break">{{ secureKey.publicKeyId }}</div>
+                        <div class="login-card-title mb-1">密钥管理</div>
+                        <div class="record-meta">{{ allSecureKeys.length ? `当前账号已绑定 ${allSecureKeys.length} 把密钥，可查看每把密钥支持的能力。` : '当前账号还没有绑定密钥。' }}</div>
                       </div>
-                      <BButton size="sm" variant="outline-danger" @click="deleteSecureKey(secureKey.id)">删除</BButton>
+                      <BButton size="sm" variant="outline-primary" @click="openKeyModal">管理密钥</BButton>
                     </div>
                   </div>
                 </div>
@@ -128,25 +141,41 @@
             </div>
 
             <div id="profile-mfa" class="info-card">
-              <div class="section-title">两步验证</div>
-              <div class="record-list">
-                <div v-for="item in mfaRows" :key="item.id" class="record-row">
+              <div class="section-title">多因素验证</div>
+              <div class="record-card mb-3">
+                <div class="mfa-summary-row">
                   <div>
-                    <strong>{{ item.label }}</strong>
-                    <div class="record-meta">{{ item.summary }}</div>
+                    <strong>启用多因素验证</strong>
+                    <div class="record-meta">{{ mfaSummaryText }}</div>
                   </div>
                   <div class="d-flex gap-2">
-                    <BButton
-                      v-if="item.id === 'email_code' || item.id === 'sms_code'"
-                      size="sm"
-                      :variant="item.enabled ? 'outline-danger' : 'outline-primary'"
-                      @click="toggleSimpleMFA(item.id, !item.enabled)"
-                    >
-                      {{ item.enabled ? '关闭' : '开启' }}
+                    <BButton v-if="mfaEnabled" size="sm" variant="outline-primary" @click="openMFAModal('recovery_code')">查看备用验证码</BButton>
+                    <BButton size="sm" :variant="mfaEnabled ? 'outline-danger' : 'outline-primary'" @click="toggleMFAEnabled(!mfaEnabled)">
+                      {{ mfaEnabled ? '关闭' : '开启' }}
                     </BButton>
-                    <BButton v-else size="sm" variant="outline-primary" @click="openMFAModal(item.id)">
-                      {{ item.enabled ? '配置' : '开启' }}
-                    </BButton>
+                  </div>
+                </div>
+              </div>
+              <div v-if="mfaEnabled" class="record-list">
+                <div v-for="item in mfaRows" :key="item.id" class="record-card">
+                  <div class="mfa-summary-row">
+                    <div>
+                      <strong>{{ item.label }}</strong>
+                      <div class="record-meta">{{ item.summary }}</div>
+                    </div>
+                    <div class="d-flex gap-2">
+                      <BButton
+                        v-if="item.id === 'email_code' || item.id === 'sms_code' || item.id === 'u2f'"
+                        size="sm"
+                        :variant="item.enabled ? 'outline-danger' : 'outline-primary'"
+                        @click="toggleSimpleMFA(item.id, !item.enabled)"
+                      >
+                        {{ item.enabled ? '关闭' : '开启' }}
+                      </BButton>
+                      <BButton v-else size="sm" variant="outline-primary" @click="openMFAModal(item.id)">
+                        配置
+                      </BButton>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -154,10 +183,10 @@
 
             <div id="profile-device" class="info-card">
               <div class="section-title">会话管理</div>
-              <div v-if="!(detail?.devices?.length ?? 0)" class="detail-card">
+              <div v-if="!deviceRows.length" class="detail-card">
                 <div class="record-meta">当前没有设备记录。</div>
               </div>
-              <div v-for="device in detail?.devices || []" :key="device.id" class="record-card mb-2">
+              <div v-for="device in deviceRows" :key="device.id" class="record-card mb-2">
                 <div class="record-head">
                   <strong>{{ device.label }}</strong>
                   <div class="d-flex align-items-center gap-2">
@@ -198,25 +227,13 @@
       </template>
 
       <template v-else-if="mfaModalType === 'u2f'">
-        <div class="record-meta mb-3">安全密钥与通行密钥共用同一套 WebAuthn 凭据。</div>
-        <div class="record-meta mb-3">当前已注册 {{ u2fSecureKeys.length }} 把安全密钥。</div>
-        <div v-for="secureKey in u2fSecureKeys" :key="secureKey.id" class="record-row mb-2">
-          <div>
-            <strong>{{ secureKey.identifier || '安全密钥' }}</strong>
-            <div class="record-meta small-break">{{ secureKey.publicKeyId }}</div>
-          </div>
-          <div class="d-flex align-items-center gap-2">
-            <code>{{ formatDateTime(secureKey.createdAt) }}</code>
-            <BButton size="sm" variant="outline-danger" @click="deleteSecureKey(secureKey.id)">删除</BButton>
-          </div>
-        </div>
-        <div v-if="!u2fSecureKeys.length" class="record-meta mb-3">当前没有已注册的安全密钥。</div>
-        <BButton variant="outline-primary" @click="registerSecureKey('u2f')">新增安全密钥</BButton>
+        <div class="record-meta mb-3">安全密钥的注册与删除已迁移到“登录设置 > 密钥管理”。</div>
       </template>
 
       <template v-else-if="mfaModalType === 'recovery_code'">
         <div class="record-meta mb-2">剩余有效码：{{ detail?.recoverySummary?.available ?? 0 }}</div>
         <div class="record-meta mb-3">上次生成时间：{{ formatDateTime(detail?.recoverySummary?.lastGeneratedAt) }}</div>
+        <div class="record-meta mb-3">当前有效备用验证码：{{ recoveryCodes.length ? `共 ${recoveryCodes.length} 个` : '暂无' }}</div>
         <div v-if="recoveryCodes.length" class="portal-code-grid mb-3">
           <code v-for="code in recoveryCodes" :key="code">{{ code }}</code>
         </div>
@@ -227,11 +244,40 @@
         <BButton variant="outline-secondary" @click="showMFAModal = false">关闭</BButton>
       </template>
     </BModal>
+
+    <BModal v-model="showKeyModal" title="密钥管理" size="lg" centered>
+      <div class="d-flex gap-2 flex-wrap mb-3">
+        <BButton size="sm" variant="outline-primary" @click="registerSecureKey('webauthn')">注册为通行密钥（WebAuthn）</BButton>
+        <BButton size="sm" variant="outline-secondary" @click="registerSecureKey('u2f')">注册为安全密钥（U2F）</BButton>
+      </div>
+      <div v-if="!allSecureKeys.length" class="record-meta">当前没有已注册的密钥。</div>
+      <div v-for="secureKey in allSecureKeys" :key="secureKey.id" class="record-card mb-2">
+        <div class="record-head">
+          <div>
+            <BFormInput
+              v-model="keyNameDrafts[secureKey.id]"
+              placeholder="密钥名称"
+              class="mb-2"
+            />
+            <div class="record-meta">{{ keyCapabilityLabel(secureKey) }}</div>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <BButton size="sm" variant="outline-primary" @click="updateSecureKey(secureKey.id, keyNameDrafts[secureKey.id] || '')">保存名称</BButton>
+            <BButton size="sm" variant="outline-danger" @click="deleteSecureKey(secureKey.id)">删除密钥</BButton>
+          </div>
+        </div>
+        <div class="record-meta small-break">{{ secureKey.publicKeyId }}</div>
+        <div class="record-meta mt-2">注册时间：{{ formatDateTime(secureKey.createdAt) }}</div>
+      </div>
+      <template #footer>
+        <BButton variant="outline-secondary" @click="showKeyModal = false">关闭</BButton>
+      </template>
+    </BModal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import {
   BButton,
   BForm,
@@ -243,6 +289,7 @@ import QRCode from 'qrcode'
 import { normalizeCreationOptions, serializeCredential } from '@shared/api/webauthn'
 import ToastHost from '@shared/components/ToastHost.vue'
 import { useToast } from '@shared/composables/toast'
+import { formatDateTime as formatSharedDateTime } from '@shared/utils/datetime'
 import { apiPost } from '../api/client'
 import { startPortalLogout } from '../auth'
 
@@ -259,7 +306,7 @@ type DetailData = {
   bindings: Array<{ id: string; providerName: string; externalIdpId: string; issuer: string; subject: string; createdAt: string }>
   externalIdps: Array<{ id: string; name: string; issuer: string }>
   mfaEnrollments: Array<{ id: string; method: string; label: string; target: string; status: string; lastUsedAt?: string }>
-  devices: Array<{ id: string; label: string; online: boolean; trusted: boolean; ipAddress: string; ipLocation?: string; firstLoginAt?: string; lastLoginAt?: string; fingerprint?: string }>
+  devices: Array<{ id: string; userAgent?: string; online: boolean; trusted: boolean; lastLoginIp?: string; ipLocation?: string; firstLoginAt?: string; lastLoginAt?: string; deviceFingerprint?: string }>
   recoverySummary: { available: number; lastGeneratedAt?: string }
 }
 
@@ -293,6 +340,7 @@ const bindingForm = reactive({
   subject: ''
 })
 const showMFAModal = ref(false)
+const showKeyModal = ref(false)
 const mfaModalType = ref<'totp' | 'u2f' | 'recovery_code' | ''>('')
 const totpEnrollment = reactive({
   enrollmentId: '',
@@ -302,20 +350,35 @@ const totpEnrollment = reactive({
 const totpCode = ref('')
 const totpQRCode = ref('')
 const recoveryCodes = ref<string[]>([])
+const keyNameDrafts = reactive<Record<string, string>>({})
 
 const sections = [
   { id: 'profile-basic', label: '基本信息' },
   { id: 'profile-login', label: '登录设置' },
   { id: 'profile-binding', label: '账号绑定' },
-  { id: 'profile-mfa', label: '两步验证' },
+  { id: 'profile-mfa', label: '多因素验证' },
   { id: 'profile-device', label: '会话管理' }
 ]
 
 const activeTotpEnrollment = computed(() => detail.value?.mfaEnrollments.find((item) => item.method === 'totp' && item.status === 'active') ?? null)
+const mfaEnrollment = computed(() => detail.value?.mfaEnrollments.find((item) => item.method === 'mfa' && item.status === 'active') ?? null)
 const webauthnEnrollment = computed(() => detail.value?.mfaEnrollments.find((item) => item.method === 'webauthn') ?? null)
 const loginSecureKeys = computed(() => (detail.value?.secureKeys ?? []).filter((item) => item.webauthnEnable))
 const u2fSecureKeys = computed(() => (detail.value?.secureKeys ?? []).filter((item) => item.u2fEnable))
+const allSecureKeys = computed(() => detail.value?.secureKeys ?? [])
+const deviceRows = computed(() => (detail.value?.devices ?? []).map((device) => ({
+  id: device.id,
+  label: inferDeviceName(device.userAgent),
+  online: Boolean(device.online),
+  trusted: Boolean(device.trusted),
+  ipAddress: device.lastLoginIp || '',
+  ipLocation: device.ipLocation || '',
+  firstLoginAt: device.firstLoginAt,
+  lastLoginAt: device.lastLoginAt,
+  fingerprint: device.deviceFingerprint || ''
+})))
 const webauthnLoginEnabled = computed(() => webauthnEnrollment.value?.status === 'active' && loginSecureKeys.value.length > 0)
+const mfaEnabled = computed(() => Boolean(mfaEnrollment.value))
 const mfaRows = computed(() => {
   const enrollments = detail.value?.mfaEnrollments ?? []
   const u2fEnabled = enrollments.some((item) => item.method === 'u2f' && item.status === 'active') && u2fSecureKeys.value.length > 0
@@ -326,16 +389,37 @@ const mfaRows = computed(() => {
     { id: 'email_code', label: '邮箱验证码', enabled: emailEnabled, summary: emailEnabled ? `目标：${profile.email || '未配置邮箱'}` : '使用邮箱接收验证码' },
     { id: 'sms_code', label: '手机验证码', enabled: smsEnabled, summary: smsEnabled ? `目标：${profile.phoneNumber || '未配置手机'}` : '使用手机接收验证码' },
     { id: 'totp', label: '身份验证器（TOTP）', enabled: totpEnabled, summary: totpEnabled ? '已配置身份验证器' : '使用身份验证器 App 生成动态验证码' },
-    { id: 'u2f', label: '安全密钥', enabled: u2fEnabled, summary: u2fEnabled ? `已登记 ${u2fSecureKeys.value.length} 把安全密钥` : '使用 WebAuthn 安全密钥进行验证' },
-    { id: 'recovery_code', label: '备用验证码', enabled: (detail.value?.recoverySummary?.available ?? 0) > 0, summary: `剩余可用 ${detail.value?.recoverySummary?.available ?? 0} 个` }
+    { id: 'u2f', label: '安全密钥', enabled: u2fEnabled, summary: u2fSecureKeys.value.length ? `已登记 ${u2fSecureKeys.value.length} 把安全密钥` : '当前没有可用于安全密钥验证的密钥' }
   ]
+})
+const configuredPrimaryMfaCount = computed(() => mfaRows.value.filter((item) => item.enabled).length)
+const recoveryCodeCount = computed(() => detail.value?.recoverySummary?.available ?? 0)
+const mfaSummaryText = computed(() => {
+  if (!mfaEnabled.value) {
+    return '开启后可配置主验证方式，并自动准备备用验证码。'
+  }
+  if (configuredPrimaryMfaCount.value === 0) {
+    return `已生成 ${recoveryCodeCount.value} 个备用验证码，但尚未配置其他验证方式；当前登录不会触发多因素验证。`
+  }
+  return `已配置 ${configuredPrimaryMfaCount.value} 种主验证方式，备用验证码剩余 ${recoveryCodeCount.value} 个。`
 })
 const mfaModalTitle = computed(() => {
   if (mfaModalType.value === 'totp') return '身份验证器（TOTP）'
   if (mfaModalType.value === 'u2f') return '安全密钥'
   if (mfaModalType.value === 'recovery_code') return '备用验证码'
-  return '两步验证'
+  return '多因素验证'
 })
+
+watch(
+  allSecureKeys,
+  (items) => {
+    Object.keys(keyNameDrafts).forEach((key) => delete keyNameDrafts[key])
+    for (const item of items) {
+      keyNameDrafts[item.id] = item.identifier || ''
+    }
+  },
+  { immediate: true }
+)
 
 async function loadPortalData() {
   try {
@@ -372,7 +456,7 @@ async function savePassword() {
   toast.success('密码已更新')
 }
 
-async function registerSecureKey(purpose: 'webauthn' | 'u2f' = 'webauthn') {
+async function registerSecureKey(purpose: 'webauthn' | 'u2f') {
   const begin = await apiPost<{ challengeId: string; options: any }>('/api/user/v1/securekey/register/begin', { purpose })
   const credential = await navigator.credentials.create({
     publicKey: normalizeCreationOptions(begin.options)
@@ -384,17 +468,27 @@ async function registerSecureKey(purpose: 'webauthn' | 'u2f' = 'webauthn') {
     challengeId: begin.challengeId,
     response: serializeCredential(credential as PublicKeyCredential)
   })
-  toast.success(purpose === 'u2f' ? '安全密钥已注册' : '通行密钥已注册')
+  toast.success(purpose === 'webauthn' ? '通行密钥已注册' : '安全密钥已注册')
   await loadPortalData()
 }
 
 async function deleteSecureKey(credentialId: string) {
   await apiPost('/api/user/v1/securekey/delete', { credentialId })
-  toast.success('通行密钥已删除')
+  toast.success('密钥已删除')
+  await loadPortalData()
+}
+
+async function updateSecureKey(credentialId: string, identifier: string) {
+  await apiPost('/api/user/v1/securekey/update', { credentialId, identifier })
+  toast.success('密钥名称已更新')
   await loadPortalData()
 }
 
 async function toggleWebAuthnLogin(enabled: boolean) {
+  if (enabled && loginSecureKeys.value.length === 0) {
+    openKeyModal()
+    return
+  }
   await apiPost('/api/user/v1/mfa_method/update', { method: 'webauthn', enabled })
   toast.success(enabled ? '已启用通行密钥登录' : '已关闭通行密钥登录')
   await loadPortalData()
@@ -419,12 +513,66 @@ async function deleteBinding(bindingId: string) {
 }
 
 async function toggleSimpleMFA(method: string, enabled: boolean) {
+  if (method === 'u2f' && enabled && u2fSecureKeys.value.length === 0) {
+    openKeyModal()
+    return
+  }
   await apiPost('/api/user/v1/mfa_method/update', { method, enabled })
   toast.success(enabled ? '已开启' : '已关闭')
   await loadPortalData()
 }
 
-function openMFAModal(type: string) {
+async function toggleMFAEnabled(enabled: boolean) {
+  await apiPost('/api/user/v1/mfa_method/update', { method: 'mfa', enabled })
+  if (enabled) {
+    const result = await apiPost<{ codes: string[] }>('/api/user/v1/recovery_code/query', {})
+    recoveryCodes.value = result.codes
+    mfaModalType.value = 'recovery_code'
+    showMFAModal.value = true
+  } else {
+    recoveryCodes.value = []
+  }
+  toast.success(enabled ? '已更新多因素验证主开关，并已准备备用验证码' : '已关闭多因素验证')
+  await loadPortalData()
+}
+
+function openKeyModal() {
+  showKeyModal.value = true
+}
+
+function keyCapabilityLabel(secureKey: DetailData['secureKeys'][number]) {
+  if (secureKey.webauthnEnable && secureKey.u2fEnable) {
+    return '支持通行密钥登录与安全密钥验证'
+  }
+  if (secureKey.webauthnEnable) {
+    return '仅支持通行密钥登录'
+  }
+  if (secureKey.u2fEnable) {
+    return '仅支持安全密钥验证'
+  }
+  return '能力未识别'
+}
+
+function inferDeviceName(userAgent?: string) {
+  const source = String(userAgent || '').trim()
+  if (!source) return '未知设备'
+  const browser = source.includes('Edg/') ? 'Edge'
+    : source.includes('Chrome/') && !source.includes('Edg/') ? 'Chrome'
+    : source.includes('Firefox/') ? 'Firefox'
+    : source.includes('Safari/') && !source.includes('Chrome/') ? 'Safari'
+    : source.includes('MSIE') || source.includes('Trident/') ? 'Internet Explorer'
+    : ''
+  const os = source.includes('Windows NT') ? 'Windows'
+    : source.includes('Mac OS X') || source.includes('Macintosh') ? 'macOS'
+    : source.includes('Android') ? 'Android'
+    : source.includes('iPhone') || source.includes('iPad') || source.includes('iOS') ? 'iOS'
+    : source.includes('Linux') ? 'Linux'
+    : ''
+  if (!browser && !os) return source
+  return browser && os ? `${browser} (${os})` : (browser || os)
+}
+
+async function openMFAModal(type: string) {
   if (type !== 'totp' && type !== 'u2f' && type !== 'recovery_code') {
     return
   }
@@ -438,7 +586,8 @@ function openMFAModal(type: string) {
     totpQRCode.value = ''
   }
   if (type === 'recovery_code') {
-    recoveryCodes.value = []
+    const result = await apiPost<{ codes: string[] }>('/api/user/v1/recovery_code/query', {})
+    recoveryCodes.value = result.codes
   }
 }
 
@@ -487,8 +636,7 @@ async function untrustDevice(deviceId: string) {
 }
 
 function formatDateTime(value?: string) {
-  if (!value) return '-'
-  return new Date(value).toLocaleString()
+  return formatSharedDateTime(value)
 }
 
 function formatIPLine(ipAddress?: string, ipLocation?: string) {
@@ -539,35 +687,12 @@ onMounted(loadPortalData)
   font-size: 0.9rem;
 }
 
-.portal-empty-card,
-.portal-nav-card {
+.portal-empty-card {
   background: #fff;
   border: 1px solid #dee2e6;
   border-radius: 0.75rem;
   padding: 1rem;
   box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.04);
-}
-
-.portal-nav-card {
-  display: grid;
-  gap: 0.35rem;
-  position: sticky;
-  top: 5.5rem;
-}
-
-.portal-nav-link {
-  width: 100%;
-  text-align: left;
-  border: 0;
-  border-radius: 0.65rem;
-  background: transparent;
-  padding: 0.7rem 0.8rem;
-  font-size: 0.95rem;
-  color: #212529;
-}
-
-.portal-nav-link:hover {
-  background: #eef2f7;
 }
 
 .portal-sections {
@@ -582,6 +707,47 @@ onMounted(loadPortalData)
   padding: 0.9rem 1rem;
 }
 
+.login-card-title {
+  font-size: 0.98rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+.login-toggle-list {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.login-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid #edf0f2;
+}
+
+.login-setting-name {
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.login-setting-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.login-setting-row:last-child {
+  padding-bottom: 0;
+}
+
+.mfa-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
 .record-list {
   display: grid;
   gap: 0.75rem;
@@ -592,13 +758,18 @@ onMounted(loadPortalData)
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.75rem 0;
+  padding: 0.9rem 1rem;
   border-top: 1px solid #edf0f2;
 }
 
 .record-row:first-child {
   border-top: 0;
   padding-top: 0;
+}
+
+.record-row-plain {
+  border-top: 0;
+  padding: 0 1rem 0.9rem;
 }
 
 .record-row:last-child {
@@ -640,7 +811,7 @@ onMounted(loadPortalData)
 }
 
 @media (max-width: 991.98px) {
-  .portal-nav-card {
+  .console-module-sidebar {
     position: static;
   }
 }

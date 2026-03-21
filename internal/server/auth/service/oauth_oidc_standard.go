@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"gorm.io/gorm"
 
 	"pass-pivot/internal/model"
 	"pass-pivot/util"
@@ -51,11 +52,17 @@ func (s *OIDCService) ValidateAuthorizationRequest(ctx context.Context, in Stand
 }
 
 func (s *OIDCService) GetSession(ctx context.Context, sessionID string) (*model.Session, error) {
-	if strings.TrimSpace(sessionID) == "" {
+	ref := strings.TrimSpace(sessionID)
+	if ref == "" {
 		return nil, errors.New("session is required")
 	}
 	var session model.Session
-	if err := s.db.WithContext(ctx).First(&session, "id = ?", sessionID).Error; err != nil {
+	if err := s.db.WithContext(ctx).First(&session, "id = ?", ref).Error; err == nil {
+		return &session, nil
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	if err := s.db.WithContext(ctx).Where("login_challenge = ?", ref).First(&session).Error; err != nil {
 		return nil, err
 	}
 	return &session, nil

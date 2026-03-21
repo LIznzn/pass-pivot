@@ -566,8 +566,8 @@ func buildInternalApplicationMetadata(defaultDisplayName, englishDisplayName, ja
 		coreservice.ApplicationMetadataDisplayName:    defaultDisplayName,
 		coreservice.ApplicationMetadataDisplayNameEN:  englishDisplayName,
 		coreservice.ApplicationMetadataDisplayNameJA:  japaneseDisplayName,
-		coreservice.ApplicationMetadataDisplayNameZHS: simplifiedChineseDisplayName,
-		coreservice.ApplicationMetadataDisplayNameZHT: traditionalChineseDisplayName,
+		coreservice.ApplicationMetadataDisplayNameCHS: simplifiedChineseDisplayName,
+		coreservice.ApplicationMetadataDisplayNameCHT: traditionalChineseDisplayName,
 	}, nil)
 }
 
@@ -576,8 +576,8 @@ func buildInternalOrganizationMetadata(displayName, englishDisplayName, japanese
 		coreservice.OrganizationMetadataDisplayName:      displayName,
 		coreservice.OrganizationMetadataDisplayNameEN:    englishDisplayName,
 		coreservice.OrganizationMetadataDisplayNameJA:    japaneseDisplayName,
-		coreservice.OrganizationMetadataDisplayNameZHS:   simplifiedChineseDisplayName,
-		coreservice.OrganizationMetadataDisplayNameZHT:   traditionalChineseDisplayName,
+		coreservice.OrganizationMetadataDisplayNameCHS:   simplifiedChineseDisplayName,
+		coreservice.OrganizationMetadataDisplayNameCHT:   traditionalChineseDisplayName,
 		coreservice.OrganizationMetadataWebsiteURL:       websiteURL,
 		coreservice.OrganizationMetadataTermsOfServiceURL: termsOfServiceURL,
 		coreservice.OrganizationMetadataPrivacyPolicyURL: privacyPolicyURL,

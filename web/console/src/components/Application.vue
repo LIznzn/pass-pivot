@@ -116,7 +116,7 @@
         </div>
         <div v-if="supportsLoginPresentation" id="application-metadata" class="info-card">
           <div class="section-title">维护元信息</div>
-          <div class="record-meta mb-3">这些元信息会作为应用级变量，用于登录页显示名称等展示场景。多语言显示名称建议使用 `displayName`、`displayName.en`、`displayName.ja`、`displayName.zhs`、`displayName.zht`。</div>
+          <div class="record-meta mb-3">这些元信息会作为应用级变量，用于登录页显示名称等展示场景。多语言显示名称建议使用 `displayName`、`displayName.en`、`displayName.ja`、`displayName.chs`、`displayName.cht`。</div>
           <div class="detail-card">
             <div class="metadata-table-wrap">
               <table class="table table-sm align-middle mb-0">
@@ -130,7 +130,7 @@
                 <tbody>
                   <tr v-for="(item, index) in applicationMetadataRows" :key="item.id">
                     <td>
-                      <BFormInput v-model="item.key" placeholder="例如 displayName.zhs" />
+                      <BFormInput v-model="item.key" placeholder="例如 displayName.chs" />
                     </td>
                     <td>
                       <BFormInput v-model="item.value" placeholder="例如 控制台" />
@@ -228,8 +228,8 @@ const props = defineProps<{
     displayName: string
     displayNameEn: string
     displayNameJa: string
-    displayNameZhs: string
-    displayNameZht: string
+    displayNameChs: string
+    displayNameCht: string
     redirectUris: string
     applicationType: string
     grantType: string[]
@@ -324,8 +324,8 @@ function applyRecommendedApplicationProtocol() {
     target.displayName = ''
     target.displayNameEn = ''
     target.displayNameJa = ''
-    target.displayNameZhs = ''
-    target.displayNameZht = ''
+    target.displayNameChs = ''
+    target.displayNameCht = ''
     target.tokenType = ['access_token']
     target.enableRefreshToken = false
     target.grantType = ['client_credentials']

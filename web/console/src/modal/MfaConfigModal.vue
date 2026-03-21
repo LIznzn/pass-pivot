@@ -45,27 +45,16 @@
     </template>
 
     <template v-else-if="method === 'u2f'">
-      <div class="record-meta mb-3">当前已注册 {{ u2fSecureKeys.length }} 个安全密钥。</div>
-      <div v-for="secureKey in u2fSecureKeys" :key="secureKey.id" class="record-row mb-2">
-        <div>
-          <strong>{{ secureKey.identifier || '安全密钥' }}</strong>
-          <div class="record-meta">{{ secureKey.publicKeyId }}</div>
-        </div>
-        <div class="d-flex align-items-center gap-2">
-          <code>{{ formatDateTime(secureKey.createdAt) }}</code>
-          <BButton size="sm" variant="outline-danger" @click="emit('delete-secure-key', secureKey.id)">删除</BButton>
-        </div>
-      </div>
-      <div v-if="!u2fSecureKeys.length" class="record-meta mb-3">当前没有已注册的安全密钥。</div>
+      <div class="record-meta mb-3">安全密钥的注册与删除已迁移到“登录设置 &gt; 密钥管理”。</div>
     </template>
 
     <template v-else-if="method === 'recovery_code'">
       <div class="record-meta mb-2">剩余有效码：{{ userDetail?.recoverySummary?.available ?? 0 }}</div>
       <div class="record-meta mb-3">上次生成时间：{{ formatDateTime(userDetail?.recoverySummary?.lastGeneratedAt) }}</div>
-      <div class="record-meta mb-3">最近生成结果：{{ generatedRecoveryCodeList.length ? '已生成新备用验证码' : '未生成' }}</div>
-      <div v-if="generatedRecoveryCodeList.length" class="detail-card mb-3">
-        <div class="record-meta mb-2">请立即保存以下备用验证码，这些明文只会在生成后显示一次。</div>
-        <div v-for="code in generatedRecoveryCodeList" :key="code" class="record-row">
+      <div class="record-meta mb-3">当前有效备用验证码：{{ recoveryCodeList.length ? `共 ${recoveryCodeList.length} 个` : '暂无' }}</div>
+      <div v-if="recoveryCodeList.length" class="detail-card mb-3">
+        <div class="record-meta mb-2">以下为当前有效的备用验证码，请妥善保管。</div>
+        <div v-for="code in recoveryCodeList" :key="code" class="record-row">
           <code>{{ code }}</code>
         </div>
       </div>
@@ -97,7 +86,7 @@ const props = defineProps<{
   mfaSettingForm: { emailEnabled: string; smsEnabled: string }
   u2fSecureKeys: any[]
   userDetail: any
-  generatedRecoveryCodeList: string[]
+  recoveryCodeList: string[]
 }>()
 
 const console = useConsoleStore()
@@ -114,12 +103,11 @@ const currentTitle = computed(() => {
   if (props.method === 'sms_code') return '手机验证码'
   if (props.method === 'u2f') return '安全密钥'
   if (props.method === 'recovery_code') return '备用验证码'
-  return '两步验证设置'
+  return '多因素验证设置'
 })
 
 const currentActionLabel = computed(() => {
   if (props.method === 'totp') return '激活身份验证器'
-  if (props.method === 'u2f') return '注册安全密钥'
   if (props.method === 'recovery_code') return '生成备用验证码'
   return '保存设置'
 })

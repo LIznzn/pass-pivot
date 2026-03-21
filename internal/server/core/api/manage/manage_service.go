@@ -11,6 +11,7 @@ import (
 
 	"pass-pivot/internal/config"
 	"pass-pivot/internal/model"
+	sharedauthn "pass-pivot/internal/server/shared/authn"
 	coreservice "pass-pivot/internal/server/core/service"
 	sharedfido "pass-pivot/internal/server/shared/fido"
 	sharedhandler "pass-pivot/internal/server/shared/handler"
@@ -309,6 +310,7 @@ func (s *Service) GetLoginTarget(ctx context.Context, applicationID string) (*co
 		OrganizationID:   organization.ID,
 		OrganizationName: organization.Name,
 		DisplayName:      organization.Metadata[coreservice.OrganizationMetadataDisplayName],
+		OrganizationDisplayNames: coreservice.BuildOrganizationDisplayNameMap(organization.Metadata),
 		WebsiteURL:       organization.Metadata[coreservice.OrganizationMetadataWebsiteURL],
 		TermsOfServiceURL: organization.Metadata[coreservice.OrganizationMetadataTermsOfServiceURL],
 		PrivacyPolicyURL: organization.Metadata[coreservice.OrganizationMetadataPrivacyPolicyURL],
@@ -1891,7 +1893,7 @@ func (s *Service) SetUserMFAMethod(ctx context.Context, userID, method string, e
 	if userID == "" {
 		return errors.New("userId is required")
 	}
-	if method != "email_code" && method != "sms_code" && method != "webauthn" {
+	if method != "email_code" && method != "sms_code" && method != "webauthn" && method != "u2f" && method != "mfa" {
 		return errors.New("unsupported method")
 	}
 	var user model.User
@@ -1915,51 +1917,90 @@ func (s *Service) SetUserMFAMethod(ctx context.Context, userID, method string, e
 			return err
 		}
 		if enabled && count == 0 {
-			return errors.New("securekey is required before enabling webauthn")
+			return errors.New("passkey credential is required before enabling webauthn")
 		}
 	}
+	if method == "u2f" {
+		label = "安全密钥"
+		target = ""
+		var count int64
+		if err := s.db.WithContext(ctx).
+			Model(&model.SecureKey{}).
+			Where("user_id = ? AND u2f_enable = ? AND deleted_at IS NULL", user.ID, true).
+			Count(&count).Error; err != nil {
+			return err
+		}
+		if enabled && count == 0 {
+			return errors.New("securekey is required before enabling u2f")
+		}
+	}
+	if method == "mfa" {
+		label = "两步验证"
+		target = ""
+	}
 	if enabled && target == "" {
-		if method != "webauthn" {
+		if method != "webauthn" && method != "u2f" && method != "mfa" {
 			return errors.New("target is required before enabling method")
 		}
 	}
 
-	var enrollment model.MFAEnrollment
-	err := s.db.WithContext(ctx).
-		Where("user_id = ? AND method = ?", user.ID, method).
-		Order("created_at desc").
-		First(&enrollment).Error
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var enrollment model.MFAEnrollment
+		err := tx.
+			Where("user_id = ? AND method = ?", user.ID, method).
+			Order("created_at desc").
+			First(&enrollment).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			status := "disabled"
+			if enabled {
+				status = "active"
+			}
+			enrollment = model.MFAEnrollment{
+				OrganizationID: user.OrganizationID,
+				UserID:         user.ID,
+				Method:         method,
+				Label:          label,
+				Target:         target,
+				Status:         status,
+			}
+			if err := tx.Create(&enrollment).Error; err != nil {
+				return err
+			}
+		} else {
+			status := "disabled"
+			if enabled {
+				status = "active"
+			}
+			if err := tx.Model(&enrollment).Updates(map[string]any{
+				"method": method,
+				"label":  label,
+				"target": target,
+				"status": status,
+			}).Error; err != nil {
+				return err
+			}
+		}
+		if method == "mfa" && enabled {
+			return s.ensureUserRecoveryCodesWithDB(ctx, tx, user)
+		}
+		if method == "mfa" && !enabled {
+			if err := tx.
+				Where("user_id = ? AND method IN ?", user.ID, []string{"mfa", "totp", "email_code", "sms_code", "u2f"}).
+				Delete(&model.MFAEnrollment{}).Error; err != nil {
+				return err
+			}
+			if err := tx.
+				Where("user_id = ?", user.ID).
+				Delete(&model.MFARecoveryCode{}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
 		return err
-	}
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		if !enabled {
-			return nil
-		}
-		enrollment = model.MFAEnrollment{
-			OrganizationID: user.OrganizationID,
-			UserID:         user.ID,
-			Method:         method,
-			Label:          label,
-			Target:         target,
-			Status:         "active",
-		}
-		if err := s.db.WithContext(ctx).Create(&enrollment).Error; err != nil {
-			return err
-		}
-	} else {
-		status := "disabled"
-		if enabled {
-			status = "active"
-		}
-		if err := s.db.WithContext(ctx).Model(&enrollment).Updates(map[string]any{
-			"method": method,
-			"label":  label,
-			"target": target,
-			"status": status,
-		}).Error; err != nil {
-			return err
-		}
 	}
 
 	result := "disabled"
@@ -1978,6 +2019,59 @@ func (s *Service) SetUserMFAMethod(ctx context.Context, userID, method string, e
 			"status": result,
 		},
 	})
+}
+
+func (s *Service) ensureUserRecoveryCodes(ctx context.Context, user model.User) error {
+	return s.ensureUserRecoveryCodesWithDB(ctx, s.db, user)
+}
+
+func (s *Service) ensureUserRecoveryCodesWithDB(ctx context.Context, db *gorm.DB, user model.User) error {
+	var available int64
+	if err := db.WithContext(ctx).Model(&model.MFARecoveryCode{}).
+		Where("user_id = ? AND consumed_at IS NULL AND deleted_at IS NULL AND code <> ''", user.ID).
+		Count(&available).Error; err != nil {
+		return err
+	}
+	if available > 0 {
+		return nil
+	}
+	codes := sharedauthn.RecoveryCodes()
+	_ = db.WithContext(ctx).Where("user_id = ?", user.ID).Delete(&model.MFARecoveryCode{}).Error
+	for _, code := range codes {
+		entry := model.MFARecoveryCode{
+			UserID:         user.ID,
+			OrganizationID: user.OrganizationID,
+			Code:           code,
+		}
+		if err := db.WithContext(ctx).Create(&entry).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Service) QueryUserRecoveryCodes(ctx context.Context, userID string) ([]string, error) {
+	if userID == "" {
+		return nil, errors.New("userId is required")
+	}
+	if _, err := s.loadUserForManagement(ctx, userID); err != nil {
+		return nil, err
+	}
+	var codes []model.MFARecoveryCode
+	if err := s.db.WithContext(ctx).
+		Where("user_id = ? AND consumed_at IS NULL AND deleted_at IS NULL", userID).
+		Order("created_at asc").
+		Find(&codes).Error; err != nil {
+		return nil, err
+	}
+	items := make([]string, 0, len(codes))
+	for _, item := range codes {
+		if strings.TrimSpace(item.Code) == "" {
+			continue
+		}
+		items = append(items, item.Code)
+	}
+	return items, nil
 }
 
 func (s *Service) DeleteUserMFAEnrollments(ctx context.Context, userID, method string) error {
@@ -2032,6 +2126,53 @@ func (s *Service) DeleteUserSecureKey(ctx context.Context, userID, credentialID 
 		TargetID:   credentialID,
 		Detail: map[string]any{
 			"userId": userID,
+		},
+	})
+}
+
+func (s *Service) updateSecureKeyIdentifier(ctx context.Context, userID, credentialID, identifier string) (string, error) {
+	if userID == "" || credentialID == "" {
+		return "", errors.New("userId and credentialId are required")
+	}
+	trimmedIdentifier := strings.TrimSpace(identifier)
+	if trimmedIdentifier == "" {
+		return "", errors.New("identifier is required")
+	}
+	if len(trimmedIdentifier) > 128 {
+		return "", errors.New("identifier is too long")
+	}
+	result := s.db.WithContext(ctx).
+		Model(&model.SecureKey{}).
+		Where("id = ? AND user_id = ?", credentialID, userID).
+		Update("identifier", trimmedIdentifier)
+	if result.Error != nil {
+		return "", result.Error
+	}
+	if result.RowsAffected == 0 {
+		return "", errors.New("securekey not found")
+	}
+	return trimmedIdentifier, nil
+}
+
+func (s *Service) UpdateUserSecureKey(ctx context.Context, userID, credentialID, identifier string) error {
+	user, err := s.loadUserForManagement(ctx, userID)
+	if err != nil {
+		return err
+	}
+	trimmedIdentifier, err := s.updateSecureKeyIdentifier(ctx, userID, credentialID, identifier)
+	if err != nil {
+		return err
+	}
+	return s.audit.Record(ctx, coreservice.AuditEvent{
+		OrganizationID: user.OrganizationID,
+		ActorType:      "admin",
+		EventType:      "user.securekey.updated",
+		Result:         "success",
+		TargetType:     "credential",
+		TargetID:       credentialID,
+		Detail: map[string]any{
+			"userId":     userID,
+			"identifier": trimmedIdentifier,
 		},
 	})
 }
@@ -2327,6 +2468,38 @@ func (s *Service) DeleteCurrentUserSecureKey(ctx context.Context, sessionID, cre
 		return err
 	}
 	return s.DeleteUserSecureKey(ctx, user.ID, credentialID)
+}
+
+func (s *Service) UpdateCurrentUserSecureKey(ctx context.Context, sessionID, credentialID, identifier string) error {
+	session, user, err := s.loadSessionUser(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	trimmedIdentifier, err := s.updateSecureKeyIdentifier(ctx, user.ID, credentialID, identifier)
+	if err != nil {
+		return err
+	}
+	return s.audit.Record(ctx, coreservice.AuditEvent{
+		OrganizationID: user.OrganizationID,
+		ApplicationID:  session.ApplicationID,
+		ActorType:      "user",
+		EventType:      "user.securekey.updated",
+		Result:         "success",
+		TargetType:     "credential",
+		TargetID:       credentialID,
+		Detail: map[string]any{
+			"userId":     user.ID,
+			"identifier": trimmedIdentifier,
+		},
+	})
+}
+
+func (s *Service) QueryCurrentUserRecoveryCodes(ctx context.Context, sessionID string) ([]string, error) {
+	_, user, err := s.loadSessionUser(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	return s.QueryUserRecoveryCodes(ctx, user.ID)
 }
 
 func (s *Service) UpdateCurrentUserPassword(ctx context.Context, sessionID, currentPassword, newPassword string) error {

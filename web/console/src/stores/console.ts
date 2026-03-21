@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import router from '../router'
 import { startConsoleLogout } from '../api/auth'
 import { requestPost } from '../util/request'
+import { formatDateTime as formatSharedDateTime } from '@shared/utils/datetime'
 
 export type ConsoleTab = 'dashboard' | 'organization' | 'project' | 'user' | 'role' | 'audit' | 'setting'
 
@@ -123,10 +124,7 @@ export const useConsoleStore = defineStore('console', () => {
   }
 
   function formatDateTime(value?: string) {
-    if (!value) {
-      return '-'
-    }
-    return new Date(value).toLocaleString()
+    return formatSharedDateTime(value)
   }
 
   async function copyMetricValue(value: string) {

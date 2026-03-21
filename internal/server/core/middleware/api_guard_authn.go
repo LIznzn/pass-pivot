@@ -58,7 +58,6 @@ func handleAccessTokenClientAuthentication(platform AccessTokenAuthenticator, re
 
 func handlePrivateKeyJWTClientAuthentication(oidc PrivateKeyJWTAuthenticator, requirement apiAccessRequirement, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sharedhandler.SanitizeInternalForwardHeaders(r)
 		clientID := strings.TrimSpace(r.Header.Get("X-PPVT-Client-ID"))
 		assertionType := strings.TrimSpace(r.Header.Get("X-PPVT-Client-Assertion-Type"))
 		assertion := strings.TrimSpace(r.Header.Get("X-PPVT-Client-Assertion"))

@@ -28,7 +28,7 @@ export function deleteExternalIdentityBinding(userId: string, bindingId: string)
   return requestPost('/api/manage/v1/external_identity_binding/delete', { userId, bindingId })
 }
 
-export function beginRegisterSecureKey(userId: string, purpose: 'webauthn' | 'u2f') {
+export function beginRegisterSecureKey(userId: string, purpose?: 'webauthn' | 'u2f') {
   return requestPost<{ challengeId: string; options: any }>('/api/manage/v1/user/securekey/register/begin', { userId, purpose })
 }
 
@@ -38,6 +38,10 @@ export function finishRegisterSecureKey(challengeId: string, response: unknown) 
 
 export function deleteSecureKey(userId: string, credentialId: string) {
   return requestPost('/api/manage/v1/user/securekey/delete', { userId, credentialId })
+}
+
+export function updateSecureKey(userId: string, credentialId: string, identifier: string) {
+  return requestPost('/api/manage/v1/user/securekey/update', { userId, credentialId, identifier })
 }
 
 export function enrollUserTotp(userId: string, applicationId: string) {
@@ -58,6 +62,10 @@ export function updateUserMfaMethod(userId: string, method: string, enabled: boo
 
 export function generateUserRecoveryCodes(userId: string) {
   return requestPost('/api/manage/v1/user/recovery_code/generate', { userId })
+}
+
+export function queryUserRecoveryCodes(userId: string) {
+  return requestPost<{ codes: string[] }>('/api/manage/v1/user/recovery_code/query', { userId })
 }
 
 export function resetUserPassword(userId: string, password: string) {

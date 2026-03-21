@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/go-webauthn/webauthn/protocol"
+	"github.com/go-webauthn/webauthn/webauthn"
 
 	"pass-pivot/internal/model"
 )
@@ -21,12 +22,47 @@ func (s *Service) BeginRegistration(ctx context.Context, userID, purpose string)
 	if err != nil {
 		return "", nil, err
 	}
-	options, sessionData, err := wa.BeginRegistration(webUser)
+	if purpose == "" {
+		purpose = "auto"
+	}
+	registrationOptions := []webauthn.RegistrationOption{}
+	switch purpose {
+	case "auto":
+		registrationOptions = append(
+			registrationOptions,
+			webauthn.WithExtensions(map[string]any{"credProps": true}),
+			webauthn.WithAuthenticatorSelection(protocol.AuthenticatorSelection{
+				AuthenticatorAttachment: protocol.CrossPlatform,
+				ResidentKey:             protocol.ResidentKeyRequirementPreferred,
+				RequireResidentKey:      protocol.ResidentKeyNotRequired(),
+				UserVerification:        protocol.VerificationPreferred,
+			}),
+		)
+	case "webauthn":
+		registrationOptions = append(
+			registrationOptions,
+			webauthn.WithExtensions(map[string]any{"credProps": true}),
+			webauthn.WithAuthenticatorSelection(protocol.AuthenticatorSelection{
+				ResidentKey:        protocol.ResidentKeyRequirementRequired,
+				RequireResidentKey: protocol.ResidentKeyRequired(),
+				UserVerification:   protocol.VerificationRequired,
+			}),
+		)
+	case "u2f":
+		registrationOptions = append(
+			registrationOptions,
+			webauthn.WithExtensions(map[string]any{"credProps": true}),
+			webauthn.WithAuthenticatorSelection(protocol.AuthenticatorSelection{
+				AuthenticatorAttachment: protocol.CrossPlatform,
+				ResidentKey:             protocol.ResidentKeyRequirementDiscouraged,
+				RequireResidentKey: protocol.ResidentKeyNotRequired(),
+				UserVerification:   protocol.VerificationDiscouraged,
+			}),
+		)
+	}
+	options, sessionData, err := wa.BeginRegistration(webUser, registrationOptions...)
 	if err != nil {
 		return "", nil, err
-	}
-	if purpose == "" {
-		purpose = "webauthn"
 	}
 	return s.storeWebAuthnSession(ctx, user.OrganizationID, user.ID, "", "registration:"+purpose, sessionData, options)
 }
@@ -60,6 +96,7 @@ func (s *Service) FinishRegistration(ctx context.Context, challengeID string, pa
 		return err
 	}
 	registrationPurpose := strings.TrimPrefix(record.FlowType, "registration:")
+	isDiscoverable := registrationPurpose == "webauthn" || isDiscoverableCredential(parsedResponse.ClientExtensionResults)
 	entry := model.SecureKey{
 		OrganizationID: user.OrganizationID,
 		UserID:         user.ID,
@@ -68,8 +105,8 @@ func (s *Service) FinishRegistration(ctx context.Context, challengeID string, pa
 		PublicKey:      base64.RawURLEncoding.EncodeToString(credential.PublicKey),
 		PublicKeyID:    base64.RawURLEncoding.EncodeToString(credential.ID),
 		SignCount:      credential.Authenticator.SignCount,
-		WebAuthnEnable: registrationPurpose == "webauthn",
-		U2FEnable:      registrationPurpose == "webauthn" || registrationPurpose == "u2f",
+		WebAuthnEnable: isDiscoverable,
+		U2FEnable:      true,
 		BackupEligible: credential.Flags.BackupEligible,
 		BackupState:    credential.Flags.BackupState,
 		Transports:     transportString(credential.Transport),
@@ -92,4 +129,20 @@ func (s *Service) FinishRegistration(ctx context.Context, challengeID string, pa
 		}
 	}
 	return nil
+}
+
+func isDiscoverableCredential(outputs protocol.AuthenticationExtensionsClientOutputs) bool {
+	if len(outputs) == 0 {
+		return false
+	}
+	credProps, ok := outputs["credProps"]
+	if !ok {
+		return false
+	}
+	values, ok := credProps.(map[string]any)
+	if !ok {
+		return false
+	}
+	residentKey, ok := values["rk"].(bool)
+	return ok && residentKey
 }

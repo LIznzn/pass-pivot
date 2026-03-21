@@ -13,6 +13,7 @@ import {
   enableUser as apiEnableUser,
   finishRegisterSecureKey as apiFinishRegisterSecureKey,
   generateUserRecoveryCodes as apiGenerateUserRecoveryCodes,
+  queryUserRecoveryCodes as apiQueryUserRecoveryCodes,
   queryUserDetail as apiQueryUserDetail,
   queryUsers as apiQueryUsers,
   resetUserPassword as apiResetUserPassword,
@@ -21,6 +22,7 @@ import {
   rotateUserToken as apiRotateUserToken,
   untrustUserDevice as apiUntrustUserDevice,
   updateUser as apiUpdateUser,
+  updateSecureKey as apiUpdateSecureKey,
   updateUserMfaMethod as apiUpdateUserMfaMethod,
   verifyUserTotp as apiVerifyUserTotp
 } from '../api/manage/user'
@@ -174,7 +176,7 @@ export const useUserStore = defineStore('user', () => {
     return response
   }
 
-  async function beginRegisterSecureKey(purpose: 'webauthn' | 'u2f' = 'webauthn') {
+  async function beginRegisterSecureKey(purpose?: 'webauthn' | 'u2f') {
     if (!selectedUserId.value) {
       return null
     }
@@ -201,6 +203,15 @@ export const useUserStore = defineStore('user', () => {
       return null
     }
     const response = await apiDeleteSecureKey(selectedUserId.value, credentialId)
+    await loadUserDetail()
+    return response
+  }
+
+  async function updateSecureKey(credentialId: string, identifier: string) {
+    if (!selectedUserId.value) {
+      return null
+    }
+    const response = await apiUpdateSecureKey(selectedUserId.value, credentialId, identifier)
     await loadUserDetail()
     return response
   }
@@ -239,6 +250,13 @@ export const useUserStore = defineStore('user', () => {
     const recoveryCodes = await apiGenerateUserRecoveryCodes(selectedUserId.value)
     await loadUserDetail()
     return recoveryCodes
+  }
+
+  async function queryRecoveryCodes() {
+    if (!selectedUserId.value) {
+      return null
+    }
+    return apiQueryUserRecoveryCodes(selectedUserId.value)
   }
 
   async function enrollUserTotp(consoleApplicationId: string) {
@@ -338,9 +356,11 @@ export const useUserStore = defineStore('user', () => {
     finishRegisterSecureKey,
     deleteExternalBinding,
     deleteSecureKey,
+    updateSecureKey,
     updateUserMfaMethod,
     deleteUserMfaEnrollment,
     generateRecoveryCodes,
+    queryRecoveryCodes,
     enrollUserTotp,
     verifyUserTotp,
     resetUserPassword,

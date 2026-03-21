@@ -31,6 +31,8 @@ type authorizeUIBootstrap struct {
 	API                authorizeUIAPIConfig      `json:"api"`
 }
 
+const loginChallengeQueryKey = "ppvt_login_challenge"
+
 type authorizeUIMethodOption struct {
 	Value string `json:"value"`
 	Label string `json:"label"`
@@ -160,7 +162,8 @@ func (h *OIDCHandler) AuthorizeChallenge(w http.ResponseWriter, r *http.Request)
 		payload.Method = strings.TrimSpace(r.Form.Get("method"))
 	}
 	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/session/mfa_challenge/create", map[string]any{
-		"method": strings.TrimSpace(payload.Method),
+		"sessionId": resolveLoginSessionRef(r),
+		"method":    strings.TrimSpace(payload.Method),
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -220,7 +223,9 @@ func (h *OIDCHandler) AuthorizeWebAuthnLoginFinish(w http.ResponseWriter, r *htt
 }
 
 func (h *OIDCHandler) AuthorizeSessionU2FBegin(w http.ResponseWriter, r *http.Request) {
-	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/session/u2f/begin", map[string]any{})
+	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/session/u2f/begin", map[string]any{
+		"sessionId": resolveLoginSessionRef(r),
+	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -290,6 +295,7 @@ func (h *OIDCHandler) AuthorizeConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, err := h.callAuthnAPI(w, r, "/api/authn/v1/session/confirm", map[string]any{
+		"sessionId":   resolveLoginSessionRef(r),
 		"accept":      strings.EqualFold(r.Form.Get("accept"), "true"),
 		"trustDevice": strings.EqualFold(r.Form.Get("trustDevice"), "true"),
 	})
@@ -319,6 +325,7 @@ func (h *OIDCHandler) AuthorizeMFA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, err := h.callAuthnAPI(w, r, "/api/authn/v1/session/verify_mfa", map[string]any{
+		"sessionId":   resolveLoginSessionRef(r),
 		"method":      strings.TrimSpace(r.Form.Get("method")),
 		"code":        strings.TrimSpace(r.Form.Get("code")),
 		"trustDevice": false,
@@ -344,14 +351,14 @@ func (h *OIDCHandler) renderAuthorizeInteraction(w http.ResponseWriter, r *http.
 		h.writeAuthorizeErrorPage(w, http.StatusBadRequest, "login target is not available")
 		return
 	}
-	h.writeAuthorizeApp(w, http.StatusOK, buildAuthorizeBootstrap(r, response.Target, response.CurrentUser, response.Stage, response.SecondFactorMethod, response.MFAOptions, bannerError))
+	h.writeAuthorizeApp(w, http.StatusOK, buildAuthorizeBootstrap(r, response.Target, response.CurrentUser, response.Stage, response.SessionRef, response.SecondFactorMethod, response.MFAOptions, bannerError))
 }
 
 func (h *OIDCHandler) queryAuthorizeInteraction(w http.ResponseWriter, r *http.Request) (*authorizeInteractionResponse, error) {
 	in := standardAuthorizeRequestFromHTTP(r)
 	in.SessionID = strings.TrimSpace(r.URL.Query().Get("ppvt_session_id"))
 	if in.SessionID == "" {
-		in.SessionID = sharedhandler.ReadPortalSessionCookie(r)
+		in.SessionID = resolveLoginSessionRef(r)
 	}
 	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/authorize/interaction/query", map[string]any{
 		"sessionId":           in.SessionID,
@@ -413,6 +420,7 @@ func standardAuthorizeRequestFromHTTP(r *http.Request) authservice.StandardAutho
 
 func authorizeURL(r *http.Request) *url.URL {
 	query := r.URL.Query()
+	query.Del(loginChallengeQueryKey)
 	u := &url.URL{Path: "/auth/authorize"}
 	u.RawQuery = query.Encode()
 	return u
@@ -424,6 +432,30 @@ func authorizeURLWithSkipAccount(r *http.Request) *url.URL {
 	query.Set("ppvt_skip_account", "1")
 	u.RawQuery = query.Encode()
 	return u
+}
+
+func resolveLoginSessionRef(r *http.Request) string {
+	if value := strings.TrimSpace(r.URL.Query().Get(loginChallengeQueryKey)); value != "" {
+		return value
+	}
+	if value := strings.TrimSpace(sharedhandler.ReadPortalSessionCookie(r)); value != "" {
+		return value
+	}
+	return strings.TrimSpace(sharedhandler.ReadPendingLoginChallengeCookie(r))
+}
+
+func appendLoginChallenge(rawURL string, challenge string) string {
+	if strings.TrimSpace(challenge) == "" {
+		return rawURL
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	query := parsed.Query()
+	query.Set(loginChallengeQueryKey, challenge)
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
 }
 
 func redirectErrorOrDefault(redirectError, redirectURI, state string) string {
@@ -443,7 +475,7 @@ func redirectErrorOrDefault(redirectError, redirectURI, state string) string {
 	return redirect.String()
 }
 
-func buildAuthorizeBootstrap(r *http.Request, target *coreservice.LoginTarget, currentUser *authorizeCurrentUser, stage, secondFactorMethod string, mfaMethods []string, bannerError string) authorizeUIBootstrap {
+func buildAuthorizeBootstrap(r *http.Request, target *coreservice.LoginTarget, currentUser *authorizeCurrentUser, stage, sessionRef, secondFactorMethod string, mfaMethods []string, bannerError string) authorizeUIBootstrap {
 	title := "登录"
 	switch stage {
 	case "account":
@@ -453,6 +485,7 @@ func buildAuthorizeBootstrap(r *http.Request, target *coreservice.LoginTarget, c
 	case "mfa":
 		title = "多因素认证"
 	}
+	loginChallenge := strings.TrimSpace(sessionRef)
 	return authorizeUIBootstrap{
 		Stage:              stage,
 		Title:              title,
@@ -464,16 +497,16 @@ func buildAuthorizeBootstrap(r *http.Request, target *coreservice.LoginTarget, c
 		LoginAction:        "/auth/headless/login?" + r.URL.RawQuery,
 		AccountAction:      "/auth/headless/account?" + r.URL.RawQuery,
 		SwitchAccountAction: "/auth/headless/account?" + r.URL.RawQuery,
-		ConfirmAction:      "/auth/headless/confirm?" + r.URL.RawQuery,
-		MFAAction:          "/auth/headless/mfa?" + r.URL.RawQuery,
+		ConfirmAction:      appendLoginChallenge("/auth/headless/confirm?"+r.URL.RawQuery, loginChallenge),
+		MFAAction:          appendLoginChallenge("/auth/headless/mfa?"+r.URL.RawQuery, loginChallenge),
 		SecondFactorMethod: strings.TrimSpace(secondFactorMethod),
 		MFAOptions:         buildAuthorizeMFAOptions(mfaMethods),
 		API: authorizeUIAPIConfig{
 			WebAuthnLoginBegin: "/auth/headless/login/webauthn/begin?" + r.URL.RawQuery,
 			WebAuthnLoginEnd:   "/auth/headless/login/webauthn/finish?" + r.URL.RawQuery,
-			SessionU2FBegin:    "/auth/headless/mfa/u2f/begin?" + r.URL.RawQuery,
-			SessionU2FFinish:   "/auth/headless/mfa/u2f/finish?" + r.URL.RawQuery,
-			MFAChallenge:       "/auth/headless/mfa/challenge/generator?" + r.URL.RawQuery,
+			SessionU2FBegin:    appendLoginChallenge("/auth/headless/mfa/u2f/begin?"+r.URL.RawQuery, loginChallenge),
+			SessionU2FFinish:   appendLoginChallenge("/auth/headless/mfa/u2f/finish?"+r.URL.RawQuery, loginChallenge),
+			MFAChallenge:       appendLoginChallenge("/auth/headless/mfa/challenge/generator?"+r.URL.RawQuery, loginChallenge),
 		},
 	}
 }
@@ -511,8 +544,8 @@ func buildAuthorizeAppShell(bootstrap authorizeUIBootstrap) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	html := `<!DOCTYPE html>
-<html lang="zh-CN">
+html := `<!DOCTYPE html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />

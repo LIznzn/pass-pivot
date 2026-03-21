@@ -87,6 +87,7 @@ type LoginTarget struct {
 	OrganizationID    string              `json:"organizationId"`
 	OrganizationName  string              `json:"organizationName"`
 	DisplayName       string              `json:"displayName"`
+	OrganizationDisplayNames map[string]string `json:"organizationDisplayNames"`
 	WebsiteURL        string              `json:"websiteUrl"`
 	TermsOfServiceURL string              `json:"termsOfServiceUrl"`
 	PrivacyPolicyURL  string              `json:"privacyPolicyUrl"`
