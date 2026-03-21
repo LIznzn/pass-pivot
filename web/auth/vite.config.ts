@@ -4,6 +4,7 @@ import path from 'node:path'
 
 export default defineConfig({
   root: path.resolve(__dirname),
+  cacheDir: path.resolve(__dirname, '../node_modules/.vite-auth'),
   plugins: [vue()],
   server: {
     host: '0.0.0.0',

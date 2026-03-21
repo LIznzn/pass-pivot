@@ -4,6 +4,7 @@ import path from 'node:path'
 
 export default defineConfig(({ command }) => ({
   root: path.resolve(__dirname),
+  cacheDir: path.resolve(__dirname, '../node_modules/.vite-console'),
   envPrefix: 'PPVT_CONSOLE_',
   base: command === 'build' ? '/console/' : '/',
   plugins: [

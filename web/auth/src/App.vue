@@ -165,6 +165,14 @@
             <div v-if="challengeFeedback" class="auth-alert auth-alert-muted">
               {{ challengeFeedback }}
             </div>
+
+            <button
+              type="button"
+              class="auth-button auth-button-secondary auth-button-block"
+              @click="cancelLogin"
+            >
+              {{ text.cancelLogin }}
+            </button>
           </form>
         </section>
 
@@ -193,6 +201,7 @@ import { computed, ref, watch } from 'vue'
 import { normalizeRequestOptions, serializeCredential } from '@shared/api/webauthn'
 import ToastHost from '@shared/components/ToastHost.vue'
 import { useToast } from '@shared/composables/toast'
+import { RequestError, requestPost } from './util/request'
 
 type LocaleKey = 'en' | 'ja' | 'chs' | 'cht'
 type AuthStage = 'login' | 'account' | 'confirmation' | 'mfa'
@@ -228,6 +237,7 @@ type TranslationShape = {
   verifyAndContinue: string
   sendVerificationCode: string
   useSecurityKey: string
+  cancelLogin: string
   securedBy: string
   tos: string
   privacyPolicy: string
@@ -282,6 +292,7 @@ const translations: Record<LocaleKey, TranslationShape> = {
     verifyAndContinue: 'Verify and continue',
     sendVerificationCode: 'Send code',
     useSecurityKey: 'Use security key',
+    cancelLogin: 'Cancel sign-in',
     securedBy: 'Secured by PassPivot',
     tos: 'Terms of Service',
     privacyPolicy: 'Privacy Policy',
@@ -362,6 +373,7 @@ const translations: Record<LocaleKey, TranslationShape> = {
     verifyAndContinue: '验证并继续',
     sendVerificationCode: '发送验证码',
     useSecurityKey: '使用安全密钥',
+    cancelLogin: '取消登录',
     securedBy: '由 PassPivot 提供安全防护',
     tos: '服务条款',
     privacyPolicy: '隐私策略',
@@ -442,6 +454,7 @@ const translations: Record<LocaleKey, TranslationShape> = {
     verifyAndContinue: '驗證並繼續',
     sendVerificationCode: '發送驗證碼',
     useSecurityKey: '使用安全密鑰',
+    cancelLogin: '取消登入',
     securedBy: '由 PassPivot 提供安全防護',
     tos: '服務條款',
     privacyPolicy: '隱私政策',
@@ -522,6 +535,7 @@ const translations: Record<LocaleKey, TranslationShape> = {
     verifyAndContinue: '認証して続行',
     sendVerificationCode: '認証コードを送信',
     useSecurityKey: 'セキュリティキーを使用',
+    cancelLogin: 'ログインを取り消す',
     securedBy: 'PassPivot により保護',
     tos: '利用規約',
     privacyPolicy: 'プライバシーポリシー',
@@ -661,40 +675,21 @@ function resolveProviderGlyph(name?: string): string {
   return value.slice(0, 1).toUpperCase()
 }
 
-async function readJSON<T>(response: Response): Promise<T> {
-  const responseText = await response.text()
-  const contentType = response.headers.get('content-type') || ''
-  let parsed: any = null
-
-  if (responseText && contentType.includes('application/json')) {
-    try {
-      parsed = JSON.parse(responseText)
-    } catch {
-      parsed = null
-    }
+function formatRequestError(error: unknown) {
+  if (error instanceof RequestError) {
+    return localizeError(error.code || error.message)
   }
-
-  if (!response.ok) {
-    const code = typeof parsed?.code === 'string' ? parsed.code : ''
-    const message = typeof parsed?.message === 'string' ? parsed.message : responseText
-    throw new Error(localizeError(code || message))
+  if (error instanceof Error) {
+    return localizeError(error.message)
   }
-
-  if (parsed !== null) {
-    return parsed as T
-  }
-  return JSON.parse(responseText) as T
+  return localizeError(String(error))
 }
 
 async function loginWithWebAuthn() {
   try {
-    const begin = await readJSON<{ challengeId: string; options: any }>(
-      await fetch(bootstrap.api.webauthnLoginBegin, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ applicationId: bootstrap.applicationId })
-      })
+    const begin = await requestPost<{ challengeId: string; options: any }>(
+      bootstrap.api.webauthnLoginBegin,
+      { applicationId: bootstrap.applicationId }
     )
     const credential = await navigator.credentials.get({
       publicKey: normalizeRequestOptions(begin.options)
@@ -702,51 +697,39 @@ async function loginWithWebAuthn() {
     if (!credential) {
       return
     }
-    await readJSON(
-      await fetch(bootstrap.api.webauthnLoginEnd, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          challengeId: begin.challengeId,
-          response: serializeCredential(credential as PublicKeyCredential),
-          applicationId: bootstrap.applicationId
-        })
-      })
+    await requestPost(
+      bootstrap.api.webauthnLoginEnd,
+      {
+        challengeId: begin.challengeId,
+        response: serializeCredential(credential as PublicKeyCredential),
+        applicationId: bootstrap.applicationId
+      }
     )
     window.location.assign(bootstrap.authorizeReturnUrl)
   } catch (error) {
-    toast.error(String(error))
+    toast.error(formatRequestError(error))
   }
 }
 
 async function sendVerificationChallenge() {
   try {
-    const result = await readJSON<{ demoCode?: string }>(
-      await fetch(bootstrap.api.mfaChallenge, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ method: selectedMethod.value })
-      })
+    const result = await requestPost<{ demoCode?: string }>(
+      bootstrap.api.mfaChallenge,
+      { method: selectedMethod.value }
     )
     challengeFeedback.value = result.demoCode
       ? text.value.challengeSentWithDemoCode(result.demoCode)
       : text.value.challengeSent
   } catch (error) {
-    toast.error(String(error))
+    toast.error(formatRequestError(error))
   }
 }
 
 async function verifyMFAWithU2F() {
   try {
-    const begin = await readJSON<{ challengeId: string; options: any }>(
-      await fetch(bootstrap.api.sessionU2fBegin, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({})
-      })
+    const begin = await requestPost<{ challengeId: string; options: any }>(
+      bootstrap.api.sessionU2fBegin,
+      {}
     )
     const credential = await navigator.credentials.get({
       publicKey: normalizeRequestOptions(begin.options)
@@ -754,22 +737,39 @@ async function verifyMFAWithU2F() {
     if (!credential) {
       return
     }
-    await readJSON(
-      await fetch(bootstrap.api.sessionU2fFinish, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          challengeId: begin.challengeId,
-          response: serializeCredential(credential as PublicKeyCredential),
-          trustDevice: true
-        })
-      })
+    await requestPost(
+      bootstrap.api.sessionU2fFinish,
+      {
+        challengeId: begin.challengeId,
+        response: serializeCredential(credential as PublicKeyCredential),
+        trustDevice: true
+      }
     )
     window.location.assign(bootstrap.authorizeReturnUrl)
   } catch (error) {
-    toast.error(String(error))
+    toast.error(formatRequestError(error))
   }
+}
+
+function cancelLogin() {
+  const form = document.createElement('form')
+  form.method = 'post'
+  form.action = bootstrap.switchAccountAction
+
+  const interaction = document.createElement('input')
+  interaction.type = 'hidden'
+  interaction.name = 'interaction'
+  interaction.value = 'account'
+  form.appendChild(interaction)
+
+  const cont = document.createElement('input')
+  cont.type = 'hidden'
+  cont.name = 'continue'
+  cont.value = 'false'
+  form.appendChild(cont)
+
+  document.body.appendChild(form)
+  form.submit()
 }
 </script>
 
@@ -899,11 +899,11 @@ async function verifyMFAWithU2F() {
 .auth-field input,
 .auth-field select {
   width: 100%;
-  min-height: 2.75rem;
+  min-height: 2.5rem;
   border-radius: 6px;
   border: 1px solid #d0d7de;
   background: #fff;
-  padding: 0.72rem 0.85rem;
+  padding: 0.58rem 0.85rem;
   font: inherit;
   color: #1f2328;
   transition: border-color 140ms ease, box-shadow 140ms ease;
@@ -932,7 +932,7 @@ async function verifyMFAWithU2F() {
 }
 
 .auth-button {
-  min-height: 2.75rem;
+  min-height: 2.5rem;
   width: 100%;
   border-radius: 6px;
   border: 1px solid transparent;
@@ -1050,7 +1050,7 @@ async function verifyMFAWithU2F() {
 }
 
 .auth-idp-button {
-  min-height: 3rem;
+  min-height: 2.5rem;
   width: 100%;
   border-radius: 10px;
   border: 1px solid #d0d7de;

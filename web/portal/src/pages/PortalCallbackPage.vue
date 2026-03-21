@@ -7,6 +7,7 @@
         </div>
         <h1 class="h4 mb-2">正在完成登录</h1>
         <p class="text-secondary mb-0">{{ message }}</p>
+        <button v-if="showRetry" type="button" class="btn btn-primary mt-3" @click="restartLogin">重新登录</button>
       </div>
     </div>
   </div>
@@ -15,10 +16,11 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { finishPortalAuthorization, startPortalAuthorization } from '../auth'
+import { clearPortalAuthSession, finishPortalAuthorization, startPortalAuthorization } from '../auth'
 
 const route = useRoute()
 const message = ref('正在交换授权码并建立用户中心会话。')
+const showRetry = ref(false)
 
 onMounted(async () => {
   const error = typeof route.query.error === 'string' ? route.query.error : ''
@@ -34,9 +36,8 @@ onMounted(async () => {
 
   if (error) {
     message.value = errorDescription || error
-    window.setTimeout(() => {
-      void startPortalAuthorization(target)
-    }, 1200)
+    clearPortalAuthSession()
+    showRetry.value = true
     return
   }
 
@@ -45,9 +46,13 @@ onMounted(async () => {
     window.location.replace(finalTarget)
   } catch (err) {
     message.value = String(err)
-    window.setTimeout(() => {
-      void startPortalAuthorization(target)
-    }, 1200)
+    clearPortalAuthSession()
+    showRetry.value = true
   }
 })
+
+function restartLogin() {
+  const target = typeof route.query.target === 'string' ? route.query.target : `${window.location.origin}/portal/my`
+  void startPortalAuthorization(target)
+}
 </script>

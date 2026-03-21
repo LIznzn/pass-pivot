@@ -5,6 +5,7 @@ const portalBaseUrl = import.meta.env.PPVT_CONSOLE_PORTAL_BASE_URL ?? 'http://lo
 const consoleApplicationId = import.meta.env.PPVT_CONSOLE_APPLICATION_ID ?? ''
 
 const storageKeys = {
+  handshakes: 'ppvt-oauth-handshakes',
   state: 'ppvt-oauth-state',
   verifier: 'ppvt-oauth-code-verifier',
   nonce: 'ppvt-oauth-nonce',
@@ -33,6 +34,13 @@ type IDTokenClaims = {
   sub?: string
 }
 
+type OAuthHandshake = {
+  verifier: string
+  nonce: string
+  target: string
+  createdAt: number
+}
+
 function getSessionValue(key: keyof typeof storageKeys) {
   return sessionStorage.getItem(storageKeys[key]) ?? ''
 }
@@ -43,6 +51,63 @@ function setSessionValue(key: keyof typeof storageKeys, value: string) {
 
 function removeSessionValue(key: keyof typeof storageKeys) {
   sessionStorage.removeItem(storageKeys[key])
+}
+
+function parseOAuthHandshakes(raw: string) {
+  if (!raw) {
+    return {} as Record<string, OAuthHandshake>
+  }
+  try {
+    const parsed = JSON.parse(raw) as Record<string, OAuthHandshake> | null
+    if (!parsed || typeof parsed !== 'object') {
+      return {} as Record<string, OAuthHandshake>
+    }
+    return parsed
+  } catch {
+    return {} as Record<string, OAuthHandshake>
+  }
+}
+
+function readOAuthHandshakes() {
+  return parseOAuthHandshakes(getSessionValue('handshakes'))
+}
+
+function writeOAuthHandshakes(handshakes: Record<string, OAuthHandshake>) {
+  const entries = Object.entries(handshakes)
+    .filter(([state, item]) => state && item?.verifier)
+    .sort((a, b) => (b[1].createdAt || 0) - (a[1].createdAt || 0))
+    .slice(0, 8)
+  setSessionValue('handshakes', JSON.stringify(Object.fromEntries(entries)))
+}
+
+function storeOAuthHandshake(state: string, handshake: OAuthHandshake) {
+  const handshakes = readOAuthHandshakes()
+  handshakes[state] = handshake
+  writeOAuthHandshakes(handshakes)
+}
+
+function loadOAuthHandshake(state: string) {
+  if (!state) {
+    return null
+  }
+  const handshakes = readOAuthHandshakes()
+  return handshakes[state] ?? null
+}
+
+function deleteOAuthHandshake(state: string) {
+  if (!state) {
+    return
+  }
+  const handshakes = readOAuthHandshakes()
+  if (!(state in handshakes)) {
+    return
+  }
+  delete handshakes[state]
+  if (Object.keys(handshakes).length) {
+    writeOAuthHandshakes(handshakes)
+  } else {
+    removeSessionValue('handshakes')
+  }
 }
 
 function randomBase64Url(bytes = 32) {
@@ -72,11 +137,16 @@ function getDefaultTarget() {
   return `${window.location.origin}/console/dashboard`
 }
 
-function clearOAuthHandshake() {
+function clearLegacyOAuthHandshake() {
   removeSessionValue('state')
   removeSessionValue('verifier')
   removeSessionValue('nonce')
   removeSessionValue('target')
+}
+
+function clearOAuthHandshake() {
+  removeSessionValue('handshakes')
+  clearLegacyOAuthHandshake()
 }
 
 export function clearConsoleAuthSession() {
@@ -125,6 +195,12 @@ export async function buildConsoleAuthorizationUrl(target?: string) {
   const state = randomBase64Url(24)
   const nonce = randomBase64Url(24)
 
+  storeOAuthHandshake(state, {
+    verifier,
+    nonce,
+    target: target || window.location.href,
+    createdAt: Date.now()
+  })
   setSessionValue('verifier', verifier)
   setSessionValue('state', state)
   setSessionValue('nonce', nonce)
@@ -154,9 +230,10 @@ export function startConsoleLogout() {
 }
 
 export async function finishConsoleAuthorization(code: string, state: string) {
-  const expectedState = getSessionValue('state')
-  const verifier = getSessionValue('verifier')
-  const target = getSessionValue('target') || getDefaultTarget()
+  const handshake = loadOAuthHandshake(state)
+  const expectedState = handshake ? state : getSessionValue('state')
+  const verifier = handshake?.verifier || getSessionValue('verifier')
+  const target = handshake?.target || getSessionValue('target') || getDefaultTarget()
 
   if (!code) {
     throw new Error('missing authorization code')
@@ -220,6 +297,7 @@ export async function finishConsoleAuthorization(code: string, state: string) {
     sessionStorage.removeItem(storageKeys.loginName)
     sessionStorage.removeItem(storageKeys.loginEmail)
   }
-  clearOAuthHandshake()
+  deleteOAuthHandshake(state)
+  clearLegacyOAuthHandshake()
   return target
 }

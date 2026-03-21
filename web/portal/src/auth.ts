@@ -3,6 +3,7 @@ import axios from 'axios'
 const authBaseUrl = import.meta.env.PPVT_PORTAL_AUTH_BASE_URL ?? 'http://localhost:8091'
 const portalApplicationId = import.meta.env.PPVT_PORTAL_APPLICATION_ID ?? ''
 
+const handshakesKey = 'ppvt-portal-oauth-handshakes'
 const stateKey = 'ppvt-portal-oauth-state'
 const verifierKey = 'ppvt-portal-oauth-code-verifier'
 const nonceKey = 'ppvt-portal-oauth-nonce'
@@ -18,6 +19,13 @@ type TokenResponse = {
   token_type: string
   expires_in: number
   scope?: string
+}
+
+type OAuthHandshake = {
+  verifier: string
+  nonce: string
+  target: string
+  createdAt: number
 }
 
 function randomBase64Url(bytes = 32) {
@@ -47,11 +55,73 @@ function postLogoutRedirectUrl() {
   return `${window.location.origin}/portal/my`
 }
 
-function clearOAuthHandshake() {
+function parseOAuthHandshakes(raw: string | null) {
+  if (!raw) {
+    return {} as Record<string, OAuthHandshake>
+  }
+  try {
+    const parsed = JSON.parse(raw) as Record<string, OAuthHandshake> | null
+    if (!parsed || typeof parsed !== 'object') {
+      return {} as Record<string, OAuthHandshake>
+    }
+    return parsed
+  } catch {
+    return {} as Record<string, OAuthHandshake>
+  }
+}
+
+function readOAuthHandshakes() {
+  return parseOAuthHandshakes(sessionStorage.getItem(handshakesKey))
+}
+
+function writeOAuthHandshakes(handshakes: Record<string, OAuthHandshake>) {
+  const entries = Object.entries(handshakes)
+    .filter(([state, item]) => state && item?.verifier)
+    .sort((a, b) => (b[1].createdAt || 0) - (a[1].createdAt || 0))
+    .slice(0, 8)
+  sessionStorage.setItem(handshakesKey, JSON.stringify(Object.fromEntries(entries)))
+}
+
+function storeOAuthHandshake(state: string, handshake: OAuthHandshake) {
+  const handshakes = readOAuthHandshakes()
+  handshakes[state] = handshake
+  writeOAuthHandshakes(handshakes)
+}
+
+function loadOAuthHandshake(state: string) {
+  if (!state) {
+    return null
+  }
+  const handshakes = readOAuthHandshakes()
+  return handshakes[state] ?? null
+}
+
+function deleteOAuthHandshake(state: string) {
+  if (!state) {
+    return
+  }
+  const handshakes = readOAuthHandshakes()
+  if (!(state in handshakes)) {
+    return
+  }
+  delete handshakes[state]
+  if (Object.keys(handshakes).length) {
+    writeOAuthHandshakes(handshakes)
+  } else {
+    sessionStorage.removeItem(handshakesKey)
+  }
+}
+
+function clearLegacyOAuthHandshake() {
   sessionStorage.removeItem(stateKey)
   sessionStorage.removeItem(verifierKey)
   sessionStorage.removeItem(nonceKey)
   sessionStorage.removeItem(targetKey)
+}
+
+function clearOAuthHandshake() {
+  sessionStorage.removeItem(handshakesKey)
+  clearLegacyOAuthHandshake()
 }
 
 export function clearPortalAuthSession() {
@@ -79,6 +149,12 @@ export async function startPortalAuthorization(target?: string) {
   const nonce = randomBase64Url(24)
   const finalTarget = target || `${window.location.origin}/portal/my`
 
+  storeOAuthHandshake(state, {
+    verifier,
+    nonce,
+    target: finalTarget,
+    createdAt: Date.now()
+  })
   sessionStorage.setItem(verifierKey, verifier)
   sessionStorage.setItem(stateKey, state)
   sessionStorage.setItem(nonceKey, nonce)
@@ -104,9 +180,10 @@ export function startPortalLogout() {
 }
 
 export async function finishPortalAuthorization(code: string, state: string) {
-  const expectedState = sessionStorage.getItem(stateKey) ?? ''
-  const verifier = sessionStorage.getItem(verifierKey) ?? ''
-  const target = sessionStorage.getItem(targetKey) ?? `${window.location.origin}/portal/my`
+  const handshake = loadOAuthHandshake(state)
+  const expectedState = handshake ? state : (sessionStorage.getItem(stateKey) ?? '')
+  const verifier = handshake?.verifier || (sessionStorage.getItem(verifierKey) ?? '')
+  const target = handshake?.target || sessionStorage.getItem(targetKey) || `${window.location.origin}/portal/my`
 
   if (!code) {
     throw new Error('missing authorization code')
@@ -144,6 +221,7 @@ export async function finishPortalAuthorization(code: string, state: string) {
   } else {
     localStorage.removeItem(idTokenKey)
   }
-  clearOAuthHandshake()
+  deleteOAuthHandshake(state)
+  clearLegacyOAuthHandshake()
   return target
 }

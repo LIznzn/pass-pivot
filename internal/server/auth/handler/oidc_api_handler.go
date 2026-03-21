@@ -104,9 +104,11 @@ func (h *OIDCHandler) QueryAuthorizeInteractionAPI(w http.ResponseWriter, r *htt
 		sessionID = sharedhandler.ReadPortalSessionCookie(r)
 	}
 	pendingChallenge := ""
-	if sessionID == "" {
+	if sessionID == "" && strings.TrimSpace(r.URL.Query().Get(loginChallengeQueryKey)) != "" {
 		pendingChallenge = sharedhandler.ReadPendingLoginChallengeCookie(r)
 		sessionID = pendingChallenge
+	} else if sessionID == "" {
+		sharedhandler.ClearPendingLoginChallengeCookie(w, r)
 	}
 	if sessionID != "" {
 		if session, err := h.oidc.GetSession(r.Context(), sessionID); err == nil {

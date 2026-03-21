@@ -4,6 +4,7 @@ import path from 'node:path'
 
 export default defineConfig(({ command }) => ({
   root: path.resolve(__dirname),
+  cacheDir: path.resolve(__dirname, '../node_modules/.vite-portal'),
   envPrefix: 'PPVT_PORTAL_',
   base: command === 'build' ? '/portal/' : '/',
   plugins: [vue()],

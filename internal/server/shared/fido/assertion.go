@@ -63,7 +63,12 @@ func (s *Service) BeginAssertionForSession(ctx context.Context, sessionID, usage
 	}
 	var session model.Session
 	if err := s.db.WithContext(ctx).First(&session, "id = ?", sessionID).Error; err != nil {
-		return "", nil, err
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", nil, err
+		}
+		if err := s.db.WithContext(ctx).Where("login_challenge = ?", sessionID).First(&session).Error; err != nil {
+			return "", nil, err
+		}
 	}
 	return s.beginAssertionForUser(ctx, session.UserID, session.ID, usage)
 }

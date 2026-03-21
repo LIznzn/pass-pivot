@@ -10,25 +10,26 @@ import (
 
 	authservice "pass-pivot/internal/server/auth/service"
 	coreservice "pass-pivot/internal/server/core/service"
+	sharedauthn "pass-pivot/internal/server/shared/authn"
 	sharedhandler "pass-pivot/internal/server/shared/handler"
 )
 
 type authorizeUIBootstrap struct {
-	Stage              string                    `json:"stage"`
-	Title              string                    `json:"title"`
-	Error              string                    `json:"error,omitempty"`
-	AuthorizeReturnURL string                    `json:"authorizeReturnUrl"`
-	Target             *coreservice.LoginTarget  `json:"target"`
-	CurrentUser        *authorizeCurrentUser     `json:"currentUser,omitempty"`
-	ApplicationID      string                    `json:"applicationId"`
-	LoginAction        string                    `json:"loginAction"`
-	AccountAction      string                    `json:"accountAction"`
-	SwitchAccountAction string                   `json:"switchAccountAction"`
-	ConfirmAction      string                    `json:"confirmAction"`
-	MFAAction          string                    `json:"mfaAction"`
-	SecondFactorMethod string                    `json:"secondFactorMethod,omitempty"`
-	MFAOptions         []authorizeUIMethodOption `json:"mfaOptions"`
-	API                authorizeUIAPIConfig      `json:"api"`
+	Stage               string                    `json:"stage"`
+	Title               string                    `json:"title"`
+	Error               string                    `json:"error,omitempty"`
+	AuthorizeReturnURL  string                    `json:"authorizeReturnUrl"`
+	Target              *coreservice.LoginTarget  `json:"target"`
+	CurrentUser         *authorizeCurrentUser     `json:"currentUser,omitempty"`
+	ApplicationID       string                    `json:"applicationId"`
+	LoginAction         string                    `json:"loginAction"`
+	AccountAction       string                    `json:"accountAction"`
+	SwitchAccountAction string                    `json:"switchAccountAction"`
+	ConfirmAction       string                    `json:"confirmAction"`
+	MFAAction           string                    `json:"mfaAction"`
+	SecondFactorMethod  string                    `json:"secondFactorMethod,omitempty"`
+	MFAOptions          []authorizeUIMethodOption `json:"mfaOptions"`
+	API                 authorizeUIAPIConfig      `json:"api"`
 }
 
 const loginChallengeQueryKey = "ppvt_login_challenge"
@@ -276,7 +277,7 @@ func (h *OIDCHandler) AuthorizeLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = h.callAuthnAPI(w, r, "/api/authn/v1/session/create", map[string]any{
+	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/session/create", map[string]any{
 		"organizationId": response.Target.OrganizationID,
 		"applicationId":  response.Target.ApplicationID,
 		"identifier":     strings.TrimSpace(r.Form.Get("identifier")),
@@ -286,7 +287,11 @@ func (h *OIDCHandler) AuthorizeLogin(w http.ResponseWriter, r *http.Request) {
 		h.renderAuthorizeInteraction(w, r, err.Error())
 		return
 	}
-	http.Redirect(w, r, authorizeURLWithSkipAccount(r).String(), http.StatusFound)
+	redirectTarget := authorizeURLWithSkipAccount(r).String()
+	if result, parseErr := parseLoginResult(body); parseErr == nil && result.NextStep != "done" {
+		redirectTarget = appendLoginChallenge(authorizeURL(r).String(), result.Session.LoginChallenge)
+	}
+	http.Redirect(w, r, redirectTarget, http.StatusFound)
 }
 
 func (h *OIDCHandler) AuthorizeConfirm(w http.ResponseWriter, r *http.Request) {
@@ -294,7 +299,7 @@ func (h *OIDCHandler) AuthorizeConfirm(w http.ResponseWriter, r *http.Request) {
 		h.writeAuthorizeErrorPage(w, http.StatusBadRequest, "invalid form body")
 		return
 	}
-	_, err := h.callAuthnAPI(w, r, "/api/authn/v1/session/confirm", map[string]any{
+	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/session/confirm", map[string]any{
 		"sessionId":   resolveLoginSessionRef(r),
 		"accept":      strings.EqualFold(r.Form.Get("accept"), "true"),
 		"trustDevice": strings.EqualFold(r.Form.Get("trustDevice"), "true"),
@@ -303,7 +308,11 @@ func (h *OIDCHandler) AuthorizeConfirm(w http.ResponseWriter, r *http.Request) {
 		h.renderAuthorizeInteraction(w, r, err.Error())
 		return
 	}
-	http.Redirect(w, r, authorizeURL(r).String(), http.StatusFound)
+	redirectTarget := authorizeURLWithSkipAccount(r).String()
+	if result, parseErr := parseLoginResult(body); parseErr == nil && result.NextStep != "done" {
+		redirectTarget = appendLoginChallenge(authorizeURL(r).String(), result.Session.LoginChallenge)
+	}
+	http.Redirect(w, r, redirectTarget, http.StatusFound)
 }
 
 func (h *OIDCHandler) AuthorizeAccount(w http.ResponseWriter, r *http.Request) {
@@ -315,6 +324,7 @@ func (h *OIDCHandler) AuthorizeAccount(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, authorizeURLWithSkipAccount(r).String(), http.StatusFound)
 		return
 	}
+	sharedhandler.ClearPendingLoginChallengeCookie(w, r)
 	sharedhandler.ClearPortalSessionCookie(w, r)
 	http.Redirect(w, r, authorizeURL(r).String(), http.StatusFound)
 }
@@ -324,7 +334,7 @@ func (h *OIDCHandler) AuthorizeMFA(w http.ResponseWriter, r *http.Request) {
 		h.writeAuthorizeErrorPage(w, http.StatusBadRequest, "invalid form body")
 		return
 	}
-	_, err := h.callAuthnAPI(w, r, "/api/authn/v1/session/verify_mfa", map[string]any{
+	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/session/verify_mfa", map[string]any{
 		"sessionId":   resolveLoginSessionRef(r),
 		"method":      strings.TrimSpace(r.Form.Get("method")),
 		"code":        strings.TrimSpace(r.Form.Get("code")),
@@ -334,7 +344,11 @@ func (h *OIDCHandler) AuthorizeMFA(w http.ResponseWriter, r *http.Request) {
 		h.renderAuthorizeInteraction(w, r, err.Error())
 		return
 	}
-	http.Redirect(w, r, authorizeURL(r).String(), http.StatusFound)
+	redirectTarget := authorizeURLWithSkipAccount(r).String()
+	if result, parseErr := parseLoginResult(body); parseErr == nil && result.NextStep != "done" {
+		redirectTarget = appendLoginChallenge(authorizeURL(r).String(), result.Session.LoginChallenge)
+	}
+	http.Redirect(w, r, redirectTarget, http.StatusFound)
 }
 
 func (h *OIDCHandler) renderAuthorizeInteraction(w http.ResponseWriter, r *http.Request, bannerError string) {
@@ -361,16 +375,16 @@ func (h *OIDCHandler) queryAuthorizeInteraction(w http.ResponseWriter, r *http.R
 		in.SessionID = resolveLoginSessionRef(r)
 	}
 	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/authorize/interaction/query", map[string]any{
-		"sessionId":           in.SessionID,
-		"clientId":            in.ClientID,
-		"responseType":        in.ResponseType,
-		"redirectUri":         in.RedirectURI,
-		"scope":               in.Scope,
-		"state":               in.State,
-		"nonce":               in.Nonce,
-		"codeChallenge":       in.CodeChallenge,
-		"codeChallengeMethod": in.CodeChallengeMethod,
-		"prompt":              in.Prompt,
+		"sessionId":            in.SessionID,
+		"clientId":             in.ClientID,
+		"responseType":         in.ResponseType,
+		"redirectUri":          in.RedirectURI,
+		"scope":                in.Scope,
+		"state":                in.State,
+		"nonce":                in.Nonce,
+		"codeChallenge":        in.CodeChallenge,
+		"codeChallengeMethod":  in.CodeChallengeMethod,
+		"prompt":               in.Prompt,
 		"skipAccountSelection": strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("ppvt_skip_account")), "1"),
 	})
 	if err != nil {
@@ -441,7 +455,15 @@ func resolveLoginSessionRef(r *http.Request) string {
 	if value := strings.TrimSpace(sharedhandler.ReadPortalSessionCookie(r)); value != "" {
 		return value
 	}
-	return strings.TrimSpace(sharedhandler.ReadPendingLoginChallengeCookie(r))
+	return ""
+}
+
+func parseLoginResult(body []byte) (*sharedauthn.LoginResult, error) {
+	var result sharedauthn.LoginResult
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
 }
 
 func appendLoginChallenge(rawURL string, challenge string) string {
@@ -487,20 +509,20 @@ func buildAuthorizeBootstrap(r *http.Request, target *coreservice.LoginTarget, c
 	}
 	loginChallenge := strings.TrimSpace(sessionRef)
 	return authorizeUIBootstrap{
-		Stage:              stage,
-		Title:              title,
-		Error:              bannerError,
-		AuthorizeReturnURL: authorizeURL(r).String(),
-		Target:             target,
-		CurrentUser:        currentUser,
-		ApplicationID:      target.ApplicationID,
-		LoginAction:        "/auth/headless/login?" + r.URL.RawQuery,
-		AccountAction:      "/auth/headless/account?" + r.URL.RawQuery,
+		Stage:               stage,
+		Title:               title,
+		Error:               bannerError,
+		AuthorizeReturnURL:  appendLoginChallenge(authorizeURLWithSkipAccount(r).String(), loginChallenge),
+		Target:              target,
+		CurrentUser:         currentUser,
+		ApplicationID:       target.ApplicationID,
+		LoginAction:         "/auth/headless/login?" + r.URL.RawQuery,
+		AccountAction:       "/auth/headless/account?" + r.URL.RawQuery,
 		SwitchAccountAction: "/auth/headless/account?" + r.URL.RawQuery,
-		ConfirmAction:      appendLoginChallenge("/auth/headless/confirm?"+r.URL.RawQuery, loginChallenge),
-		MFAAction:          appendLoginChallenge("/auth/headless/mfa?"+r.URL.RawQuery, loginChallenge),
-		SecondFactorMethod: strings.TrimSpace(secondFactorMethod),
-		MFAOptions:         buildAuthorizeMFAOptions(mfaMethods),
+		ConfirmAction:       appendLoginChallenge("/auth/headless/confirm?"+r.URL.RawQuery, loginChallenge),
+		MFAAction:           appendLoginChallenge("/auth/headless/mfa?"+r.URL.RawQuery, loginChallenge),
+		SecondFactorMethod:  strings.TrimSpace(secondFactorMethod),
+		MFAOptions:          buildAuthorizeMFAOptions(mfaMethods),
 		API: authorizeUIAPIConfig{
 			WebAuthnLoginBegin: "/auth/headless/login/webauthn/begin?" + r.URL.RawQuery,
 			WebAuthnLoginEnd:   "/auth/headless/login/webauthn/finish?" + r.URL.RawQuery,
@@ -544,7 +566,7 @@ func buildAuthorizeAppShell(bootstrap authorizeUIBootstrap) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-html := `<!DOCTYPE html>
+	html := `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
