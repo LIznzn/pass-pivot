@@ -233,7 +233,6 @@ npm run dev:console
 - `provider/captcha`：验证码 provider 工厂与各 provider 独立实现文件
 - `provider/geoip`：IP 归属地 provider 工厂，当前接 MaxMind GeoLite
 - `provider/idp`：外部 OAuth/OIDC IdP provider 工厂与各实现
-- `provider/kyc`：已预留目录，当前仍为空壳
 
 ## 文档
 
