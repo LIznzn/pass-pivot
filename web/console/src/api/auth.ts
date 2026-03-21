@@ -11,7 +11,10 @@ const storageKeys = {
   target: 'ppvt-oauth-target',
   accessToken: 'ppvt-access-token',
   refreshToken: 'ppvt-refresh-token',
-  idToken: 'ppvt-id-token'
+  idToken: 'ppvt-id-token',
+  loginIdentifier: 'ppvt-login-identifier',
+  loginName: 'ppvt-login-name',
+  loginEmail: 'ppvt-login-email'
 } as const
 
 type TokenResponse = {
@@ -21,6 +24,13 @@ type TokenResponse = {
   token_type: string
   expires_in: number
   scope?: string
+}
+
+type IDTokenClaims = {
+  preferred_username?: string
+  name?: string
+  email?: string
+  sub?: string
 }
 
 function getSessionValue(key: keyof typeof storageKeys) {
@@ -73,6 +83,9 @@ export function clearConsoleAuthSession() {
   localStorage.removeItem(storageKeys.accessToken)
   localStorage.removeItem(storageKeys.refreshToken)
   localStorage.removeItem(storageKeys.idToken)
+  sessionStorage.removeItem(storageKeys.loginIdentifier)
+  sessionStorage.removeItem(storageKeys.loginName)
+  sessionStorage.removeItem(storageKeys.loginEmail)
   clearOAuthHandshake()
 }
 
@@ -82,6 +95,24 @@ export function getCurrentAccessToken() {
 
 export function getCurrentRefreshToken() {
   return localStorage.getItem(storageKeys.refreshToken) ?? ''
+}
+
+function decodeBase64Url(value: string) {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/')
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+  return atob(padded)
+}
+
+function parseIDTokenClaims(idToken: string): IDTokenClaims | null {
+  const parts = idToken.split('.')
+  if (parts.length < 2 || !parts[1]) {
+    return null
+  }
+  try {
+    return JSON.parse(decodeBase64Url(parts[1])) as IDTokenClaims
+  } catch {
+    return null
+  }
 }
 
 export async function buildConsoleAuthorizationUrl(target?: string) {
@@ -164,8 +195,30 @@ export async function finishConsoleAuthorization(code: string, state: string) {
   }
   if (tokenSet.id_token) {
     localStorage.setItem(storageKeys.idToken, tokenSet.id_token)
+    const claims = parseIDTokenClaims(tokenSet.id_token)
+    const identifier = claims?.preferred_username?.trim() || claims?.email?.trim() || claims?.name?.trim() || claims?.sub?.trim() || ''
+    const displayName = claims?.name?.trim() || claims?.preferred_username?.trim() || claims?.email?.trim() || ''
+    const email = claims?.email?.trim() || ''
+    if (identifier) {
+      sessionStorage.setItem(storageKeys.loginIdentifier, identifier)
+    } else {
+      sessionStorage.removeItem(storageKeys.loginIdentifier)
+    }
+    if (displayName) {
+      sessionStorage.setItem(storageKeys.loginName, displayName)
+    } else {
+      sessionStorage.removeItem(storageKeys.loginName)
+    }
+    if (email) {
+      sessionStorage.setItem(storageKeys.loginEmail, email)
+    } else {
+      sessionStorage.removeItem(storageKeys.loginEmail)
+    }
   } else {
     localStorage.removeItem(storageKeys.idToken)
+    sessionStorage.removeItem(storageKeys.loginIdentifier)
+    sessionStorage.removeItem(storageKeys.loginName)
+    sessionStorage.removeItem(storageKeys.loginEmail)
   }
   clearOAuthHandshake()
   return target

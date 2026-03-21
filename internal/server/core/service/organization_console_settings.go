@@ -3,16 +3,26 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"gorm.io/gorm"
 
 	"pass-pivot/internal/model"
 )
 
+const (
+	OrganizationMetadataDisplayName      = "displayName"
+	OrganizationMetadataDisplayNameEN    = "displayName.en"
+	OrganizationMetadataDisplayNameJA    = "displayName.ja"
+	OrganizationMetadataDisplayNameZHS   = "displayName.zhs"
+	OrganizationMetadataDisplayNameZHT   = "displayName.zht"
+	OrganizationMetadataWebsiteURL       = "websiteUrl"
+	OrganizationMetadataTermsOfServiceURL = "termsOfServiceUrl"
+	OrganizationMetadataPrivacyPolicyURL = "privacyPolicyUrl"
+)
+
 func defaultOrganizationConsoleSettings() model.OrganizationSetting {
 	return model.OrganizationSetting{
-		TOSURL:           "",
-		PrivacyPolicyURL: "",
 		SupportEmail:     "",
 		LogoURL:          "",
 		Domains:          []model.OrganizationDomain{},
@@ -64,6 +74,36 @@ func normalizeOrganizationConsoleSettings(input *model.OrganizationSetting) mode
 	return settings
 }
 
+func defaultOrganizationMetadata() map[string]string {
+	return map[string]string{
+		OrganizationMetadataDisplayName:      "",
+		OrganizationMetadataDisplayNameEN:    "",
+		OrganizationMetadataDisplayNameJA:    "",
+		OrganizationMetadataDisplayNameZHS:   "",
+		OrganizationMetadataDisplayNameZHT:   "",
+		OrganizationMetadataWebsiteURL:       "http://example.com",
+		OrganizationMetadataTermsOfServiceURL: "http://example.com/terms-of-service",
+		OrganizationMetadataPrivacyPolicyURL: "http://example.com/privacy-policy",
+	}
+}
+
+func NormalizeOrganizationMetadata(candidate map[string]string, fallback map[string]string) map[string]string {
+	result := defaultOrganizationMetadata()
+	for key, value := range fallback {
+		if strings.TrimSpace(key) == "" {
+			continue
+		}
+		result[key] = value
+	}
+	for key, value := range candidate {
+		if strings.TrimSpace(key) == "" {
+			continue
+		}
+		result[key] = value
+	}
+	return result
+}
+
 func parseLegacyOrganizationConsoleSettings(organization model.Organization) *model.OrganizationSetting {
 	if organization.Metadata == nil {
 		return nil
@@ -84,13 +124,13 @@ func loadOrganizationConsoleSettings(ctx context.Context, db *gorm.DB, organizat
 	if err := db.WithContext(ctx).First(&organization, "id = ?", organizationID).Error; err != nil {
 		return model.Organization{}, model.OrganizationSetting{}, err
 	}
+	organization.Metadata = NormalizeOrganizationMetadata(organization.Metadata, nil)
 	legacy := parseLegacyOrganizationConsoleSettings(organization)
 	if legacy != nil {
-		return organization, normalizeOrganizationConsoleSettings(legacy), nil
+		settings := normalizeOrganizationConsoleSettings(legacy)
+		return organization, settings, nil
 	}
 	settings := normalizeOrganizationConsoleSettings(&model.OrganizationSetting{
-		TOSURL:           organization.TOSURL,
-		PrivacyPolicyURL: organization.PrivacyPolicyURL,
 		SupportEmail:     organization.SupportEmail,
 		LogoURL:          organization.LogoURL,
 		Domains:          organization.Domains,

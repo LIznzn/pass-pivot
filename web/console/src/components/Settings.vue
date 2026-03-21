@@ -4,42 +4,6 @@
       <button v-for="item in currentModulePanels" :key="item.id" type="button" class="console-module-sidebar-link" @click="scrollToPanel(item.id)">{{ item.label }}</button>
     </aside>
     <div class="console-module-main">
-      <div id="setting-basic" class="info-card">
-        <div class="section-title">基本设置</div>
-        <BForm @submit.prevent="saveOrganizationBasicSettings">
-          <div class="row g-3">
-            <div class="col-md-6">
-              <label class="form-label">组织标识</label>
-              <BFormInput v-model="organizationBasicSettingForm.name" />
-              <div class="record-meta mt-2">仅支持字母、数字和 `-`，建议保持稳定，作为组织的系统标识使用。</div>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">组织简介</label>
-              <BFormInput v-model="organizationBasicSettingForm.description" />
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">企业支持邮箱</label>
-              <BFormInput v-model="organizationBasicSettingForm.supportEmail" type="email" />
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">ToS 地址</label>
-              <BFormInput v-model="organizationBasicSettingForm.tosUrl" />
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">隐私策略地址</label>
-              <BFormInput v-model="organizationBasicSettingForm.privacyPolicyUrl" />
-            </div>
-            <div class="col-12">
-              <label class="form-label">组织 Logo 地址</label>
-              <BFormInput v-model="organizationBasicSettingForm.logoUrl" />
-            </div>
-          </div>
-          <div class="d-flex justify-content-end mt-3">
-            <BButton type="submit" variant="primary">保存基本设置</BButton>
-          </div>
-        </BForm>
-      </div>
-
       <div id="setting-domain" class="info-card">
         <div class="section-title">域名设置</div>
         <div class="record-meta mb-3">绑定登录域名并记录当前验证状态。</div>
@@ -293,14 +257,6 @@ const externalIDPForm = reactive({
   userInfoUrl: '',
   jwksUrl: ''
 })
-const organizationBasicSettingForm = reactive({
-  name: '',
-  description: '',
-  tosUrl: '',
-  privacyPolicyUrl: '',
-  supportEmail: '',
-  logoUrl: ''
-})
 const organizationLoginPolicyForm = reactive({
   passwordLoginEnabled: true,
   webauthnLoginEnabled: true,
@@ -344,10 +300,6 @@ type OrganizationDomainRow = {
 }
 
 type OrganizationConsoleSettings = {
-  tosUrl: string
-  privacyPolicyUrl: string
-  supportEmail: string
-  logoUrl: string
   domains: Array<{
     host: string
     verified: boolean
@@ -409,7 +361,6 @@ type ExternalIdpFormPayload = {
 }
 
 const currentModulePanels = [
-  { id: 'setting-basic', label: '基本设置' },
   { id: 'setting-domain', label: '域名设置' },
   { id: 'setting-login-policy', label: '登录策略设置' },
   { id: 'setting-password-policy', label: '密码策略设置' },
@@ -439,12 +390,6 @@ watch(
   (organization) => {
     const settings = parseOrganizationConsoleSettings(organization)
     externalIDPForm.organizationId = organization?.id || externalIDPForm.organizationId
-    organizationBasicSettingForm.name = organization?.name || ''
-    organizationBasicSettingForm.description = organization?.description || ''
-    organizationBasicSettingForm.tosUrl = settings.tosUrl
-    organizationBasicSettingForm.privacyPolicyUrl = settings.privacyPolicyUrl
-    organizationBasicSettingForm.supportEmail = settings.supportEmail
-    organizationBasicSettingForm.logoUrl = settings.logoUrl
     organizationLoginPolicyForm.passwordLoginEnabled = settings.loginPolicy.passwordLoginEnabled
     organizationLoginPolicyForm.webauthnLoginEnabled = settings.loginPolicy.webauthnLoginEnabled
     organizationLoginPolicyForm.allowUsername = settings.loginPolicy.allowUsername
@@ -680,10 +625,6 @@ async function saveOrganizationConsoleSettings(options: { name?: string; descrip
 
 function parseOrganizationConsoleSettings(organization?: any): OrganizationConsoleSettings {
   const defaults: OrganizationConsoleSettings = {
-    tosUrl: '',
-    privacyPolicyUrl: '',
-    supportEmail: '',
-    logoUrl: '',
     domains: [],
     loginPolicy: {
       passwordLoginEnabled: true,
@@ -750,10 +691,6 @@ function parseOrganizationConsoleSettings(organization?: any): OrganizationConso
 
 function buildOrganizationConsoleSettings(): OrganizationConsoleSettings {
   return {
-    tosUrl: organizationBasicSettingForm.tosUrl.trim(),
-    privacyPolicyUrl: organizationBasicSettingForm.privacyPolicyUrl.trim(),
-    supportEmail: organizationBasicSettingForm.supportEmail.trim(),
-    logoUrl: organizationBasicSettingForm.logoUrl.trim(),
     domains: organizationDomainRows.value
       .map((item) => ({
         host: item.host.trim(),
@@ -797,15 +734,6 @@ function buildOrganizationConsoleSettings(): OrganizationConsoleSettings {
       }
     }
   }
-}
-
-async function saveOrganizationBasicSettings() {
-  await withFeedback(async () => {
-    await saveOrganizationConsoleSettings({
-      name: organizationBasicSettingForm.name,
-      description: organizationBasicSettingForm.description
-    })
-  })
 }
 
 async function saveOrganizationDomainSettings() {

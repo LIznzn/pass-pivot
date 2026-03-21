@@ -19,7 +19,7 @@
               type="button"
               class="console-module-metric-copy"
               :aria-label="`复制${item.label}`"
-              @click="console.copyMetricValue(item.copyValue || item.value)"
+              @click="consoleStore.copyMetricValue(item.copyValue || item.value)"
             >
               <i class="bi bi-copy" aria-hidden="true"></i>
             </button>
@@ -29,7 +29,7 @@
     </div>
     <div class="console-module-workspace">
       <aside class="console-module-sidebar">
-        <button v-for="item in currentModulePanels" :key="item.id" type="button" class="console-module-sidebar-link" @click="console.scrollToPanel(item.id)">{{ item.label }}</button>
+        <button v-for="item in currentModulePanels" :key="item.id" type="button" class="console-module-sidebar-link" @click="consoleStore.scrollToPanel(item.id)">{{ item.label }}</button>
       </aside>
       <div class="console-module-main">
         <div id="dashboard-overview" class="info-card">
@@ -75,7 +75,7 @@ import { useUserStore } from '../stores/user'
 
 const applicationStore = useApplicationStore()
 const auditStore = useAuditStore()
-const console = useConsoleStore()
+const consoleStore = useConsoleStore()
 const organizationStore = useOrganizationStore()
 const projectStore = useProjectStore()
 const roleStore = useRoleStore()
@@ -91,7 +91,7 @@ const applicationCount = computed(() => organizationStore.currentOrganization?.p
 const policyCount = computed(() => roleStore.policies.length)
 
 watchEffect(() => {
-  console.setPageHeader('仪表盘', '概览当前实例下的核心 IAM 统计和审计摘要。')
+  consoleStore.setPageHeader('仪表盘', '概览当前实例下的核心 IAM 统计和审计摘要。')
 })
 
 const summaryTiles = computed(() => [
@@ -118,5 +118,5 @@ async function refreshDashboard() {
 
 const recentAuditLogs = computed(() => auditStore.recentAuditLogs)
 const moduleRecentChanges = computed(() => auditStore.moduleRecentChanges)
-const formatDateTime = console.formatDateTime
+const formatDateTime = consoleStore.formatDateTime
 </script>

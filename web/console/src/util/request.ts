@@ -1,6 +1,6 @@
 import axios from 'axios'
 import type { AxiosError, AxiosInstance, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios'
-import { getCurrentAccessToken } from '../api/auth'
+import { clearConsoleAuthSession, getCurrentAccessToken } from '../api/auth'
 
 const baseURL = import.meta.env.PPVT_CONSOLE_API_BASE_URL ?? 'http://localhost:8090'
 const authSessionKeys = [
@@ -16,11 +16,15 @@ export type RequestConfig = AxiosRequestConfig & {
 }
 
 function redirectToPortalLogin() {
+  clearConsoleAuthSession()
   for (const key of authSessionKeys) {
     sessionStorage.removeItem(key)
   }
-  const target = encodeURIComponent(window.location.href)
-  window.location.assign(`/console?target=${target}`)
+  const currentURL = new URL(window.location.href)
+  const target = currentURL.pathname === '/console' && currentURL.searchParams.get('target')
+    ? currentURL.searchParams.get('target') || `${window.location.origin}/console/dashboard`
+    : window.location.href
+  window.location.assign(`/console?target=${encodeURIComponent(target)}`)
 }
 
 const request: AxiosInstance = axios.create({

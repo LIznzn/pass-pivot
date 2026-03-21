@@ -31,8 +31,25 @@
           </div>
         </div>
         <BFormInput v-model="applicationForm.name" placeholder="应用名称" class="mb-2" />
-        <BFormInput v-model="applicationForm.redirectUris" placeholder="回调地址，多个值可用逗号或换行分隔" class="mb-2" />
+        <div v-if="supportsLoginPresentation" class="row g-2 mb-2">
+          <div class="col-md-6">
+            <BFormInput v-model="applicationForm.displayName" placeholder="默认显示名称" />
+          </div>
+          <div class="col-md-6">
+            <BFormInput v-model="applicationForm.displayNameEn" placeholder="显示名称（en）" />
+          </div>
+          <div class="col-md-6">
+            <BFormInput v-model="applicationForm.displayNameJa" placeholder="显示名称（ja）" />
+          </div>
+          <div class="col-md-6">
+            <BFormInput v-model="applicationForm.displayNameZhs" placeholder="显示名称（zhs）" />
+          </div>
+          <div class="col-md-6">
+            <BFormInput v-model="applicationForm.displayNameZht" placeholder="显示名称（zht）" />
+          </div>
+        </div>
         <BFormSelect v-model="applicationForm.applicationType" :options="applicationTypeOptions" class="mb-2" />
+        <BFormInput v-if="supportsLoginPresentation" v-model="applicationForm.redirectUris" placeholder="回调地址，多个值可用逗号或换行分隔" class="mb-2" />
         <div class="detail-card mb-2">
           <div class="record-meta mb-2">Token Type</div>
           <div class="d-flex flex-wrap gap-3">
@@ -107,6 +124,12 @@ const props = defineProps<{
   visible: boolean
   applicationForm: {
     name: string
+    metadata: Record<string, string>
+    displayName: string
+    displayNameEn: string
+    displayNameJa: string
+    displayNameZhs: string
+    displayNameZht: string
     redirectUris: string
     applicationType: string
     tokenType: string[]
@@ -174,9 +197,16 @@ const clientAuthenticationTypeOptionsByGrantType: Record<string, string[]> = {
 
 const applicationFormTokenTypeOptions = computed(() => filterApplicationTokenTypeOptions(props.applicationForm.grantType))
 const applicationFormClientAuthenticationTypeOptions = computed(() => filterApplicationClientAuthenticationTypeOptions(props.applicationForm.grantType))
+const supportsLoginPresentation = computed(() => props.applicationForm.applicationType === 'web' || props.applicationForm.applicationType === 'native')
 
 function applyRecommendedApplicationProtocol() {
   if (props.applicationForm.applicationType === 'api') {
+    props.applicationForm.redirectUris = ''
+    props.applicationForm.displayName = ''
+    props.applicationForm.displayNameEn = ''
+    props.applicationForm.displayNameJa = ''
+    props.applicationForm.displayNameZhs = ''
+    props.applicationForm.displayNameZht = ''
     props.applicationForm.tokenType = ['access_token']
     props.applicationForm.enableRefreshToken = false
     props.applicationForm.grantType = ['client_credentials']

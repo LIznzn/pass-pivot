@@ -178,6 +178,7 @@ watch(() => console.message, (value) => {
 
 onMounted(async () => {
   console.initializeCurrentLoginUser()
+  await console.loadCurrentLoginUser()
   console.syncRouteState()
   await organizationStore.loadOrganizations()
   const fallbackOrganization = organizationStore.organizations.find((item: any) => item.id === console.currentOrganizationId) || organizationStore.organizations[0]

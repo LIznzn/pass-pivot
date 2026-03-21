@@ -61,6 +61,18 @@ func (s *OIDCService) GetSession(ctx context.Context, sessionID string) (*model.
 	return &session, nil
 }
 
+func (s *OIDCService) GetSessionUser(ctx context.Context, sessionID string) (*model.User, *model.Session, error) {
+	session, err := s.GetSession(ctx, sessionID)
+	if err != nil {
+		return nil, nil, err
+	}
+	var user model.User
+	if err := s.db.WithContext(ctx).First(&user, "id = ?", session.UserID).Error; err != nil {
+		return nil, nil, err
+	}
+	return &user, session, nil
+}
+
 func (s *OIDCService) BuildAuthorizationRedirect(ctx context.Context, in StandardAuthorizeRequest) (string, error) {
 	app, redirectError, err := s.ValidateAuthorizationRequest(ctx, in)
 	if err != nil {

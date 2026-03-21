@@ -24,7 +24,7 @@
               type="button"
               class="console-module-metric-copy"
               :aria-label="`复制${item.label}`"
-              @click="console.copyMetricValue(item.copyValue || item.value)"
+              @click="consoleStore.copyMetricValue(item.copyValue || item.value)"
             >
               <i class="bi bi-copy" aria-hidden="true"></i>
             </button>
@@ -34,7 +34,7 @@
     </div>
     <div class="console-module-workspace">
       <aside class="console-module-sidebar">
-        <button v-for="item in currentModulePanels" :key="item.id" type="button" class="console-module-sidebar-link" @click="console.scrollToPanel(item.id)">{{ item.label }}</button>
+        <button v-for="item in currentModulePanels" :key="item.id" type="button" class="console-module-sidebar-link" @click="consoleStore.scrollToPanel(item.id)">{{ item.label }}</button>
       </aside>
       <div class="console-module-main">
         <div id="role-list" class="info-card">
@@ -162,9 +162,9 @@ const props = defineProps<{
 }>()
 
 const auditStore = useAuditStore()
-const console = useConsoleStore()
+const consoleStore = useConsoleStore()
 const moduleRecentChanges = computed(() => auditStore.moduleRecentChanges)
-const formatDateTime = console.formatDateTime
+const formatDateTime = consoleStore.formatDateTime
 
 const currentModulePanels = [
   { id: 'role-list', label: '角色列表' },

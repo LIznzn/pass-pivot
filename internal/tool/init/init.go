@@ -15,6 +15,7 @@ import (
 	"pass-pivot/internal/config"
 	"pass-pivot/internal/db"
 	"pass-pivot/internal/model"
+	coreservice "pass-pivot/internal/server/core/service"
 	sharedhandler "pass-pivot/internal/server/shared/handler"
 	"pass-pivot/util"
 
@@ -309,7 +310,7 @@ func seed(ctx context.Context, database *gorm.DB, cfg config.Config) error {
 			Name:              "internal",
 			Description:       "Internal organization",
 			Status:            "active",
-			Metadata:          map[string]string{},
+			Metadata:          buildInternalOrganizationMetadata("PassPivot", "PassPivot", "PassPivot", "PassPivot", "PassPivot", "http://example.com", "http://example.com/terms-of-service", "http://example.com/privacy-policy"),
 			AllowJWTAccess:    true,
 			AllowBasicAccess:  true,
 			AllowNoAuthAccess: true,
@@ -345,6 +346,7 @@ func seed(ctx context.Context, database *gorm.DB, cfg config.Config) error {
 				BaseModel:                model.BaseModel{ID: cfg.ManageAPIApplicationID},
 				ProjectID:                cfg.SystemProjectID,
 				Name:                     "manage-api",
+				Metadata:                 buildInternalApplicationMetadata("Manage API", "Manage API", "Manage API", "管理 API", "管理 API"),
 				Description:              "System manage API application",
 				Status:                   "active",
 				ApplicationType:          "api",
@@ -360,6 +362,7 @@ func seed(ctx context.Context, database *gorm.DB, cfg config.Config) error {
 				BaseModel:                model.BaseModel{ID: cfg.UserAPIApplicationID},
 				ProjectID:                cfg.SystemProjectID,
 				Name:                     "user-api",
+				Metadata:                 buildInternalApplicationMetadata("User API", "User API", "User API", "用户 API", "使用者 API"),
 				Description:              "System current-user API application",
 				Status:                   "active",
 				ApplicationType:          "api",
@@ -375,6 +378,7 @@ func seed(ctx context.Context, database *gorm.DB, cfg config.Config) error {
 				BaseModel:                model.BaseModel{ID: cfg.AuthnAPIApplicationID},
 				ProjectID:                cfg.SystemProjectID,
 				Name:                     "authn-api",
+				Metadata:                 buildInternalApplicationMetadata("Authentication API", "Authentication API", "Authentication API", "认证 API", "認證 API"),
 				Description:              "System authentication API application",
 				Status:                   "active",
 				ApplicationType:          "api",
@@ -390,6 +394,7 @@ func seed(ctx context.Context, database *gorm.DB, cfg config.Config) error {
 				BaseModel:                model.BaseModel{ID: cfg.AuthzAPIApplicationID},
 				ProjectID:                cfg.SystemProjectID,
 				Name:                     "authz-api",
+				Metadata:                 buildInternalApplicationMetadata("Authorization API", "Authorization API", "Authorization API", "授权 API", "授權 API"),
 				Description:              "System authorization decision API application",
 				Status:                   "active",
 				ApplicationType:          "api",
@@ -405,6 +410,7 @@ func seed(ctx context.Context, database *gorm.DB, cfg config.Config) error {
 				BaseModel:                model.BaseModel{ID: cfg.ConsoleApplicationID},
 				ProjectID:                cfg.SystemProjectID,
 				Name:                     "console-web",
+				Metadata:                 buildInternalApplicationMetadata("Console", "Console", "コンソール", "控制台", "控制台"),
 				Description:              "Official PPVT console frontend",
 				RedirectURIs:             "http://localhost:8093/console/callback",
 				Status:                   "active",
@@ -421,6 +427,7 @@ func seed(ctx context.Context, database *gorm.DB, cfg config.Config) error {
 				BaseModel:                model.BaseModel{ID: cfg.PortalApplicationID},
 				ProjectID:                cfg.SystemProjectID,
 				Name:                     "portal-web",
+				Metadata:                 buildInternalApplicationMetadata("Portal", "Portal", "ポータル", "用户中心", "使用者中心"),
 				Description:              "Official PPVT portal frontend",
 				RedirectURIs:             "http://localhost:8092/portal/callback",
 				Status:                   "active",
@@ -554,6 +561,29 @@ func seed(ctx context.Context, database *gorm.DB, cfg config.Config) error {
 	})
 }
 
+func buildInternalApplicationMetadata(defaultDisplayName, englishDisplayName, japaneseDisplayName, simplifiedChineseDisplayName, traditionalChineseDisplayName string) map[string]string {
+	return coreservice.NormalizeApplicationMetadata(map[string]string{
+		coreservice.ApplicationMetadataDisplayName:    defaultDisplayName,
+		coreservice.ApplicationMetadataDisplayNameEN:  englishDisplayName,
+		coreservice.ApplicationMetadataDisplayNameJA:  japaneseDisplayName,
+		coreservice.ApplicationMetadataDisplayNameZHS: simplifiedChineseDisplayName,
+		coreservice.ApplicationMetadataDisplayNameZHT: traditionalChineseDisplayName,
+	}, nil)
+}
+
+func buildInternalOrganizationMetadata(displayName, englishDisplayName, japaneseDisplayName, simplifiedChineseDisplayName, traditionalChineseDisplayName, websiteURL, termsOfServiceURL, privacyPolicyURL string) map[string]string {
+	return coreservice.NormalizeOrganizationMetadata(map[string]string{
+		coreservice.OrganizationMetadataDisplayName:      displayName,
+		coreservice.OrganizationMetadataDisplayNameEN:    englishDisplayName,
+		coreservice.OrganizationMetadataDisplayNameJA:    japaneseDisplayName,
+		coreservice.OrganizationMetadataDisplayNameZHS:   simplifiedChineseDisplayName,
+		coreservice.OrganizationMetadataDisplayNameZHT:   traditionalChineseDisplayName,
+		coreservice.OrganizationMetadataWebsiteURL:       websiteURL,
+		coreservice.OrganizationMetadataTermsOfServiceURL: termsOfServiceURL,
+		coreservice.OrganizationMetadataPrivacyPolicyURL: privacyPolicyURL,
+	}, nil)
+}
+
 func upsertByID(tx *gorm.DB, value any) error {
 	return tx.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "id"}},
@@ -579,8 +609,6 @@ func newPolicy(organizationID, roleID, name, effect string, priority int, rules 
 
 func defaultConsoleSettings() model.OrganizationSetting {
 	return model.OrganizationSetting{
-		TOSURL:           "",
-		PrivacyPolicyURL: "",
 		SupportEmail:     "",
 		LogoURL:          "",
 		Domains:          []model.OrganizationDomain{},

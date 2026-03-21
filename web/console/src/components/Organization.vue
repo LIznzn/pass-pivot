@@ -2,11 +2,11 @@
   <section class="console-module-shell">
     <div class="console-module-summary-card">
       <div class="console-module-hero">
-        <div>
-          <div class="console-module-eyebrow">组织</div>
-          <h2 class="console-module-title">{{ currentOrganization?.name || '组织' }}</h2>
-          <p class="console-module-subtitle">{{ currentOrganization?.name ? `当前组织 ${currentOrganization.name} 的基础配置、登录方式和接入边界。` : '当前组织的基础配置、登录方式和接入边界。' }}</p>
-        </div>
+          <div>
+            <div class="console-module-eyebrow">组织</div>
+            <h2 class="console-module-title">{{ currentOrganization?.name || '组织' }}</h2>
+          <p class="console-module-subtitle">{{ currentOrganization?.description || '描述' }}</p>
+          </div>
         <div class="console-action-menu" role="group" aria-label="组织操作">
           <button type="button" class="btn btn-primary console-action-menu-toggle">
             操作
@@ -28,7 +28,7 @@
               type="button"
               class="console-module-metric-copy"
               :aria-label="`复制${item.label}`"
-              @click="console.copyMetricValue(item.copyValue || item.value)"
+              @click="consoleStore.copyMetricValue(item.copyValue || item.value)"
             >
               <i class="bi bi-copy" aria-hidden="true"></i>
             </button>
@@ -38,9 +38,28 @@
     </div>
     <div class="console-module-workspace">
       <aside class="console-module-sidebar">
-        <button v-for="item in currentModulePanels" :key="item.id" type="button" class="console-module-sidebar-link" @click="console.scrollToPanel(item.id)">{{ item.label }}</button>
+        <button v-for="item in currentModulePanels" :key="item.id" type="button" class="console-module-sidebar-link" @click="consoleStore.scrollToPanel(item.id)">{{ item.label }}</button>
       </aside>
       <div class="console-module-main">
+        <div id="organization-basic" class="info-card">
+          <div class="section-title">基本设置</div>
+          <BForm @submit.prevent="saveOrganizationBasicSettings">
+            <div class="row g-3">
+              <div class="col-12">
+                <label class="form-label">名称</label>
+                <BFormInput v-model="organizationBasicSettingForm.name" />
+              </div>
+              <div class="col-12">
+                <label class="form-label">描述</label>
+                <BFormInput v-model="organizationBasicSettingForm.description" />
+              </div>
+            </div>
+            <div class="d-flex justify-content-end mt-3">
+              <BButton type="submit" variant="primary">保存基本设置</BButton>
+            </div>
+          </BForm>
+        </div>
+
         <div id="organization-metadata" class="info-card">
           <div class="section-title">维护元信息</div>
           <div class="record-meta mb-3">这些元信息会作为可用变量，用于自定义登录页等组织级展示场景。</div>
@@ -85,9 +104,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, watchEffect } from 'vue'
-import { BButton, BFormInput } from 'bootstrap-vue-next'
+import { computed, reactive, ref, watch, watchEffect } from 'vue'
+import { BButton, BForm, BFormInput } from 'bootstrap-vue-next'
 import RightSide from '../layout/RightSide.vue'
+import { useToast } from '@shared/composables/toast'
 import { useAuditStore } from '../stores/audit'
 import { useConsoleStore } from '../stores/console'
 import { useOrganizationStore } from '../stores/organization'
@@ -95,18 +115,27 @@ import { useRoleStore } from '../stores/role'
 import { useUserStore } from '../stores/user'
 
 const auditStore = useAuditStore()
-const console = useConsoleStore()
+const consoleStore = useConsoleStore()
 const organizationStore = useOrganizationStore()
 const roleStore = useRoleStore()
 const userStore = useUserStore()
+const toast = useToast()
 
 watchEffect(() => {
-  console.setPageHeader('', '')
+  consoleStore.setPageHeader(
+    '组织',
+    '当前组织的基础设置与维护元信息。'
+  )
 })
 
 const organizationMetadataRows = ref<Array<{ id: string; key: string; value: string }>>([])
+const organizationBasicSettingForm = reactive({
+  name: '',
+  description: ''
+})
 
 const currentModulePanels = [
+  { id: 'organization-basic', label: '基本设置' },
   { id: 'organization-metadata', label: '维护元信息' }
 ]
 
@@ -119,10 +148,19 @@ const currentModuleMetrics = computed(() => {
     { label: '应用数', value: String(applicationCount) },
     { label: '用户数', value: String(userStore.users.length) },
     { label: '角色数', value: String(roleStore.roles.length) },
-    { label: '创建时间', value: console.formatDateTime(organizationStore.currentOrganization?.createdAt) },
-    { label: '更新时间', value: console.formatDateTime(organizationStore.currentOrganization?.updatedAt) }
+    { label: '创建时间', value: consoleStore.formatDateTime(organizationStore.currentOrganization?.createdAt) },
+    { label: '更新时间', value: consoleStore.formatDateTime(organizationStore.currentOrganization?.updatedAt) }
   ]
 })
+
+watch(
+  () => organizationStore.currentOrganization,
+  (organization) => {
+    organizationBasicSettingForm.name = organization?.name || ''
+    organizationBasicSettingForm.description = organization?.description || ''
+  },
+  { immediate: true }
+)
 
 watch(
   () => organizationStore.currentOrganization?.metadata,
@@ -155,7 +193,28 @@ function removeOrganizationMetadataRow(index: number) {
   organizationMetadataRows.value.splice(index, 1)
 }
 
+function buildOrganizationConsoleSettings() {
+  const currentSettings = organizationStore.currentOrganization?.consoleSettings
+  const normalizedCurrentSettings = currentSettings && typeof currentSettings === 'object' && !Array.isArray(currentSettings)
+    ? currentSettings
+    : {}
+  const { supportEmail: _supportEmail, logoUrl: _logoUrl, ...rest } = normalizedCurrentSettings as Record<string, unknown>
+  return rest
+}
+
+async function saveOrganizationBasicSettings() {
+  try {
+    await organizationStore.saveOrganizationConsoleSettings(buildOrganizationConsoleSettings(), {
+      name: organizationBasicSettingForm.name,
+      description: organizationBasicSettingForm.description
+    })
+    toast.success('基本设置已保存')
+  } catch (error) {
+    toast.error(String(error))
+  }
+}
+
 const currentOrganization = computed(() => organizationStore.currentOrganization)
 const moduleRecentChanges = computed(() => auditStore.moduleRecentChanges)
-const formatDateTime = console.formatDateTime
+const formatDateTime = consoleStore.formatDateTime
 </script>

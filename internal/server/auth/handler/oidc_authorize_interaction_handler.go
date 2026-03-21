@@ -19,8 +19,11 @@ type authorizeUIBootstrap struct {
 	Error              string                    `json:"error,omitempty"`
 	AuthorizeReturnURL string                    `json:"authorizeReturnUrl"`
 	Target             *coreservice.LoginTarget  `json:"target"`
+	CurrentUser        *authorizeCurrentUser     `json:"currentUser,omitempty"`
 	ApplicationID      string                    `json:"applicationId"`
 	LoginAction        string                    `json:"loginAction"`
+	AccountAction      string                    `json:"accountAction"`
+	SwitchAccountAction string                   `json:"switchAccountAction"`
 	ConfirmAction      string                    `json:"confirmAction"`
 	MFAAction          string                    `json:"mfaAction"`
 	SecondFactorMethod string                    `json:"secondFactorMethod,omitempty"`
@@ -125,6 +128,8 @@ func (h *OIDCHandler) AuthorizeSubmit(w http.ResponseWriter, r *http.Request) {
 	switch strings.TrimSpace(r.Form.Get("interaction")) {
 	case "login":
 		h.AuthorizeLogin(w, r)
+	case "account":
+		h.AuthorizeAccount(w, r)
 	case "confirm":
 		h.AuthorizeConfirm(w, r)
 	case "mfa":
@@ -166,8 +171,22 @@ func (h *OIDCHandler) AuthorizeChallenge(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *OIDCHandler) AuthorizeWebAuthnLoginBegin(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		Identifier    string `json:"identifier"`
+		ApplicationID string `json:"applicationId"`
+	}
+	if strings.Contains(r.Header.Get("Content-Type"), "application/json") {
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+	} else {
+		payload.Identifier = strings.TrimSpace(r.FormValue("identifier"))
+		payload.ApplicationID = strings.TrimSpace(r.FormValue("applicationId"))
+	}
 	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/webauthn/login/begin", map[string]any{
-		"identifier": strings.TrimSpace(r.FormValue("identifier")),
+		"identifier":    strings.TrimSpace(payload.Identifier),
+		"applicationId": strings.TrimSpace(payload.ApplicationID),
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -262,7 +281,7 @@ func (h *OIDCHandler) AuthorizeLogin(w http.ResponseWriter, r *http.Request) {
 		h.renderAuthorizeInteraction(w, r, err.Error())
 		return
 	}
-	http.Redirect(w, r, authorizeURL(r).String(), http.StatusFound)
+	http.Redirect(w, r, authorizeURLWithSkipAccount(r).String(), http.StatusFound)
 }
 
 func (h *OIDCHandler) AuthorizeConfirm(w http.ResponseWriter, r *http.Request) {
@@ -271,12 +290,26 @@ func (h *OIDCHandler) AuthorizeConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, err := h.callAuthnAPI(w, r, "/api/authn/v1/session/confirm", map[string]any{
-		"accept": strings.EqualFold(r.Form.Get("accept"), "true"),
+		"accept":      strings.EqualFold(r.Form.Get("accept"), "true"),
+		"trustDevice": strings.EqualFold(r.Form.Get("trustDevice"), "true"),
 	})
 	if err != nil {
 		h.renderAuthorizeInteraction(w, r, err.Error())
 		return
 	}
+	http.Redirect(w, r, authorizeURL(r).String(), http.StatusFound)
+}
+
+func (h *OIDCHandler) AuthorizeAccount(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		h.writeAuthorizeErrorPage(w, http.StatusBadRequest, "invalid form body")
+		return
+	}
+	if strings.EqualFold(r.Form.Get("continue"), "true") {
+		http.Redirect(w, r, authorizeURLWithSkipAccount(r).String(), http.StatusFound)
+		return
+	}
+	sharedhandler.ClearPortalSessionCookie(w, r)
 	http.Redirect(w, r, authorizeURL(r).String(), http.StatusFound)
 }
 
@@ -288,7 +321,7 @@ func (h *OIDCHandler) AuthorizeMFA(w http.ResponseWriter, r *http.Request) {
 	_, err := h.callAuthnAPI(w, r, "/api/authn/v1/session/verify_mfa", map[string]any{
 		"method":      strings.TrimSpace(r.Form.Get("method")),
 		"code":        strings.TrimSpace(r.Form.Get("code")),
-		"trustDevice": strings.EqualFold(r.Form.Get("trustDevice"), "true"),
+		"trustDevice": false,
 	})
 	if err != nil {
 		h.renderAuthorizeInteraction(w, r, err.Error())
@@ -311,7 +344,7 @@ func (h *OIDCHandler) renderAuthorizeInteraction(w http.ResponseWriter, r *http.
 		h.writeAuthorizeErrorPage(w, http.StatusBadRequest, "login target is not available")
 		return
 	}
-	h.writeAuthorizeApp(w, http.StatusOK, buildAuthorizeBootstrap(r, response.Target, response.Stage, response.SecondFactorMethod, bannerError))
+	h.writeAuthorizeApp(w, http.StatusOK, buildAuthorizeBootstrap(r, response.Target, response.CurrentUser, response.Stage, response.SecondFactorMethod, response.MFAOptions, bannerError))
 }
 
 func (h *OIDCHandler) queryAuthorizeInteraction(w http.ResponseWriter, r *http.Request) (*authorizeInteractionResponse, error) {
@@ -331,6 +364,7 @@ func (h *OIDCHandler) queryAuthorizeInteraction(w http.ResponseWriter, r *http.R
 		"codeChallenge":       in.CodeChallenge,
 		"codeChallengeMethod": in.CodeChallengeMethod,
 		"prompt":              in.Prompt,
+		"skipAccountSelection": strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("ppvt_skip_account")), "1"),
 	})
 	if err != nil {
 		return nil, err
@@ -384,6 +418,14 @@ func authorizeURL(r *http.Request) *url.URL {
 	return u
 }
 
+func authorizeURLWithSkipAccount(r *http.Request) *url.URL {
+	u := authorizeURL(r)
+	query := u.Query()
+	query.Set("ppvt_skip_account", "1")
+	u.RawQuery = query.Encode()
+	return u
+}
+
 func redirectErrorOrDefault(redirectError, redirectURI, state string) string {
 	if strings.TrimSpace(redirectError) != "" {
 		return redirectError
@@ -401,11 +443,13 @@ func redirectErrorOrDefault(redirectError, redirectURI, state string) string {
 	return redirect.String()
 }
 
-func buildAuthorizeBootstrap(r *http.Request, target *coreservice.LoginTarget, stage, secondFactorMethod, bannerError string) authorizeUIBootstrap {
+func buildAuthorizeBootstrap(r *http.Request, target *coreservice.LoginTarget, currentUser *authorizeCurrentUser, stage, secondFactorMethod string, mfaMethods []string, bannerError string) authorizeUIBootstrap {
 	title := "登录"
 	switch stage {
+	case "account":
+		title = "选择账号"
 	case "confirmation":
-		title = "二次确认"
+		title = "设备确认"
 	case "mfa":
 		title = "多因素认证"
 	}
@@ -415,18 +459,15 @@ func buildAuthorizeBootstrap(r *http.Request, target *coreservice.LoginTarget, s
 		Error:              bannerError,
 		AuthorizeReturnURL: authorizeURL(r).String(),
 		Target:             target,
+		CurrentUser:        currentUser,
 		ApplicationID:      target.ApplicationID,
 		LoginAction:        "/auth/headless/login?" + r.URL.RawQuery,
+		AccountAction:      "/auth/headless/account?" + r.URL.RawQuery,
+		SwitchAccountAction: "/auth/headless/account?" + r.URL.RawQuery,
 		ConfirmAction:      "/auth/headless/confirm?" + r.URL.RawQuery,
 		MFAAction:          "/auth/headless/mfa?" + r.URL.RawQuery,
 		SecondFactorMethod: strings.TrimSpace(secondFactorMethod),
-		MFAOptions: []authorizeUIMethodOption{
-			{Value: "totp", Label: "身份验证器（TOTP）"},
-			{Value: "email_code", Label: "邮箱验证码"},
-			{Value: "sms_code", Label: "手机验证码"},
-			{Value: "recovery_code", Label: "备用验证码"},
-			{Value: "u2f", Label: "安全密钥"},
-		},
+		MFAOptions:         buildAuthorizeMFAOptions(mfaMethods),
 		API: authorizeUIAPIConfig{
 			WebAuthnLoginBegin: "/auth/headless/login/webauthn/begin?" + r.URL.RawQuery,
 			WebAuthnLoginEnd:   "/auth/headless/login/webauthn/finish?" + r.URL.RawQuery,
@@ -435,6 +476,34 @@ func buildAuthorizeBootstrap(r *http.Request, target *coreservice.LoginTarget, s
 			MFAChallenge:       "/auth/headless/mfa/challenge/generator?" + r.URL.RawQuery,
 		},
 	}
+}
+
+func buildAuthorizeMFAOptions(methods []string) []authorizeUIMethodOption {
+	options := make([]authorizeUIMethodOption, 0, len(methods))
+	for _, method := range methods {
+		value := strings.TrimSpace(method)
+		if value == "" {
+			continue
+		}
+		label := value
+		switch value {
+		case "u2f":
+			label = "安全密钥"
+		case "totp":
+			label = "身份验证器（TOTP）"
+		case "email_code":
+			label = "邮箱验证码"
+		case "sms_code":
+			label = "手机验证码"
+		case "recovery_code":
+			label = "备用验证码"
+		}
+		options = append(options, authorizeUIMethodOption{
+			Value: value,
+			Label: label,
+		})
+	}
+	return options
 }
 
 func buildAuthorizeAppShell(bootstrap authorizeUIBootstrap) ([]byte, error) {

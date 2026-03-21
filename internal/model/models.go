@@ -101,8 +101,6 @@ type OrganizationMFAPolicy struct {
 }
 
 type OrganizationSetting struct {
-	TOSURL           string                     `gorm:"size:255" json:"tosUrl"`
-	PrivacyPolicyURL string                     `gorm:"size:255" json:"privacyPolicyUrl"`
 	SupportEmail     string                     `gorm:"size:255" json:"supportEmail"`
 	LogoURL          string                     `gorm:"size:255" json:"logoUrl"`
 	Domains          []OrganizationDomain       `gorm:"serializer:json;type:json" json:"domains"`
@@ -140,6 +138,7 @@ type Application struct {
 	BaseModel
 	ProjectID                string   `gorm:"index;size:36" json:"projectId"`
 	Name                     string   `gorm:"size:128" json:"name"`
+	Metadata                 map[string]string `gorm:"serializer:json;type:json" json:"metadata"`
 	Description              string   `gorm:"size:255" json:"description"`
 	RedirectURIs             string   `gorm:"type:text" json:"redirectUris"`
 	Status                   string   `gorm:"size:32;default:active" json:"status"`

@@ -29,6 +29,7 @@ type AuthnService struct {
 
 type webAuthnFIDOService interface {
 	BeginAssertionForIdentifier(ctx context.Context, identifier, usage string) (string, any, error)
+	BeginDiscoverableAssertionForApplication(ctx context.Context, applicationID, usage string) (string, any, error)
 	FinishAssertion(ctx context.Context, challengeID string, payload json.RawMessage) (*sharedfido.AssertionResult, error)
 }
 
@@ -48,9 +49,12 @@ func (s *AuthnService) SetFIDOService(fido webAuthnFIDOService) {
 	s.fido = fido
 }
 
-func (s *AuthnService) BeginWebAuthnLogin(ctx context.Context, identifier string) (string, any, error) {
+func (s *AuthnService) BeginWebAuthnLogin(ctx context.Context, identifier, applicationID string) (string, any, error) {
 	if s.fido == nil {
 		return "", nil, errors.New("fido service is not configured")
+	}
+	if strings.TrimSpace(identifier) == "" {
+		return s.fido.BeginDiscoverableAssertionForApplication(ctx, applicationID, "webauthn")
 	}
 	return s.fido.BeginAssertionForIdentifier(ctx, identifier, "webauthn")
 }
@@ -112,6 +116,9 @@ func (s *AuthnService) FinishWebAuthnLogin(ctx context.Context, challengeID stri
 	if err := s.db.WithContext(ctx).Create(&session).Error; err != nil {
 		return nil, err
 	}
+	s.recordLoginSucceeded(ctx, session, user.ID, "", "", map[string]any{
+		"method": "webauthn",
+	})
 	tokens, err := s.issueTokens(ctx, user, session, "openid profile email phone")
 	if err != nil {
 		return nil, err
@@ -205,8 +212,8 @@ func (s *AuthnService) LoginWithUserCredential(ctx context.Context, in sharedaut
 		UserID:                user.ID,
 		ApplicationID:         in.ApplicationID,
 		TrustedDeviceEligible: device != nil,
-		State:                 "confirmation_required",
-		RequiresConfirmation:  true,
+		State:                 "authenticated",
+		RequiresConfirmation:  !trusted && requiresMFA && device != nil,
 		RequiresMFA:           !trusted && requiresMFA,
 		SecondFactorMethod:    preferredMFAMethod,
 		IPAddress:             in.IPAddress,
@@ -220,6 +227,10 @@ func (s *AuthnService) LoginWithUserCredential(ctx context.Context, in sharedaut
 		session.State = "authenticated"
 		session.RequiresConfirmation = false
 		session.RequiresMFA = false
+	} else if session.RequiresMFA {
+		session.State = "mfa_required"
+	} else {
+		session.State = "authenticated"
 	}
 	if in.RequireAnnouncement {
 		session.State = "confirmation_required"
@@ -230,23 +241,10 @@ func (s *AuthnService) LoginWithUserCredential(ctx context.Context, in sharedaut
 		return nil, err
 	}
 
-	_ = s.audit.Record(ctx, coreservice.AuditEvent{
-		OrganizationID: in.OrganizationID,
-		ApplicationID:  in.ApplicationID,
-		ActorType:      "user",
-		ActorID:        user.ID,
-		EventType:      "auth.login.succeeded",
-		Result:         "success",
-		TargetType:     "session",
-		TargetID:       session.ID,
-		IPAddress:      in.IPAddress,
-		UserAgent:      in.UserAgent,
-		Detail: map[string]any{
-			"trustedDevice": trusted,
-		},
-	})
-
 	if trusted {
+		s.recordLoginSucceeded(ctx, session, user.ID, in.IPAddress, in.UserAgent, map[string]any{
+			"trustedDevice": trusted,
+		})
 		tokens, err := s.issueTokens(ctx, user, session, "openid profile email phone")
 		if err != nil {
 			return nil, err
@@ -257,18 +255,20 @@ func (s *AuthnService) LoginWithUserCredential(ctx context.Context, in sharedaut
 		}
 		return &sharedauthn.LoginResult{Session: session, NextStep: "done", Tokens: tokens, Fingerprint: fingerprint}, nil
 	}
-	if session.RequiresConfirmation {
-		fingerprint, err := s.fingerprintForDevice(device)
-		if err != nil {
-			return nil, err
-		}
-		return &sharedauthn.LoginResult{Session: session, NextStep: "confirmation", Fingerprint: fingerprint}, nil
-	}
 	fingerprint, err := s.fingerprintForDevice(device)
 	if err != nil {
 		return nil, err
 	}
-	return &sharedauthn.LoginResult{Session: session, NextStep: "mfa", Fingerprint: fingerprint}, nil
+	if session.RequiresMFA {
+		return &sharedauthn.LoginResult{Session: session, NextStep: "mfa", Fingerprint: fingerprint}, nil
+	}
+	if session.RequiresConfirmation {
+		return &sharedauthn.LoginResult{Session: session, NextStep: "confirmation", Fingerprint: fingerprint}, nil
+	}
+	s.recordLoginSucceeded(ctx, session, user.ID, in.IPAddress, in.UserAgent, map[string]any{
+		"trustedDevice": trusted,
+	})
+	return &sharedauthn.LoginResult{Session: session, NextStep: "done", Fingerprint: fingerprint}, nil
 }
 
 func (s *AuthnService) evaluateMFALoginRequirement(ctx context.Context, user model.User) (bool, string, error) {
@@ -351,7 +351,7 @@ func (s *AuthnService) evaluateMFALoginRequirement(ctx context.Context, user mod
 	return true, methods[0], nil
 }
 
-func (s *AuthnService) ConfirmSession(ctx context.Context, sessionID string, accept bool) (*sharedauthn.LoginResult, error) {
+func (s *AuthnService) ConfirmSession(ctx context.Context, sessionID string, accept bool, trustDevice bool) (*sharedauthn.LoginResult, error) {
 	var session model.Session
 	if err := s.db.WithContext(ctx).First(&session, "id = ?", sessionID).Error; err != nil {
 		return nil, err
@@ -364,6 +364,11 @@ func (s *AuthnService) ConfirmSession(ctx context.Context, sessionID string, acc
 		return nil, errors.New("confirmation rejected")
 	}
 	session.RequiresConfirmation = false
+	if trustDevice && session.DeviceID != "" {
+		if err := s.db.WithContext(ctx).Model(&model.Device{}).Where("id = ?", session.DeviceID).Update("trusted", true).Error; err != nil {
+			return nil, err
+		}
+	}
 	if session.RequiresMFA {
 		session.State = "mfa_required"
 	} else {
@@ -379,6 +384,9 @@ func (s *AuthnService) ConfirmSession(ctx context.Context, sessionID string, acc
 	if err := s.db.WithContext(ctx).First(&user, "id = ?", session.UserID).Error; err != nil {
 		return nil, err
 	}
+	s.recordLoginSucceeded(ctx, session, user.ID, session.IPAddress, session.UserAgent, map[string]any{
+		"trustedDevice": trustDevice,
+	})
 	tokens, err := s.issueTokens(ctx, user, session, "openid profile email phone")
 	if err != nil {
 		return nil, err
@@ -425,9 +433,27 @@ func (s *AuthnService) CompleteWebAuthnMFA(ctx context.Context, sessionID, metho
 }
 
 func (s *AuthnService) completeMFASession(ctx context.Context, user model.User, session *model.Session, method string, trustDevice bool) (*sharedauthn.LoginResult, error) {
-	session.State = "authenticated"
 	session.RequiresMFA = false
 	session.SecondFactorMethod = method
+	if session.RequiresConfirmation {
+		session.State = "confirmation_required"
+		if err := s.db.WithContext(ctx).Save(session).Error; err != nil {
+			return nil, err
+		}
+		_ = s.audit.Record(ctx, coreservice.AuditEvent{
+			OrganizationID: session.OrganizationID,
+			ApplicationID:  session.ApplicationID,
+			ActorType:      "user",
+			ActorID:        session.UserID,
+			EventType:      "auth.mfa.verified",
+			Result:         "success",
+			TargetType:     "session",
+			TargetID:       session.ID,
+			Detail:         map[string]any{"method": method},
+		})
+		return &sharedauthn.LoginResult{Session: *session, NextStep: "confirmation"}, nil
+	}
+	session.State = "authenticated"
 	if trustDevice && session.DeviceID != "" {
 		if err := s.db.WithContext(ctx).Model(&model.Device{}).Where("id = ? AND user_id = ?", session.DeviceID, user.ID).Update("trusted", true).Error; err != nil {
 			return nil, err
@@ -436,6 +462,9 @@ func (s *AuthnService) completeMFASession(ctx context.Context, user model.User, 
 	if err := s.db.WithContext(ctx).Save(session).Error; err != nil {
 		return nil, err
 	}
+	s.recordLoginSucceeded(ctx, *session, user.ID, session.IPAddress, session.UserAgent, map[string]any{
+		"trustedDevice": trustDevice,
+	})
 	tokens, err := s.issueTokens(ctx, user, *session, "openid profile email phone")
 	if err != nil {
 		return nil, err
@@ -452,6 +481,22 @@ func (s *AuthnService) completeMFASession(ctx context.Context, user model.User, 
 		Detail:         map[string]any{"method": method},
 	})
 	return &sharedauthn.LoginResult{Session: *session, NextStep: "done", Tokens: tokens}, nil
+}
+
+func (s *AuthnService) recordLoginSucceeded(ctx context.Context, session model.Session, userID, ipAddress, userAgent string, detail map[string]any) {
+	_ = s.audit.Record(ctx, coreservice.AuditEvent{
+		OrganizationID: session.OrganizationID,
+		ApplicationID:  session.ApplicationID,
+		ActorType:      "user",
+		ActorID:        userID,
+		EventType:      "auth.login.succeeded",
+		Result:         "success",
+		TargetType:     "session",
+		TargetID:       session.ID,
+		IPAddress:      ipAddress,
+		UserAgent:      userAgent,
+		Detail:         detail,
+	})
 }
 
 func (s *AuthnService) upsertDevice(ctx context.Context, user model.User, fingerprint, userAgent, ipAddress string, trusted bool) (*model.Device, error) {

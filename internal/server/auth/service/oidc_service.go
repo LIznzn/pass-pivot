@@ -38,6 +38,79 @@ func NewOIDCService(db *gorm.DB, cfg config.Config, audit *AuditService, auth oi
 	return &OIDCService{db: db, cfg: cfg, audit: audit, auth: auth, keys: keys}
 }
 
+func (s *OIDCService) AvailableMFAMethodsForSession(ctx context.Context, sessionID string) ([]string, error) {
+	session, err := s.GetSession(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	var user model.User
+	if err := s.db.WithContext(ctx).First(&user, "id = ?", session.UserID).Error; err != nil {
+		return nil, err
+	}
+	_, settings, err := coreservice.LoadOrganizationConsoleSettings(ctx, s.db, user.OrganizationID)
+	if err != nil {
+		return nil, err
+	}
+	methods := make([]string, 0, 5)
+
+	if settings.MFAPolicy.AllowU2F {
+		var u2fCount int64
+		if err := s.db.WithContext(ctx).Model(&model.SecureKey{}).
+			Where("user_id = ? AND u2f_enable = ? AND deleted_at IS NULL", user.ID, true).
+			Count(&u2fCount).Error; err != nil {
+			return nil, err
+		}
+		var u2fEnrollmentCount int64
+		if err := s.db.WithContext(ctx).Model(&model.MFAEnrollment{}).
+			Where("user_id = ? AND method = ? AND status = ? AND deleted_at IS NULL", user.ID, "u2f", "active").
+			Count(&u2fEnrollmentCount).Error; err != nil {
+			return nil, err
+		}
+		if u2fCount > 0 && u2fEnrollmentCount > 0 {
+			methods = append(methods, "u2f")
+		}
+	}
+
+	if settings.MFAPolicy.AllowTotp {
+		var totpCount int64
+		if err := s.db.WithContext(ctx).Model(&model.MFAEnrollment{}).
+			Where("user_id = ? AND method = ? AND status = ? AND deleted_at IS NULL", user.ID, "totp", "active").
+			Count(&totpCount).Error; err != nil {
+			return nil, err
+		}
+		if totpCount > 0 {
+			methods = append(methods, "totp")
+		}
+	}
+
+	if settings.MFAPolicy.AllowEmailCode &&
+		strings.TrimSpace(user.Email) != "" &&
+		settings.MFAPolicy.EmailChannel.Enabled &&
+		strings.TrimSpace(settings.MFAPolicy.EmailChannel.From) != "" &&
+		strings.TrimSpace(settings.MFAPolicy.EmailChannel.Host) != "" &&
+		settings.MFAPolicy.EmailChannel.Port > 0 {
+		methods = append(methods, "email_code")
+	}
+
+	if settings.MFAPolicy.AllowSmsCode && strings.TrimSpace(user.PhoneNumber) != "" {
+		methods = append(methods, "sms_code")
+	}
+
+	if settings.MFAPolicy.AllowRecoveryCode {
+		var recoveryCount int64
+		if err := s.db.WithContext(ctx).Model(&model.MFARecoveryCode{}).
+			Where("user_id = ? AND consumed_at IS NULL AND deleted_at IS NULL", user.ID).
+			Count(&recoveryCount).Error; err != nil {
+			return nil, err
+		}
+		if recoveryCount > 0 {
+			methods = append(methods, "recovery_code")
+		}
+	}
+
+	return methods, nil
+}
+
 type AuthorizeInput struct {
 	SessionID           string
 	ClientID            string

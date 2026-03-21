@@ -33,7 +33,7 @@
               type="button"
               class="console-module-metric-copy"
               :aria-label="`复制${item.label}`"
-              @click="console.copyMetricValue(item.copyValue || item.value)"
+              @click="consoleStore.copyMetricValue(item.copyValue || item.value)"
             >
               <i class="bi bi-copy" aria-hidden="true"></i>
             </button>
@@ -43,7 +43,7 @@
     </div>
     <div class="console-module-workspace">
       <aside class="console-module-sidebar">
-        <button v-for="item in applicationDetailPanels" :key="item.id" type="button" class="console-module-sidebar-link" @click="console.scrollToPanel(item.id)">{{ item.label }}</button>
+        <button v-for="item in applicationDetailPanels" :key="item.id" type="button" class="console-module-sidebar-link" @click="consoleStore.scrollToPanel(item.id)">{{ item.label }}</button>
       </aside>
       <div class="console-module-main">
         <div id="application-protocol" class="info-card">
@@ -67,7 +67,7 @@
               <label class="form-label">应用名称</label>
               <BFormInput v-model="applicationUpdateForm.name" placeholder="请输入应用名称" />
             </div>
-            <div class="mb-3">
+            <div v-if="supportsLoginPresentation" class="mb-3">
               <label class="form-label">回调地址</label>
               <BFormInput v-model="applicationUpdateForm.redirectUris" placeholder="请输入回调地址" />
             </div>
@@ -113,6 +113,43 @@
             </div>
             <BButton type="submit" variant="outline-primary">保存协议配置</BButton>
           </BForm>
+        </div>
+        <div v-if="supportsLoginPresentation" id="application-metadata" class="info-card">
+          <div class="section-title">维护元信息</div>
+          <div class="record-meta mb-3">这些元信息会作为应用级变量，用于登录页显示名称等展示场景。多语言显示名称建议使用 `displayName`、`displayName.en`、`displayName.ja`、`displayName.zhs`、`displayName.zht`。</div>
+          <div class="detail-card">
+            <div class="metadata-table-wrap">
+              <table class="table table-sm align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th class="metadata-col-key">键</th>
+                    <th>值</th>
+                    <th class="metadata-col-action"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(item, index) in applicationMetadataRows" :key="item.id">
+                    <td>
+                      <BFormInput v-model="item.key" placeholder="例如 displayName.zhs" />
+                    </td>
+                    <td>
+                      <BFormInput v-model="item.value" placeholder="例如 控制台" />
+                    </td>
+                    <td class="text-end">
+                      <BButton size="sm" variant="outline-danger" @click="removeApplicationMetadataRow(index)">删除</BButton>
+                    </td>
+                  </tr>
+                  <tr v-if="applicationMetadataRows.length === 0">
+                    <td colspan="3" class="text-center text-secondary py-4">当前还没有元信息，新增后可作为应用级变量使用。</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="d-flex gap-2 mt-3">
+              <BButton variant="outline-secondary" @click="addApplicationMetadataRow">新增条目</BButton>
+              <BButton variant="primary" @click="emit('save-application-metadata', applicationMetadataRows)">保存元信息</BButton>
+            </div>
+          </div>
         </div>
         <div id="application-role-assignment" class="info-card">
           <div class="section-title">角色分配</div>
@@ -176,7 +213,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { BButton, BForm, BFormCheckbox, BFormInput, BFormSelect } from 'bootstrap-vue-next'
 import RightSide from '../layout/RightSide.vue'
 import { useAuditStore } from '../stores/audit'
@@ -187,6 +224,12 @@ const props = defineProps<{
   applicationUpdateForm: {
     id: string
     name: string
+    metadata: Record<string, string>
+    displayName: string
+    displayNameEn: string
+    displayNameJa: string
+    displayNameZhs: string
+    displayNameZht: string
     redirectUris: string
     applicationType: string
     grantType: string[]
@@ -211,9 +254,9 @@ const props = defineProps<{
 }>()
 
 const auditStore = useAuditStore()
-const console = useConsoleStore()
+const consoleStore = useConsoleStore()
 const moduleRecentChanges = computed(() => auditStore.moduleRecentChanges)
-const formatDateTime = console.formatDateTime
+const formatDateTime = consoleStore.formatDateTime
 
 const tokenTypeOptionsByGrantType: Record<string, string[]> = {
   authorization_code: ['access_token', 'id_token'],
@@ -233,11 +276,17 @@ const clientAuthenticationTypeOptionsByGrantType: Record<string, string[]> = {
   password: ['none', 'client_secret_basic', 'client_secret_post', 'client_secret_jwt', 'private_key_jwt', 'tls_client_auth', 'self_signed_tls_client_auth']
 }
 
-const applicationDetailPanels = [
-  { id: 'application-protocol', label: '协议配置' },
-  { id: 'application-role-assignment', label: '角色分配' },
-  { id: 'application-token', label: '令牌设置' }
-]
+const applicationDetailPanels = computed(() => {
+  const panels = [{ id: 'application-protocol', label: '协议配置' }]
+  if (supportsLoginPresentation.value) {
+    panels.push({ id: 'application-metadata', label: '维护元信息' })
+  }
+  panels.push(
+    { id: 'application-role-assignment', label: '角色分配' },
+    { id: 'application-token', label: '令牌设置' }
+  )
+  return panels
+})
 
 const applicationDetailMetrics = computed(() => [
   { label: '应用 ID', value: props.currentApplication?.id || '-', copyable: Boolean(props.currentApplication?.id), copyValue: props.currentApplication?.id || '' },
@@ -264,10 +313,19 @@ const currentApplicationProtocolHint = computed(() => {
 
 const applicationUpdateTokenTypeOptions = computed(() => filterApplicationTokenTypeOptions(props.applicationUpdateForm.grantType))
 const applicationUpdateClientAuthenticationTypeOptions = computed(() => filterApplicationClientAuthenticationTypeOptions(props.applicationUpdateForm.grantType))
+const applicationMetadataRows = ref<Array<{ id: string; key: string; value: string }>>([])
+const supportsLoginPresentation = computed(() => props.applicationUpdateForm.applicationType === 'web' || props.applicationUpdateForm.applicationType === 'native')
 
 function applyRecommendedApplicationProtocol() {
   const target = props.applicationUpdateForm
   if (target.applicationType === 'api') {
+    target.redirectUris = ''
+    target.metadata = {}
+    target.displayName = ''
+    target.displayNameEn = ''
+    target.displayNameJa = ''
+    target.displayNameZhs = ''
+    target.displayNameZht = ''
     target.tokenType = ['access_token']
     target.enableRefreshToken = false
     target.grantType = ['client_credentials']
@@ -362,15 +420,46 @@ function toggleRoleName(items: string[], value: string, checked: boolean) {
   items.splice(0, items.length, ...Array.from(next).sort())
 }
 
+function createLocalRowID() {
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+function addApplicationMetadataRow() {
+  applicationMetadataRows.value.push({
+    id: createLocalRowID(),
+    key: '',
+    value: ''
+  })
+}
+
+function removeApplicationMetadataRow(index: number) {
+  applicationMetadataRows.value.splice(index, 1)
+}
+
 watch(() => props.applicationUpdateForm.applicationType, () => applyRecommendedApplicationProtocol())
 watch(() => [...props.applicationUpdateForm.grantType], () => normalizeApplicationProtocolSelection())
 watch(() => [...props.applicationUpdateForm.tokenType], () => normalizeApplicationProtocolSelection())
+watch(
+  () => props.applicationUpdateForm.metadata,
+  (metadata) => {
+    const normalized = (!metadata || typeof metadata !== 'object' || Array.isArray(metadata))
+      ? {}
+      : Object.fromEntries(Object.entries(metadata as Record<string, unknown>).map(([key, value]) => [key, String(value ?? '')]))
+    applicationMetadataRows.value = Object.entries(normalized).map(([key, value]) => ({
+      id: createLocalRowID(),
+      key,
+      value
+    }))
+  },
+  { immediate: true, deep: true }
+)
 
 const emit = defineEmits<{
   back: []
   disable: []
   delete: []
   'update-application': []
+  'save-application-metadata': [rows: Array<{ id?: string; key: string; value: string }>]
   'reset-application-key': []
 }>()
 </script>

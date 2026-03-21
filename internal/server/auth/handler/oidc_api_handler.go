@@ -20,7 +20,17 @@ type authorizeInteractionResponse struct {
 	RedirectTarget     string                   `json:"redirectTarget,omitempty"`
 	Stage              string                   `json:"stage,omitempty"`
 	SecondFactorMethod string                   `json:"secondFactorMethod,omitempty"`
+	MFAOptions         []string                 `json:"mfaOptions,omitempty"`
 	Target             *coreservice.LoginTarget `json:"target,omitempty"`
+	CurrentUser        *authorizeCurrentUser    `json:"currentUser,omitempty"`
+}
+
+type authorizeCurrentUser struct {
+	ID          string `json:"id"`
+	Username    string `json:"username"`
+	Name        string `json:"name"`
+	Email       string `json:"email"`
+	PhoneNumber string `json:"phoneNumber"`
 }
 
 func (h *OIDCHandler) QueryMetadataAPI(w http.ResponseWriter, r *http.Request) {
@@ -53,6 +63,7 @@ func (h *OIDCHandler) QueryAuthorizeInteractionAPI(w http.ResponseWriter, r *htt
 		CodeChallenge       string `json:"codeChallenge"`
 		CodeChallengeMethod string `json:"codeChallengeMethod"`
 		Prompt              string `json:"prompt"`
+		SkipAccountSelection bool  `json:"skipAccountSelection"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
@@ -95,30 +106,62 @@ func (h *OIDCHandler) QueryAuthorizeInteractionAPI(w http.ResponseWriter, r *htt
 		if session, err := h.oidc.GetSession(r.Context(), sessionID); err == nil {
 			switch session.State {
 			case "authenticated":
-				in.SessionID = sessionID
-				redirectTarget, redirectErr := h.oidc.BuildAuthorizationRedirect(r.Context(), in)
-				if redirectErr != nil {
-					authnapi.WriteKnown(w, redirectErr)
+				if payload.SkipAccountSelection {
+					in.SessionID = sessionID
+					redirectTarget, redirectErr := h.oidc.BuildAuthorizationRedirect(r.Context(), in)
+					if redirectErr != nil {
+						authnapi.WriteKnown(w, redirectErr)
+						return
+					}
+					sharedweb.JSON(w, http.StatusOK, authorizeInteractionResponse{
+						Action:         "redirect",
+						RedirectTarget: redirectTarget,
+					})
+					return
+				}
+				user, _, userErr := h.oidc.GetSessionUser(r.Context(), sessionID)
+				if userErr != nil {
+					authnapi.WriteKnown(w, userErr)
 					return
 				}
 				sharedweb.JSON(w, http.StatusOK, authorizeInteractionResponse{
-					Action:         "redirect",
-					RedirectTarget: redirectTarget,
+					Action: "render",
+					Stage:  "account",
+					Target: target,
+					CurrentUser: &authorizeCurrentUser{
+						ID:          user.ID,
+						Username:    user.Username,
+						Name:        user.Name,
+						Email:       user.Email,
+						PhoneNumber: user.PhoneNumber,
+					},
 				})
 				return
 			case "confirmation_required":
+				mfaOptions, mfaErr := h.oidc.AvailableMFAMethodsForSession(r.Context(), sessionID)
+				if mfaErr != nil {
+					authnapi.WriteKnown(w, mfaErr)
+					return
+				}
 				sharedweb.JSON(w, http.StatusOK, authorizeInteractionResponse{
 					Action:             "render",
 					Stage:              "confirmation",
 					SecondFactorMethod: session.SecondFactorMethod,
+					MFAOptions:         mfaOptions,
 					Target:             target,
 				})
 				return
 			case "mfa_required":
+				mfaOptions, mfaErr := h.oidc.AvailableMFAMethodsForSession(r.Context(), sessionID)
+				if mfaErr != nil {
+					authnapi.WriteKnown(w, mfaErr)
+					return
+				}
 				sharedweb.JSON(w, http.StatusOK, authorizeInteractionResponse{
 					Action:             "render",
 					Stage:              "mfa",
 					SecondFactorMethod: session.SecondFactorMethod,
+					MFAOptions:         mfaOptions,
 					Target:             target,
 				})
 				return

@@ -17,6 +17,7 @@
     @disable="showApplicationDisableNotice"
     @delete="showApplicationDeleteNotice"
     @update-application="updateApplication"
+    @save-application-metadata="saveApplicationMetadata"
     @reset-application-key="resetApplicationKey"
   />
 
@@ -39,9 +40,9 @@
             </span>
           </div>
           <div class="record-meta">创建时间</div>
-          <div class="project-card-value mb-1">{{ console.formatDateTime(project.createdAt) }}</div>
+          <div class="project-card-value mb-1">{{ consoleStore.formatDateTime(project.createdAt) }}</div>
           <div class="record-meta">更新时间</div>
-          <div class="project-card-value mb-1">{{ console.formatDateTime(project.updatedAt) }}</div>
+          <div class="project-card-value mb-1">{{ consoleStore.formatDateTime(project.updatedAt) }}</div>
           <div class="record-meta">应用数</div>
           <div class="project-card-value">{{ project.applications?.length ?? 0 }}</div>
         </button>
@@ -125,7 +126,7 @@ const router = useRouter()
 const route = useRoute()
 const toast = useToast()
 const applicationStore = useApplicationStore()
-const console = useConsoleStore()
+const consoleStore = useConsoleStore()
 const organizationStore = useOrganizationStore()
 const projectStore = useProjectStore()
 const roleStore = useRoleStore()
@@ -187,18 +188,18 @@ const applicationAssignableRoles = computed(() => roleStore.roles.filter((item: 
 
 watchEffect(() => {
   if (currentView.value === 'application-detail') {
-    console.setPageHeader('', '')
+    consoleStore.setPageHeader('', '')
     return
   }
   if (projectViewMode.value === 'detail') {
-    console.setPageHeader('', '')
+    consoleStore.setPageHeader('', '')
     return
   }
-  console.setPageHeader('项目', '管理项目与应用的结构、协议模式与接入配置。')
+  consoleStore.setPageHeader('项目', '管理项目与应用的结构、协议模式与接入配置。')
 })
 
 watch(
-  () => [console.currentOrganizationId, route.name, route.params.projectId, route.params.applicationId],
+  () => [consoleStore.currentOrganizationId, route.name, route.params.projectId, route.params.applicationId],
   async ([organizationId, routeName, routeProjectId, routeApplicationId]) => {
     const nextOrganizationId = typeof organizationId === 'string' ? organizationId : ''
     if (!nextOrganizationId) {
@@ -293,7 +294,7 @@ async function selectProject(project: any) {
   projectStore.setSelectedProjectId(project?.id ?? '')
   await applicationStore.loadApplications(project?.id ?? '')
   projectViewMode.value = 'detail'
-  await router.push({ name: 'console-project-detail', params: { organizationId: console.currentOrganizationId || organizationStore.currentOrganization?.id || '', projectId: project.id ?? '' } })
+  await router.push({ name: 'console-project-detail', params: { organizationId: consoleStore.currentOrganizationId || organizationStore.currentOrganization?.id || '', projectId: project.id ?? '' } })
 }
 
 async function goApplicationDetail(application: any) {
@@ -301,7 +302,7 @@ async function goApplicationDetail(application: any) {
   await router.push({
     name: 'console-application-detail',
     params: {
-      organizationId: console.currentOrganizationId,
+      organizationId: consoleStore.currentOrganizationId,
       projectId: projectStore.selectedProjectId || currentProject.value?.id || '',
       applicationId: application.id ?? ''
     }
@@ -310,11 +311,11 @@ async function goApplicationDetail(application: any) {
 
 function backToProjectList() {
   projectViewMode.value = 'list'
-  void router.push({ name: 'console-project-list', params: { organizationId: console.currentOrganizationId || organizationStore.currentOrganization?.id || '' } })
+  void router.push({ name: 'console-project-list', params: { organizationId: consoleStore.currentOrganizationId || organizationStore.currentOrganization?.id || '' } })
 }
 
 async function backToProjectDetail() {
-  await router.push({ name: 'console-project-detail', params: { organizationId: console.currentOrganizationId || organizationStore.currentOrganization?.id || '', projectId: projectStore.selectedProjectId || currentProject.value?.id || '' } })
+  await router.push({ name: 'console-project-detail', params: { organizationId: consoleStore.currentOrganizationId || organizationStore.currentOrganization?.id || '', projectId: projectStore.selectedProjectId || currentProject.value?.id || '' } })
 }
 
 function openProjectCreateModal() {
@@ -359,7 +360,7 @@ async function submitApplicationCreate() {
   await router.push({
     name: 'console-application-detail',
     params: {
-      organizationId: console.currentOrganizationId || organizationStore.currentOrganization?.id || '',
+      organizationId: consoleStore.currentOrganizationId || organizationStore.currentOrganization?.id || '',
       projectId: projectStore.selectedProjectId || currentProject.value?.id || '',
       applicationId: createdApplicationId
     }
@@ -376,6 +377,12 @@ async function updateApplication() {
     const updated = await applicationStore.updateApplication()
     showApplicationPrivateKey(updated?.generatedPrivateKey, '应用私钥')
   })
+}
+
+async function saveApplicationMetadata(rows: Array<{ key: string; value: string }>) {
+  await withFeedback(async () => {
+    await applicationStore.saveApplicationMetadata(rows)
+  }, '应用元信息已保存')
 }
 
 async function resetApplicationKey() {

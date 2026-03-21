@@ -20,13 +20,36 @@ import { getCurrentAccessToken, startConsoleAuthorization } from '../api/auth'
 const route = useRoute()
 const message = ref('正在准备控制台登录流程。')
 
+function normalizeTarget(value: string) {
+  let next = value
+  for (let i = 0; i < 3; i += 1) {
+    try {
+      const url = new URL(next, window.location.origin)
+      if (url.pathname !== '/console') {
+        return url.toString()
+      }
+      const nested = url.searchParams.get('target')
+      if (!nested) {
+        return `${window.location.origin}/console/dashboard`
+      }
+      next = nested
+    } catch {
+      return `${window.location.origin}/console/dashboard`
+    }
+  }
+  return `${window.location.origin}/console/dashboard`
+}
+
 onMounted(async () => {
   if (getCurrentAccessToken()) {
     window.location.replace('/console/dashboard')
     return
   }
   try {
-    const target = typeof route.query.target === 'string' && route.query.target ? route.query.target : `${window.location.origin}/console/dashboard`
+    const rawTarget = typeof route.query.target === 'string' && route.query.target
+      ? route.query.target
+      : `${window.location.origin}/console/dashboard`
+    const target = normalizeTarget(rawTarget)
     await startConsoleAuthorization(target)
   } catch (error) {
     message.value = String(error)

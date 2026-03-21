@@ -44,11 +44,11 @@ import { BButton } from 'bootstrap-vue-next'
 import { useConsoleStore } from '../stores/console'
 import { useOrganizationStore } from '../stores/organization'
 
-const console = useConsoleStore()
+const consoleStore = useConsoleStore()
 const organizationStore = useOrganizationStore()
 
 watchEffect(() => {
-  console.setPageHeader('组织切换', '在这里切换当前控制台所属组织，必要时可直接创建新的组织；组织基础信息调整请前往该组织的设置页。')
+  consoleStore.setPageHeader('组织切换', '在这里切换当前控制台所属组织，必要时可直接创建新的组织；组织基础信息调整请前往该组织的设置页。')
 })
 
 function applicationCount(organization: any) {
@@ -56,6 +56,6 @@ function applicationCount(organization: any) {
 }
 
 const organizations = organizationStore.organizations
-const currentOrganizationId = console.currentOrganizationId
-const formatDateTime = console.formatDateTime
+const currentOrganizationId = consoleStore.currentOrganizationId
+const formatDateTime = consoleStore.formatDateTime
 </script>

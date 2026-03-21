@@ -57,6 +57,7 @@ func (h *Handler) Confirm(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		SessionID string `json:"sessionId"`
 		Accept    bool   `json:"accept"`
+		TrustDevice bool `json:"trustDevice"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
@@ -66,7 +67,7 @@ func (h *Handler) Confirm(w http.ResponseWriter, r *http.Request) {
 	if sessionID == "" {
 		sessionID = sharedhandler.ReadPortalSessionCookie(r)
 	}
-	result, err := h.service.ConfirmSession(r.Context(), sessionID, payload.Accept)
+	result, err := h.service.ConfirmSession(r.Context(), sessionID, payload.Accept, payload.TrustDevice)
 	if err != nil {
 		authnapi.WriteKnown(w, err)
 		return

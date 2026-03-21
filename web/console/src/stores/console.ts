@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import router from '../router'
 import { startConsoleLogout } from '../api/auth'
+import { requestPost } from '../util/request'
 
 export type ConsoleTab = 'dashboard' | 'organization' | 'project' | 'user' | 'role' | 'audit' | 'setting'
 
@@ -13,6 +14,8 @@ export const useConsoleStore = defineStore('console', () => {
   const pageHeaderDescription = ref('')
   const currentOrganizationId = ref('')
   const currentLoginUser = ref('')
+  const currentLoginName = ref('')
+  const currentLoginEmail = ref('')
 
   function syncRouteState() {
     const route = router.currentRoute.value
@@ -29,9 +32,21 @@ export const useConsoleStore = defineStore('console', () => {
     }
   }
 
+  function resolveOrganizationId() {
+    const routeOrganizationId = router.currentRoute.value.params.organizationId
+    if (typeof routeOrganizationId === 'string' && routeOrganizationId) {
+      return routeOrganizationId
+    }
+    return currentOrganizationId.value
+  }
+
   async function setTab(nextTab: ConsoleTab) {
     tab.value = nextTab
-    const organizationId = currentOrganizationId.value
+    const organizationId = resolveOrganizationId()
+    if (nextTab !== 'dashboard' && !organizationId) {
+      await router.push({ name: 'console-organization-manage' })
+      return
+    }
     if (nextTab === 'organization') {
       await router.push({ name: 'console-organization', params: { organizationId } })
       return
@@ -71,12 +86,40 @@ export const useConsoleStore = defineStore('console', () => {
 
   function logout() {
     sessionStorage.removeItem('ppvt-login-identifier')
+    sessionStorage.removeItem('ppvt-login-name')
+    sessionStorage.removeItem('ppvt-login-email')
     sessionStorage.removeItem('ppvt-external-idp-application-id')
     startConsoleLogout()
   }
 
   function initializeCurrentLoginUser() {
     currentLoginUser.value = sessionStorage.getItem('ppvt-login-identifier') ?? ''
+    currentLoginName.value = sessionStorage.getItem('ppvt-login-name') ?? ''
+    currentLoginEmail.value = sessionStorage.getItem('ppvt-login-email') ?? ''
+  }
+
+  async function loadCurrentLoginUser() {
+    try {
+      const profile = await requestPost<{
+        username?: string
+        name?: string
+        email?: string
+      }>('/api/user/v1/profile/query', {})
+      currentLoginUser.value = profile.username?.trim() || profile.email?.trim() || currentLoginUser.value
+      currentLoginName.value = profile.name?.trim() || profile.username?.trim() || currentLoginName.value
+      currentLoginEmail.value = profile.email?.trim() || currentLoginEmail.value
+      if (currentLoginUser.value) {
+        sessionStorage.setItem('ppvt-login-identifier', currentLoginUser.value)
+      }
+      if (currentLoginName.value) {
+        sessionStorage.setItem('ppvt-login-name', currentLoginName.value)
+      }
+      if (currentLoginEmail.value) {
+        sessionStorage.setItem('ppvt-login-email', currentLoginEmail.value)
+      }
+    } catch {
+      // Ignore profile bootstrap failure and keep existing session snapshot.
+    }
   }
 
   function formatDateTime(value?: string) {
@@ -143,12 +186,16 @@ export const useConsoleStore = defineStore('console', () => {
     pageHeaderDescription,
     currentOrganizationId,
     currentLoginUser,
+    currentLoginName,
+    currentLoginEmail,
     syncRouteState,
+    resolveOrganizationId,
     setTab,
     toggleManageOrganization,
     goMy,
     logout,
     initializeCurrentLoginUser,
+    loadCurrentLoginUser,
     formatDateTime,
     copyMetricValue,
     scrollToPanel,

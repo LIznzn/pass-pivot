@@ -23,6 +23,7 @@ func NewAuthRouter(oidc *authhandler.OIDCHandler, staticAssetHandler func(string
 	mux.HandleFunc("GET /auth/keys", oidc.JWKS)
 	mux.HandleFunc("GET /auth/authorize", oidc.Authorize)
 	mux.HandleFunc("POST /auth/headless/login", oidc.AuthorizeLogin)
+	mux.HandleFunc("POST /auth/headless/account", oidc.AuthorizeAccount)
 	mux.HandleFunc("POST /auth/headless/confirm", oidc.AuthorizeConfirm)
 	mux.HandleFunc("POST /auth/headless/mfa", oidc.AuthorizeMFA)
 	mux.HandleFunc("POST /auth/headless/mfa/challenge/generator", oidc.AuthorizeChallenge)

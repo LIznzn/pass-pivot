@@ -16,7 +16,7 @@ type WebAuthnHandler struct {
 }
 
 type webAuthnLoginService interface {
-	BeginWebAuthnLogin(ctx context.Context, identifier string) (string, any, error)
+	BeginWebAuthnLogin(ctx context.Context, identifier, applicationID string) (string, any, error)
 	FinishWebAuthnLogin(ctx context.Context, challengeID string, payload json.RawMessage, applicationID, deviceKey string) (*sharedauthn.LoginResult, error)
 	ParseFingerprint(signedFingerprint string) string
 }
@@ -27,13 +27,14 @@ func NewWebAuthnHandler(service webAuthnLoginService) *WebAuthnHandler {
 
 func (h *WebAuthnHandler) BeginLogin(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
-		Identifier string `json:"identifier"`
+		Identifier    string `json:"identifier"`
+		ApplicationID string `json:"applicationId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
 		return
 	}
-	challengeID, options, err := h.service.BeginWebAuthnLogin(r.Context(), payload.Identifier)
+	challengeID, options, err := h.service.BeginWebAuthnLogin(r.Context(), payload.Identifier, payload.ApplicationID)
 	if err != nil {
 		authnapi.WriteKnown(w, err)
 		return

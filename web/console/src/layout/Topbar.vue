@@ -12,8 +12,8 @@
               :key="item.id"
               type="button"
               class="nav-link"
-              :class="{ active: console.tab === item.id }"
-              @click="console.setTab(item.id)"
+              :class="{ active: consoleStore.tab === item.id }"
+              @click="consoleStore.setTab(item.id)"
             >
               {{ item.label }}
             </button>
@@ -36,11 +36,11 @@
             >
               <span class="organization-context-item-row">
                 <span>{{ organization.name || organization.id }}</span>
-                <span v-if="organization.id === console.currentOrganizationId" class="organization-context-check">当前</span>
+                <span v-if="organization.id === consoleStore.currentOrganizationId" class="organization-context-check">当前</span>
               </span>
             </BDropdownItem>
             <BDropdownDivider />
-            <BDropdownItem class="organization-context-manage" @click="console.toggleManageOrganization">管理组织</BDropdownItem>
+            <BDropdownItem class="organization-context-manage" @click="consoleStore.toggleManageOrganization">管理组织</BDropdownItem>
           </BDropdown>
           <BDropdown right no-caret variant="link" class="user-context-dropdown" toggle-class="user-context-toggle" menu-class="user-context-menu">
             <template #button-content>
@@ -56,8 +56,8 @@
               </div>
             </div>
             <BDropdownDivider />
-            <BDropdownItem @click="console.goMy()">用户中心</BDropdownItem>
-            <BDropdownItem @click="console.logout()">退出登录</BDropdownItem>
+            <BDropdownItem @click="consoleStore.goMy()">用户中心</BDropdownItem>
+            <BDropdownItem @click="consoleStore.logout()">退出登录</BDropdownItem>
           </BDropdown>
         </div>
       </div>
@@ -71,12 +71,12 @@ import { computed } from 'vue'
 import { useConsoleStore } from '../stores/console'
 import { useOrganizationStore } from '../stores/organization'
 
-const console = useConsoleStore()
+const consoleStore = useConsoleStore()
 const organizationStore = useOrganizationStore()
 const organizations = computed(() => organizationStore.organizations)
 const currentOrganizationLabel = computed(() => organizationStore.currentOrganization?.name || organizationStore.currentOrganization?.id || '选择组织')
-const currentUserDisplayName = computed(() => console.currentLoginUser || '当前登录用户')
-const currentUserEmail = computed(() => console.currentLoginUser || '-')
+const currentUserDisplayName = computed(() => consoleStore.currentLoginName || consoleStore.currentLoginUser || '当前登录用户')
+const currentUserEmail = computed(() => consoleStore.currentLoginEmail || consoleStore.currentLoginUser || '-')
 const currentUserInitials = computed(() => {
   const source = currentUserDisplayName.value || currentUserEmail.value
   const cleaned = source.replace(/[^A-Za-z0-9\u4e00-\u9fa5 ]/g, ' ').trim()

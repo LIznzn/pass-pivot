@@ -272,6 +272,7 @@ func (s *Service) GetLoginTarget(ctx context.Context, applicationID string) (*co
 	if err := s.db.WithContext(ctx).First(&application, "id = ?", applicationID).Error; err != nil {
 		return nil, err
 	}
+	application.Metadata = coreservice.NormalizeApplicationMetadata(application.Metadata, nil)
 	if applicationIsDisabled(application.Status) {
 		return nil, errors.New("application is disabled")
 	}
@@ -289,6 +290,7 @@ func (s *Service) GetLoginTarget(ctx context.Context, applicationID string) (*co
 	if organizationIsDisabled(organization.Status) {
 		return nil, errors.New("organization is disabled")
 	}
+	organization.Metadata = coreservice.NormalizeOrganizationMetadata(organization.Metadata, nil)
 	providers, err := s.ListExternalIDPs(ctx, organization.ID)
 	if err != nil {
 		return nil, err
@@ -306,10 +308,15 @@ func (s *Service) GetLoginTarget(ctx context.Context, applicationID string) (*co
 	return &coreservice.LoginTarget{
 		OrganizationID:   organization.ID,
 		OrganizationName: organization.Name,
+		DisplayName:      organization.Metadata[coreservice.OrganizationMetadataDisplayName],
+		WebsiteURL:       organization.Metadata[coreservice.OrganizationMetadataWebsiteURL],
+		TermsOfServiceURL: organization.Metadata[coreservice.OrganizationMetadataTermsOfServiceURL],
+		PrivacyPolicyURL: organization.Metadata[coreservice.OrganizationMetadataPrivacyPolicyURL],
 		ProjectID:        project.ID,
 		ProjectName:      project.Name,
 		ApplicationID:    application.ID,
 		ApplicationName:  application.Name,
+		ApplicationDisplayNames: coreservice.BuildApplicationDisplayNameMap(application.Metadata),
 		ExternalIDPs:     publicProviders,
 	}, nil
 }
@@ -360,6 +367,7 @@ func (s *Service) CreateOrganization(ctx context.Context, org model.Organization
 	if strings.TrimSpace(org.Status) == "" {
 		org.Status = "active"
 	}
+	org.Metadata = coreservice.NormalizeOrganizationMetadata(org.Metadata, nil)
 	ownerRoleName := sharedhandler.OrganizationOwnerRoleName(org.ID)
 	adminRoleName := sharedhandler.OrganizationAdminRoleName(org.ID)
 	creatorUserID := currentUserIDFromContext(ctx)
@@ -405,10 +413,8 @@ func (s *Service) CreateOrganization(ctx context.Context, org model.Organization
 		}
 		settings := coreservice.NormalizeOrganizationConsoleSettings(org.ConsoleSettings)
 		return tx.Model(&org).
-			Select("TOSURL", "PrivacyPolicyURL", "SupportEmail", "LogoURL", "Domains", "LoginPolicy", "PasswordPolicy", "MFAPolicy").
+			Select("SupportEmail", "LogoURL", "Domains", "LoginPolicy", "PasswordPolicy", "MFAPolicy").
 			Updates(model.Organization{
-				TOSURL:           settings.TOSURL,
-				PrivacyPolicyURL: settings.PrivacyPolicyURL,
 				SupportEmail:     settings.SupportEmail,
 				LogoURL:          settings.LogoURL,
 				Domains:          settings.Domains,
@@ -447,6 +453,7 @@ func (s *Service) UpdateOrganization(ctx context.Context, org model.Organization
 		return nil, err
 	}
 	metadata := normalizeMetadata(org.Metadata, existing.Metadata)
+	metadata = coreservice.NormalizeOrganizationMetadata(metadata, nil)
 	delete(metadata, "console_settings")
 	updateModel := model.Organization{
 		Name:              coalesceString(org.Name, existing.Name),
@@ -472,8 +479,6 @@ func (s *Service) UpdateOrganization(ctx context.Context, org model.Organization
 	}
 	if org.ConsoleSettings != nil {
 		settings := coreservice.NormalizeOrganizationConsoleSettings(org.ConsoleSettings)
-		updateModel.TOSURL = settings.TOSURL
-		updateModel.PrivacyPolicyURL = settings.PrivacyPolicyURL
 		updateModel.SupportEmail = settings.SupportEmail
 		updateModel.LogoURL = settings.LogoURL
 		updateModel.Domains = settings.Domains
@@ -481,8 +486,6 @@ func (s *Service) UpdateOrganization(ctx context.Context, org model.Organization
 		updateModel.PasswordPolicy = settings.PasswordPolicy
 		updateModel.MFAPolicy = settings.MFAPolicy
 		selectedFields = append(selectedFields,
-			"TOSURL",
-			"PrivacyPolicyURL",
 			"SupportEmail",
 			"LogoURL",
 			"Domains",
@@ -714,14 +717,13 @@ func (s *Service) DeleteOrganization(ctx context.Context, organizationID string)
 func (s *Service) attachOrganizationSettings(ctx context.Context, organizations []model.Organization) error {
 	for index := range organizations {
 		current := organizations[index]
+		organizations[index].Metadata = coreservice.NormalizeOrganizationMetadata(current.Metadata, nil)
 		if legacy := coreservice.ParseLegacyOrganizationConsoleSettings(current); legacy != nil {
 			settings := coreservice.NormalizeOrganizationConsoleSettings(legacy)
 			organizations[index].ConsoleSettings = &settings
 			continue
 		}
 		settings := coreservice.NormalizeOrganizationConsoleSettings(&model.OrganizationSetting{
-			TOSURL:           current.TOSURL,
-			PrivacyPolicyURL: current.PrivacyPolicyURL,
 			SupportEmail:     current.SupportEmail,
 			LogoURL:          current.LogoURL,
 			Domains:          current.Domains,
@@ -1006,6 +1008,7 @@ func (s *Service) CreateApplication(ctx context.Context, app model.Application) 
 	if app.ID == "" {
 		app.ID = uuid.NewString()
 	}
+	app.Metadata = coreservice.NormalizeApplicationMetadata(app.Metadata, nil)
 	applyApplicationDefaults(&app)
 	if err := validateApplicationProtocol(app); err != nil {
 		return nil, err
@@ -1059,6 +1062,7 @@ func (s *Service) UpdateApplication(ctx context.Context, app model.Application) 
 	}
 	updateModel := model.Application{
 		Name:                     coalesceString(app.Name, existing.Name),
+		Metadata:                 coreservice.NormalizeApplicationMetadata(app.Metadata, existing.Metadata),
 		Description:              coalesceString(app.Description, existing.Description),
 		RedirectURIs:             coalesceString(app.RedirectURIs, existing.RedirectURIs),
 		ApplicationType:          coalesceString(app.ApplicationType, existing.ApplicationType),
@@ -1072,6 +1076,7 @@ func (s *Service) UpdateApplication(ctx context.Context, app model.Application) 
 	}
 	candidate := *existing
 	candidate.Name = updateModel.Name
+	candidate.Metadata = updateModel.Metadata
 	candidate.Description = updateModel.Description
 	candidate.RedirectURIs = updateModel.RedirectURIs
 	candidate.ApplicationType = updateModel.ApplicationType
@@ -1108,6 +1113,7 @@ func (s *Service) UpdateApplication(ctx context.Context, app model.Application) 
 	}
 	selectedFields := []string{
 		"Name",
+		"Metadata",
 		"Description",
 		"RedirectURIs",
 		"ApplicationType",
@@ -1618,6 +1624,9 @@ func (s *Service) ListApplications(ctx context.Context, projectID string) ([]mod
 		query = query.Where("project_id IN ?", projectIDs)
 	}
 	err := query.Find(&items).Error
+	for index := range items {
+		items[index].Metadata = coreservice.NormalizeApplicationMetadata(items[index].Metadata, nil)
+	}
 	return items, err
 }
 

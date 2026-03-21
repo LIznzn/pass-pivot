@@ -18,6 +18,12 @@ export const useApplicationStore = defineStore('application', () => {
   const applicationForm = reactive({
     projectId: '',
     name: '',
+    metadata: {} as Record<string, string>,
+    displayName: '',
+    displayNameEn: '',
+    displayNameJa: '',
+    displayNameZhs: '',
+    displayNameZht: '',
     redirectUris: '',
     applicationType: 'web',
     tokenType: ['access_token'] as string[],
@@ -32,6 +38,12 @@ export const useApplicationStore = defineStore('application', () => {
   const applicationUpdateForm = reactive({
     id: '',
     name: '',
+    metadata: {} as Record<string, string>,
+    displayName: '',
+    displayNameEn: '',
+    displayNameJa: '',
+    displayNameZhs: '',
+    displayNameZht: '',
     redirectUris: '',
     applicationType: 'web',
     tokenType: ['access_token'] as string[],
@@ -51,6 +63,12 @@ export const useApplicationStore = defineStore('application', () => {
     if (!application) {
       applicationUpdateForm.id = ''
       applicationUpdateForm.name = ''
+      applicationUpdateForm.metadata = buildApplicationMetadata()
+      applicationUpdateForm.displayName = ''
+      applicationUpdateForm.displayNameEn = ''
+      applicationUpdateForm.displayNameJa = ''
+      applicationUpdateForm.displayNameZhs = ''
+      applicationUpdateForm.displayNameZht = ''
       applicationUpdateForm.redirectUris = ''
       applicationUpdateForm.applicationType = 'web'
       applicationUpdateForm.grantType = ['authorization_code_pkce']
@@ -65,6 +83,12 @@ export const useApplicationStore = defineStore('application', () => {
     }
     applicationUpdateForm.id = application.id ?? ''
     applicationUpdateForm.name = application.name ?? ''
+    applicationUpdateForm.metadata = buildApplicationMetadata(application.metadata)
+    applicationUpdateForm.displayName = applicationUpdateForm.metadata.displayName ?? ''
+    applicationUpdateForm.displayNameEn = applicationUpdateForm.metadata['displayName.en'] ?? ''
+    applicationUpdateForm.displayNameJa = applicationUpdateForm.metadata['displayName.ja'] ?? ''
+    applicationUpdateForm.displayNameZhs = applicationUpdateForm.metadata['displayName.zhs'] ?? ''
+    applicationUpdateForm.displayNameZht = applicationUpdateForm.metadata['displayName.zht'] ?? ''
     applicationUpdateForm.redirectUris = application.redirectUris ?? ''
     applicationUpdateForm.applicationType = application.applicationType ?? 'web'
     applicationUpdateForm.grantType = [...(application.grantType ?? ['authorization_code_pkce'])]
@@ -86,6 +110,12 @@ export const useApplicationStore = defineStore('application', () => {
   function resetApplicationCreateForm(projectId = projectStore.selectedProjectId || currentProject.value?.id || '') {
     applicationForm.projectId = projectId
     applicationForm.name = ''
+    applicationForm.metadata = buildApplicationMetadata()
+    applicationForm.displayName = ''
+    applicationForm.displayNameEn = ''
+    applicationForm.displayNameJa = ''
+    applicationForm.displayNameZhs = ''
+    applicationForm.displayNameZht = ''
     applicationForm.redirectUris = ''
     applicationForm.applicationType = 'web'
     applicationForm.tokenType = ['access_token']
@@ -118,8 +148,18 @@ export const useApplicationStore = defineStore('application', () => {
   }
 
   async function createApplication() {
+    const metadata = buildApplicationMetadata({
+      ...applicationForm.metadata,
+      displayName: applicationForm.displayName,
+      'displayName.en': applicationForm.displayNameEn,
+      'displayName.ja': applicationForm.displayNameJa,
+      'displayName.zhs': applicationForm.displayNameZhs,
+      'displayName.zht': applicationForm.displayNameZht
+    })
     const created = await apiCreateApplication({
       ...applicationForm,
+      redirectUris: applicationRequiresLoginPresentation(applicationForm.applicationType) ? applicationForm.redirectUris : '',
+      metadata: applicationRequiresLoginPresentation(applicationForm.applicationType) ? metadata : {},
       roles: [...applicationForm.roles],
       accessTokenTTLMinutes: Number(applicationForm.accessTokenTTLMinutes),
       refreshTokenTTLHours: Number(applicationForm.refreshTokenTTLHours)
@@ -130,8 +170,11 @@ export const useApplicationStore = defineStore('application', () => {
   }
 
   async function updateApplication() {
+    const metadata = buildApplicationMetadata(applicationUpdateForm.metadata)
     const updated = await apiUpdateApplication({
       ...applicationUpdateForm,
+      redirectUris: applicationRequiresLoginPresentation(applicationUpdateForm.applicationType) ? applicationUpdateForm.redirectUris : '',
+      metadata: applicationRequiresLoginPresentation(applicationUpdateForm.applicationType) ? metadata : {},
       roles: [...applicationUpdateForm.roles],
       accessTokenTTLMinutes: Number(applicationUpdateForm.accessTokenTTLMinutes),
       refreshTokenTTLHours: Number(applicationUpdateForm.refreshTokenTTLHours)
@@ -140,6 +183,22 @@ export const useApplicationStore = defineStore('application', () => {
     await loadApplications(applicationForm.projectId || projectStore.selectedProjectId)
     syncApplicationForm(currentApplication.value)
     return updated
+  }
+
+  async function saveApplicationMetadata(rows: Array<{ key: string; value: string }>) {
+    applicationUpdateForm.metadata = buildApplicationMetadata(
+      Object.fromEntries(
+        rows
+          .map((item) => [String(item.key ?? '').trim(), String(item.value ?? '')] as const)
+          .filter(([key]) => key)
+      )
+    )
+    applicationUpdateForm.displayName = applicationUpdateForm.metadata.displayName ?? ''
+    applicationUpdateForm.displayNameEn = applicationUpdateForm.metadata['displayName.en'] ?? ''
+    applicationUpdateForm.displayNameJa = applicationUpdateForm.metadata['displayName.ja'] ?? ''
+    applicationUpdateForm.displayNameZhs = applicationUpdateForm.metadata['displayName.zhs'] ?? ''
+    applicationUpdateForm.displayNameZht = applicationUpdateForm.metadata['displayName.zht'] ?? ''
+    return updateApplication()
   }
 
   async function resetApplicationKey() {
@@ -181,8 +240,25 @@ export const useApplicationStore = defineStore('application', () => {
     loadApplications,
     createApplication,
     updateApplication,
+    saveApplicationMetadata,
     resetApplicationKey,
     disableApplication,
     deleteApplication
   }
 })
+
+function buildApplicationMetadata(input?: Record<string, string>) {
+  const metadata: Record<string, string> = {}
+  for (const [rawKey, rawValue] of Object.entries(input ?? {})) {
+    const key = String(rawKey ?? '').trim()
+    if (!key) {
+      continue
+    }
+    metadata[key] = String(rawValue ?? '').trim()
+  }
+  return metadata
+}
+
+function applicationRequiresLoginPresentation(applicationType?: string) {
+  return applicationType === 'web' || applicationType === 'native'
+}

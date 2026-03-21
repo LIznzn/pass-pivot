@@ -3,15 +3,35 @@
 type OAuthBootstrapTarget = {
   organizationId: string
   organizationName: string
+  displayName: string
+  websiteUrl: string
+  termsOfServiceUrl: string
+  privacyPolicyUrl: string
   projectId: string
   projectName: string
   applicationId: string
   applicationName: string
+  applicationDisplayNames: Record<string, string>
+  externalIdps?: Array<{
+    id: string
+    organizationId: string
+    protocol: string
+    name: string
+    issuer: string
+  }>
 }
 
 type OAuthBootstrapMethodOption = {
   value: string
   label: string
+}
+
+type OAuthBootstrapCurrentUser = {
+  id: string
+  username: string
+  name: string
+  email: string
+  phoneNumber: string
 }
 
 type OAuthBootstrapAPIConfig = {
@@ -23,13 +43,16 @@ type OAuthBootstrapAPIConfig = {
 }
 
 type OAuthBootstrapPayload = {
-  stage: 'login' | 'confirmation' | 'mfa'
+  stage: 'login' | 'account' | 'confirmation' | 'mfa'
   title: string
   error?: string
   authorizeReturnUrl: string
   target: OAuthBootstrapTarget
+  currentUser?: OAuthBootstrapCurrentUser
   applicationId: string
   loginAction: string
+  accountAction: string
+  switchAccountAction: string
   confirmAction: string
   mfaAction: string
   secondFactorMethod?: string

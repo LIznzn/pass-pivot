@@ -84,11 +84,16 @@ type PublicExternalIDP struct {
 }
 
 type LoginTarget struct {
-	OrganizationID   string              `json:"organizationId"`
-	OrganizationName string              `json:"organizationName"`
-	ProjectID        string              `json:"projectId"`
-	ProjectName      string              `json:"projectName"`
-	ApplicationID    string              `json:"applicationId"`
-	ApplicationName  string              `json:"applicationName"`
-	ExternalIDPs     []PublicExternalIDP `json:"externalIdps"`
+	OrganizationID    string              `json:"organizationId"`
+	OrganizationName  string              `json:"organizationName"`
+	DisplayName       string              `json:"displayName"`
+	WebsiteURL        string              `json:"websiteUrl"`
+	TermsOfServiceURL string              `json:"termsOfServiceUrl"`
+	PrivacyPolicyURL  string              `json:"privacyPolicyUrl"`
+	ProjectID         string              `json:"projectId"`
+	ProjectName       string              `json:"projectName"`
+	ApplicationID     string              `json:"applicationId"`
+	ApplicationName   string              `json:"applicationName"`
+	ApplicationDisplayNames map[string]string `json:"applicationDisplayNames"`
+	ExternalIDPs      []PublicExternalIDP `json:"externalIdps"`
 }
