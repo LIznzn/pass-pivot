@@ -11,6 +11,7 @@ import (
 	"errors"
 	"pass-pivot/util"
 	"sync"
+	"time"
 
 	"github.com/go-jose/go-jose/v4"
 )
@@ -40,6 +41,7 @@ type ProviderKeyStore struct {
 	mu            sync.Mutex
 	instance      *ProviderKeys
 	instancePEM   string
+	loadedAt      time.Time
 	internalSeeds map[string]string
 }
 
@@ -70,12 +72,28 @@ func (s *ProviderKeyStore) Instance() (*ProviderKeys, error) {
 		return nil, err
 	}
 	s.instance = item
+	s.loadedAt = time.Now()
 	publicPEM, err := EncodeRSAPublicKeyPEM(item.PublicKey)
 	if err != nil {
 		return nil, err
 	}
 	s.instancePEM = publicPEM
 	return item, nil
+}
+
+func (s *ProviderKeyStore) Reload() (*ProviderKeys, error) {
+	s.mu.Lock()
+	s.instance = nil
+	s.instancePEM = ""
+	s.loadedAt = time.Time{}
+	s.mu.Unlock()
+	return s.Instance()
+}
+
+func (s *ProviderKeyStore) LoadedAt() time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.loadedAt
 }
 
 func (s *ProviderKeyStore) InstancePublicPEM() (string, error) {

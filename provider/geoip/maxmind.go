@@ -9,7 +9,7 @@ import (
 	"github.com/oschwald/maxminddb-golang"
 )
 
-const defaultMaxmindDBPath = "external/ip/GeoLite2-City.mmdb"
+const defaultMaxmindDBPath = "provider/geoip/resource/GeoLite2-City.mmdb"
 
 type MaxmindGeoipProvider struct {
 	once   sync.Once

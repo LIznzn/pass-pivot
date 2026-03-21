@@ -160,25 +160,21 @@ func (s *OIDCService) ExchangeCode(ctx context.Context, audience, clientID, clie
 	if !applicationSupportsAuthorizationCode(app) {
 		return nil, "", errors.New("authorization_code grant is not enabled for this application")
 	}
-	code, ok := loadAuthorizationCode(codeValue)
+	now := time.Now()
+	code, ok := consumeAuthorizationCode(codeValue, now)
 	if !ok {
-		return nil, "", errors.New("code not found")
-	}
-	if code.ConsumedAt != nil || code.ExpiresAt.Before(time.Now()) {
-		deleteAuthorizationCode(codeValue)
 		return nil, "", errors.New("code is no longer valid")
 	}
 	if code.RedirectURI != redirectURI {
+		deleteAuthorizationCode(codeValue)
 		return nil, "", errors.New("redirect_uri mismatch")
 	}
 	if strings.TrimSpace(code.CodeChallenge) != "" {
 		if err := verifyCodeChallenge(code.CodeChallengeMethod, code.CodeChallenge, verifier); err != nil {
+			deleteAuthorizationCode(codeValue)
 			return nil, "", err
 		}
 	}
-	now := time.Now()
-	code.ConsumedAt = &now
-	storeAuthorizationCode(code)
 	var user model.User
 	if err := s.db.WithContext(ctx).First(&user, "id = ?", code.UserID).Error; err != nil {
 		return nil, "", err

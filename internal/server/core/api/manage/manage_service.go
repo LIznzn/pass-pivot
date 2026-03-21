@@ -50,7 +50,11 @@ func organizationIsDisabled(status string) bool {
 
 var (
 	organizationNamePattern = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
-	applicationTypeOptions = map[string]bool{
+	passwordNumberPattern   = regexp.MustCompile(`[0-9]`)
+	passwordUpperPattern    = regexp.MustCompile(`[A-Z]`)
+	passwordLowerPattern    = regexp.MustCompile(`[a-z]`)
+	passwordSymbolPattern   = regexp.MustCompile(`[^A-Za-z0-9]`)
+	applicationTypeOptions  = map[string]bool{
 		"web":    true,
 		"native": true,
 		"api":    true,
@@ -84,12 +88,38 @@ var (
 	}
 )
 
+func validatePasswordAgainstPolicy(password string, policy model.OrganizationPasswordPolicy) error {
+	if strings.TrimSpace(password) == "" {
+		return errors.New("password is required")
+	}
+	minLength := policy.MinLength
+	if minLength <= 0 {
+		minLength = 8
+	}
+	if len(password) < minLength {
+		return errors.New("password does not meet minimum length requirement")
+	}
+	if policy.RequireUppercase && !passwordUpperPattern.MatchString(password) {
+		return errors.New("password must include an uppercase letter")
+	}
+	if policy.RequireLowercase && !passwordLowerPattern.MatchString(password) {
+		return errors.New("password must include a lowercase letter")
+	}
+	if policy.RequireNumber && !passwordNumberPattern.MatchString(password) {
+		return errors.New("password must include a number")
+	}
+	if policy.RequireSymbol && !passwordSymbolPattern.MatchString(password) {
+		return errors.New("password must include a symbol")
+	}
+	return nil
+}
+
 func NewService(db *gorm.DB, cfg config.Config, audit *coreservice.AuditService) *Service {
 	return &Service{
 		db:    db,
 		cfg:   cfg,
 		audit: audit,
-		geoip: coreservice.NewGeoIPService("external/ip/GeoLite2-City.mmdb"),
+		geoip: coreservice.NewGeoIPService("provider/geoip/resource/GeoLite2-City.mmdb"),
 	}
 }
 
@@ -1751,6 +1781,13 @@ func (s *Service) CreateUser(ctx context.Context, user model.User, identifier, p
 	if password == "" {
 		return nil, errors.New("password is required")
 	}
+	var organization model.Organization
+	if err := s.db.WithContext(ctx).Select("id", "password_policy").First(&organization, "id = ?", user.OrganizationID).Error; err != nil {
+		return nil, err
+	}
+	if err := validatePasswordAgainstPolicy(password, organization.PasswordPolicy); err != nil {
+		return nil, err
+	}
 	if identifier == "" {
 		if user.Email != "" {
 			identifier = user.Email
@@ -2293,6 +2330,13 @@ func (s *Service) UpdateCurrentUserPassword(ctx context.Context, sessionID, curr
 	}
 	if strings.TrimSpace(user.PasswordHash) == "" || !util.CheckSecret(user.PasswordHash, currentPassword) {
 		return errors.New("current password is invalid")
+	}
+	var organization model.Organization
+	if err := s.db.WithContext(ctx).Select("id", "password_policy").First(&organization, "id = ?", user.OrganizationID).Error; err != nil {
+		return err
+	}
+	if err := validatePasswordAgainstPolicy(newPassword, organization.PasswordPolicy); err != nil {
+		return err
 	}
 	hash, err := util.HashSecret(newPassword)
 	if err != nil {

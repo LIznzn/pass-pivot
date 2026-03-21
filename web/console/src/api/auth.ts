@@ -69,29 +69,19 @@ function clearOAuthHandshake() {
   removeSessionValue('target')
 }
 
-function persistTokenSet(tokenSet: TokenResponse) {
-  setSessionValue('accessToken', tokenSet.access_token)
-  if (tokenSet.refresh_token) {
-    setSessionValue('refreshToken', tokenSet.refresh_token)
-  } else {
-    removeSessionValue('refreshToken')
-  }
-  if (tokenSet.id_token) {
-    setSessionValue('idToken', tokenSet.id_token)
-  } else {
-    removeSessionValue('idToken')
-  }
-}
-
 export function clearConsoleAuthSession() {
-  removeSessionValue('accessToken')
-  removeSessionValue('refreshToken')
-  removeSessionValue('idToken')
+  localStorage.removeItem(storageKeys.accessToken)
+  localStorage.removeItem(storageKeys.refreshToken)
+  localStorage.removeItem(storageKeys.idToken)
   clearOAuthHandshake()
 }
 
 export function getCurrentAccessToken() {
-  return getSessionValue('accessToken')
+  return localStorage.getItem(storageKeys.accessToken) ?? ''
+}
+
+export function getCurrentRefreshToken() {
+  return localStorage.getItem(storageKeys.refreshToken) ?? ''
 }
 
 export async function buildConsoleAuthorizationUrl(target?: string) {
@@ -166,7 +156,17 @@ export async function finishConsoleAuthorization(code: string, state: string) {
     throw new Error('missing access_token')
   }
 
-  persistTokenSet(tokenSet)
+  localStorage.setItem(storageKeys.accessToken, tokenSet.access_token)
+  if (tokenSet.refresh_token) {
+    localStorage.setItem(storageKeys.refreshToken, tokenSet.refresh_token)
+  } else {
+    localStorage.removeItem(storageKeys.refreshToken)
+  }
+  if (tokenSet.id_token) {
+    localStorage.setItem(storageKeys.idToken, tokenSet.id_token)
+  } else {
+    localStorage.removeItem(storageKeys.idToken)
+  }
   clearOAuthHandshake()
   return target
 }

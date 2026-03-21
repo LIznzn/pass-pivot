@@ -18,7 +18,7 @@ func NewApp(cfg config.Config) (*App, error) {
 	app.Router = authrouter.NewAuthRouter(
 		authhandler.NewOIDCHandler(cfg, deps.OIDC, deps.Authn, deps.System),
 		authhandler.StaticAssetHandler,
-		sharedweb.WithCORS,
+		sharedweb.NewCORS(app.DB, cfg),
 	)
 	return app, nil
 }

@@ -55,14 +55,18 @@ function clearOAuthHandshake() {
 }
 
 export function clearPortalAuthSession() {
-  sessionStorage.removeItem(accessTokenKey)
-  sessionStorage.removeItem(refreshTokenKey)
-  sessionStorage.removeItem(idTokenKey)
+  localStorage.removeItem(accessTokenKey)
+  localStorage.removeItem(refreshTokenKey)
+  localStorage.removeItem(idTokenKey)
   clearOAuthHandshake()
 }
 
 export function getCurrentAccessToken() {
-  return sessionStorage.getItem(accessTokenKey) ?? ''
+  return localStorage.getItem(accessTokenKey) ?? ''
+}
+
+export function getCurrentRefreshToken() {
+  return localStorage.getItem(refreshTokenKey) ?? ''
 }
 
 export async function startPortalAuthorization(target?: string) {
@@ -129,16 +133,16 @@ export async function finishPortalAuthorization(code: string, state: string) {
   if (!tokenSet.access_token) {
     throw new Error('missing access_token')
   }
-  sessionStorage.setItem(accessTokenKey, tokenSet.access_token)
+  localStorage.setItem(accessTokenKey, tokenSet.access_token)
   if (tokenSet.refresh_token) {
-    sessionStorage.setItem(refreshTokenKey, tokenSet.refresh_token)
+    localStorage.setItem(refreshTokenKey, tokenSet.refresh_token)
   } else {
-    sessionStorage.removeItem(refreshTokenKey)
+    localStorage.removeItem(refreshTokenKey)
   }
   if (tokenSet.id_token) {
-    sessionStorage.setItem(idTokenKey, tokenSet.id_token)
+    localStorage.setItem(idTokenKey, tokenSet.id_token)
   } else {
-    sessionStorage.removeItem(idTokenKey)
+    localStorage.removeItem(idTokenKey)
   }
   clearOAuthHandshake()
   return target

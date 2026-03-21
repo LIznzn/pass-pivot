@@ -22,7 +22,7 @@ func writePortalSessionCookie(w http.ResponseWriter, r *http.Request, sessionID 
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
-		Secure:   r.TLS != nil,
+		Secure:   requestUsesSecureTransport(r),
 		MaxAge:   86400,
 	})
 }
@@ -34,7 +34,7 @@ func clearPortalSessionCookie(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
-		Secure:   r.TLS != nil,
+		Secure:   requestUsesSecureTransport(r),
 		MaxAge:   -1,
 	})
 }

@@ -9,7 +9,7 @@
 
 ## 总体评价
 
-项目架构设计思路清晰，模块划分合理（cmd/internal/external/web 四层结构），OAuth2/OIDC 的核心流程基本成形。代码风格统一，命名规范。但作为一个**身份认证系统**，在安全性方面有几个需要重点关注的问题。
+项目架构设计思路清晰，模块划分合理（cmd/internal/provider/web 四层结构），OAuth2/OIDC 的核心流程基本成形。代码风格统一，命名规范。但作为一个**身份认证系统**，在安全性方面有几个需要重点关注的问题。
 
 ---
 
@@ -30,6 +30,11 @@ if origin != "" {
 
 **修复建议**: 维护一个允许的 Origin 白名单（可以从已注册应用的 `redirect_uri` 中提取 origin），仅对匹配的 origin 返回 CORS 头。项目中 `fido/service.go` 的 `CollectOrigins` 方法其实已经写了提取 origin 的逻辑，可以复用。
 
+**处理方法**:
+- 已改为基于白名单返回 CORS 头，不再反射任意 `Origin`
+- 白名单来源包括 `PPVT_AUTH_URL`、`PPVT_CORE_URL` 以及数据库中各应用配置的 `redirect_uri` origin
+- 仅当请求源命中白名单时才返回 `Access-Control-Allow-Origin` 和 `Access-Control-Allow-Credentials`
+
 ---
 
 ### 2. 无登录暴力破解防护
@@ -48,7 +53,7 @@ if origin != "" {
 ---
 
 ### 3. 验证码实现全部为空壳
-**文件**: `external/captcha/` 下所有 provider
+**文件**: `provider/captcha/` 下所有 provider
 
 ```go
 func (captcha *GoogleCaptchaProvider) VerifyCaptcha(...) (bool, error) {
@@ -74,6 +79,10 @@ func BuildOAuthErrorPage(message string) []byte {
 `message` 未经 HTML 转义直接拼接到 HTML 中。如果 message 来自用户输入（如错误的 `redirect_uri` 参数），攻击者可以注入任意 JS 代码。
 
 **修复建议**: 使用 `html.EscapeString(message)` 或 `html/template` 进行转义。
+
+**处理方法**:
+- 已在 `BuildOAuthErrorPage` 中对 `message` 使用 `html.EscapeString`
+- 保留原有错误页输出方式，但消除了用户输入进入 HTML 时的脚本注入风险
 
 ---
 
@@ -126,6 +135,11 @@ Secure: r.TLS != nil,
 
 **修复建议**: 通过配置项或检测 `X-Forwarded-Proto: https` 来决定 Secure 标记。
 
+**处理方法**:
+- 已新增统一的安全传输判断函数
+- Cookie 的 `Secure` 标记不再只依赖 `r.TLS != nil`
+- 当请求经过反向代理且 `X-Forwarded-Proto=https` 时，也会正确下发 `Secure` Cookie
+
 ---
 
 ### 8. X-PPVT-Original-* Header Spoofing
@@ -144,6 +158,11 @@ func OriginalRemoteAddr(r *http.Request) string {
 
 **修复建议**: 在 Core 服务的入口中间件中剥离外部请求的 `X-PPVT-*` headers，仅信任来自 Auth 服务的内部请求。
 
+**处理方法**:
+- 已在 Core API 入口中间件中默认剥离外部请求携带的 `X-PPVT-Original-*` 头
+- 仅当请求经过内部 `private_key_jwt` 服务间调用链时，才在上下文中标记为可信并允许读取这些头
+- 外部客户端现在无法伪造原始 IP 和 User-Agent 影响审计与 GeoIP
+
 ---
 
 ### 9. Authorization Code 一次性使用保护不完整
@@ -160,6 +179,11 @@ if record.ExpiresAt.Before(now) || record.ConsumedAt != nil {
 
 **修复建议**: 在 `ConsumeAuthorizationCode` 中加锁并原子地检查 + 标记消费状态。
 
+**处理方法**:
+- 已新增 `consumeAuthorizationCode` 原子消费逻辑
+- 在同一把锁内完成“读取 code、校验未过期/未消费、标记 `ConsumedAt`”三个步骤
+- 避免并发请求在 cleanup 运行前重复消费同一个 Authorization Code
+
 ---
 
 ### 10. 密码策略已定义但未见强制执行
@@ -170,6 +194,11 @@ if record.ExpiresAt.Before(now) || record.ConsumedAt != nil {
 注册/改密码时可能没有实际执行密码策略校验。
 
 **修复建议**: 在用户注册和修改密码的 service 层加入密码策略验证函数。
+
+**处理方法**:
+- 已新增密码策略校验函数，支持最小长度、大小写、数字、符号等规则
+- 在后台创建用户时强制执行组织级 `PasswordPolicy`
+- 在当前用户修改密码时同样执行相同策略，避免初始化策略仅存在于配置但不生效
 
 ---
 
@@ -183,6 +212,10 @@ sum := sha1.Sum(seed)
 SHA-1 已被证明存在碰撞攻击。虽然这里只是设备指纹（非密码学安全场景），但在安全相关项目中使用 SHA-1 不是好信号。
 
 **修复建议**: 替换为 SHA-256，改动极小。
+
+**处理方法**:
+- 已将设备指纹摘要算法从 `SHA-1` 替换为 `SHA-256`
+- 仅影响指纹生成实现，不改变现有签名校验的 HMAC-SHA-256 逻辑
 
 ---
 
@@ -214,6 +247,12 @@ localStorage.setItem('ppvt_access_token', token)
 
 Access Token 存在 localStorage 中，容易被 XSS 攻击获取。对于认证系统的管理后台，建议使用 HttpOnly Cookie 或 BFF（Backend For Frontend）模式。
 
+**处理说明**:
+- 该项当前选择忽略，不按 Cookie/BFF 方案修改
+- 原因是系统明确要求兼容多种客户端，并统一采用 `Authorization: Bearer` 鉴权模型
+- 浏览器端继续使用 Bearer Token，并保留 `localStorage` 存储，以保持现有客户端模型和刷新后会话恢复能力
+- 该风险作为已知设计权衡接受，后续应通过严格的 XSS 防护、CSP、依赖治理和前端输出转义来降低风险
+
 ---
 
 ### 15. ProviderKeyStore 密钥缓存
@@ -229,11 +268,18 @@ func (s *ProviderKeyStore) Instance() (*ProviderKeySet, error) {
 
 密钥加载后永不过期更新。如果需要密钥轮转，必须重启服务。建议加个 TTL 或 reload 机制。
 
+**处理方法**:
+- 已为 `ProviderKeyStore` 增加缓存加载时间记录
+- 已提供显式 `Reload()` 能力，可在后续管理接口或轮转任务中主动刷新内存密钥
+- 当前尚未引入自动 TTL 轮转策略，但已消除“只能重启服务刷新”的硬限制
+
 ---
 
 ### 16. 项目结构方面的小建议
 - `external/` 和 `internal/` 并列有点反直觉，`external/` 实际上是"外部服务集成"而非 Go 的 `external` 概念，建议改名为 `integration/` 或 `provider/`
+- 处理结果：已改名为 `provider/`
 - `web/console/.env` 包含硬编码的 Application ID（`65d5b9f6-...`），这个文件不应该提交到仓库
+- 处理结果：已从仓库移除 `web/console/.env`，并通过 `.gitignore` 忽略前端环境文件，改为使用 `web/console/.env.example` 生成本地配置
 - `internal/model/models.go` 单文件1200+行，建议按领域拆分（user.go、session.go、token.go 等）
 
 ---

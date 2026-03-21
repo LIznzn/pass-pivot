@@ -30,7 +30,7 @@ func NewApp(cfg config.Config) (*App, error) {
 		authhandler.NewExternalIDPHandler(deps.ExternalIDP),
 		authhandler.NewWebAuthnHandler(deps.Authn),
 		authhandler.NewMFAU2FHandler(deps.MFA),
-		sharedweb.WithCORS,
+		sharedweb.NewCORS(app.DB, cfg),
 	)
 	return app, nil
 }

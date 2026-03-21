@@ -7,4 +7,5 @@ web/*/dist/
 .idea/
 .env
 .init
-external/geoip/resource/*.mmdb
+provider/geoip/resource/*.mmdb
+web/*/.env

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"html"
 	"net/url"
 	"strings"
 	"time"
@@ -447,5 +448,5 @@ func validatePostLogoutRedirectURI(app model.Application, redirectURI string) er
 }
 
 func BuildOAuthErrorPage(message string) []byte {
-	return []byte(fmt.Sprintf("<html><body><h1>OAuth Error</h1><p>%s</p></body></html>", message))
+	return []byte(fmt.Sprintf("<html><body><h1>OAuth Error</h1><p>%s</p></body></html>", html.EscapeString(message)))
 }

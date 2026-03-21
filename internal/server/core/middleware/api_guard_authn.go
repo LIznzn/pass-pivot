@@ -35,6 +35,7 @@ func APIClientAuthentication(platform AccessTokenAuthenticator, oidc PrivateKeyJ
 
 func handleAccessTokenClientAuthentication(platform AccessTokenAuthenticator, requirement apiAccessRequirement, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sharedhandler.SanitizeInternalForwardHeaders(r)
 		accessToken := sharedhandler.BearerTokenFromRequest(r)
 		if accessToken == "" {
 			sharedweb.Error(w, http.StatusUnauthorized, "access token is required")
@@ -57,6 +58,7 @@ func handleAccessTokenClientAuthentication(platform AccessTokenAuthenticator, re
 
 func handlePrivateKeyJWTClientAuthentication(oidc PrivateKeyJWTAuthenticator, requirement apiAccessRequirement, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sharedhandler.SanitizeInternalForwardHeaders(r)
 		clientID := strings.TrimSpace(r.Header.Get("X-PPVT-Client-ID"))
 		assertionType := strings.TrimSpace(r.Header.Get("X-PPVT-Client-Assertion-Type"))
 		assertion := strings.TrimSpace(r.Header.Get("X-PPVT-Client-Assertion"))
@@ -71,6 +73,8 @@ func handlePrivateKeyJWTClientAuthentication(oidc PrivateKeyJWTAuthenticator, re
 			sharedweb.Error(w, http.StatusUnauthorized, err.Error())
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(withAPIApplication(r.Context(), app)))
+		ctx := withAPIApplication(r.Context(), app)
+		ctx = sharedhandler.WithTrustedForwardHeaders(ctx)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

@@ -22,7 +22,7 @@ PPVT 是一个控制面导向的 IAM 平台实现。
 - `cmd/ppvt-core`: 控制面入口，承载 `/api/*`
 - `cmd/ppvt-init`: 初始化数据库与系统内置数据
 - `internal/`: 领域模型、服务、路由、中间件与数据库初始化
-- `external/`: Captcha、GeoIP、外部 IdP 等外部能力接入点
+- `provider/`: Captcha、GeoIP、外部 IdP 等外部能力接入点
 - `web/auth`: `/auth/authorize` 直出认证交互前端
 - `web/portal`: 用户中心前端
 - `web/console`: 控制台前端
@@ -76,8 +76,8 @@ PPVT 是一个控制面导向的 IAM 平台实现。
 
 前端环境变量：
 
-- portal: [`web/portal/.env`](web/portal/.env)
-- console: [`web/console/.env`](web/console/.env)
+- portal: 复制 [`web/portal/.env.example`](web/portal/.env.example) 为本地 `web/portal/.env`
+- console: 复制 [`web/console/.env.example`](web/console/.env.example) 为本地 `web/console/.env`
 
 ## 启动方式
 
@@ -166,7 +166,7 @@ npm run dev:console
 - `/api/authz/v1/*` 仅允许 `authz-api` 调用
 - `ppvt-auth` 调用 `ppvt-core` 时也走正式 `/api/authn/v1/*`、`/api/authz/v1/*`
 - 控制台继续通过标准 `/auth/authorize` + `/auth/token` 流程登录，不使用内部特权绕过
-- `web/console/.env` 中的 `PPVT_CONSOLE_APPLICATION_ID` 已对齐 `console-web`
+- 本地 `web/console/.env` 中的 `PPVT_CONSOLE_APPLICATION_ID` 需要与 `console-web` 的 `Application ID` 对齐
 - `portal` 是用户中心站点，不再作为默认登录页
 - `/auth/authorize` 直接返回登录、二次确认和 MFA 交互页
 - `/auth/authorize` 的页面资源由 `web/auth` 构建产物提供，后端直接以 `/auth/authorize/app.js` 与 `/auth/authorize/app.css` 加载
@@ -228,12 +228,12 @@ npm run dev:console
 - `web/portal`：用户中心前端
 - `web/console`：控制台前端
 
-当前 `external/` 目录中的扩展点为：
+当前 `provider/` 目录中的扩展点为：
 
-- `external/captcha`：验证码 provider 工厂与各 provider 独立实现文件
-- `external/geoip`：IP 归属地 provider 工厂，当前接 MaxMind GeoLite
-- `external/idp`：外部 OAuth/OIDC IdP provider 工厂与各实现
-- `external/kyc`：已预留目录，当前仍为空壳
+- `provider/captcha`：验证码 provider 工厂与各 provider 独立实现文件
+- `provider/geoip`：IP 归属地 provider 工厂，当前接 MaxMind GeoLite
+- `provider/idp`：外部 OAuth/OIDC IdP provider 工厂与各实现
+- `provider/kyc`：已预留目录，当前仍为空壳
 
 ## 文档
 

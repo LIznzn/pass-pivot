@@ -22,7 +22,7 @@ func writeFingerprintCookie(w http.ResponseWriter, r *http.Request, fingerprint 
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
-		Secure:   r.TLS != nil,
+		Secure:   requestUsesSecureTransport(r),
 		MaxAge:   86400 * 365,
 	})
 }

@@ -3,7 +3,6 @@ package util
 import (
 	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -16,7 +15,7 @@ func GenerateFingerprint() (string, error) {
 	if _, err := rand.Read(seed); err != nil {
 		return "", err
 	}
-	sum := sha1.Sum(seed)
+	sum := sha256.Sum256(seed)
 	return strings.ToUpper(hex.EncodeToString(sum[:])), nil
 }
 

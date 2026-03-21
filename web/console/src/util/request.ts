@@ -1,15 +1,13 @@
 import axios from 'axios'
 import type { AxiosError, AxiosInstance, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios'
+import { getCurrentAccessToken } from '../api/auth'
 
 const baseURL = import.meta.env.PPVT_CONSOLE_API_BASE_URL ?? 'http://localhost:8090'
 const authSessionKeys = [
   'ppvt-oauth-state',
   'ppvt-oauth-code-verifier',
   'ppvt-oauth-nonce',
-  'ppvt-oauth-target',
-  'ppvt-access-token',
-  'ppvt-refresh-token',
-  'ppvt-id-token'
+  'ppvt-oauth-target'
 ] as const
 
 export type RequestConfig = AxiosRequestConfig & {
@@ -31,7 +29,7 @@ const request: AxiosInstance = axios.create({
 })
 
 request.interceptors.request.use((config: InternalAxiosRequestConfig & RequestConfig) => {
-  const accessToken = sessionStorage.getItem('ppvt-access-token')
+  const accessToken = getCurrentAccessToken()
   if (accessToken && !config.skipAuthHeader) {
     config.headers.Authorization = `Bearer ${accessToken}`
   }

@@ -45,6 +45,23 @@ func loadAuthorizationCode(code string) (model.AuthorizationCode, bool) {
 	return record.AuthorizationCode, ok
 }
 
+func consumeAuthorizationCode(code string, now time.Time) (model.AuthorizationCode, bool) {
+	cleanupExpiredTransientState()
+	transientStore.mu.Lock()
+	defer transientStore.mu.Unlock()
+	record, ok := transientStore.authorizationCodes[code]
+	if !ok {
+		return model.AuthorizationCode{}, false
+	}
+	if record.ExpiresAt.Before(now) || record.ConsumedAt != nil {
+		delete(transientStore.authorizationCodes, code)
+		return model.AuthorizationCode{}, false
+	}
+	record.ConsumedAt = &now
+	transientStore.authorizationCodes[code] = record
+	return record.AuthorizationCode, true
+}
+
 func deleteAuthorizationCode(code string) {
 	transientStore.mu.Lock()
 	defer transientStore.mu.Unlock()

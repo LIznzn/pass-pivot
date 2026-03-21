@@ -1,16 +1,16 @@
 package service
 
 import (
-	externalgeoip "pass-pivot/external/geoip"
+	providergeoip "pass-pivot/provider/geoip"
 )
 
 type GeoIPService struct {
-	provider externalgeoip.GeoipProvider
+	provider providergeoip.GeoipProvider
 }
 
 func NewGeoIPService(dbPath string) *GeoIPService {
 	return &GeoIPService{
-		provider: externalgeoip.NewMaxmindGeoipProvider(dbPath),
+		provider: providergeoip.NewMaxmindGeoipProvider(dbPath),
 	}
 }
 

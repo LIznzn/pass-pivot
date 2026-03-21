@@ -12,6 +12,7 @@
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import PageShell from '@shared/components/PageShell.vue'
+import { clearPortalAuthSession, getCurrentAccessToken, getCurrentRefreshToken } from '../auth'
 
 const route = useRoute()
 const message = ref('正在结束当前登录会话。')
@@ -19,11 +20,9 @@ const authBaseUrl = import.meta.env.PPVT_PORTAL_AUTH_BASE_URL ?? 'http://localho
 
 onMounted(() => {
   const postLogoutRedirectUri = typeof route.query.post_logout_redirect_uri === 'string' ? route.query.post_logout_redirect_uri.trim() : ''
-  const accessToken = sessionStorage.getItem('ppvt-portal-access-token') ?? ''
-  const refreshToken = sessionStorage.getItem('ppvt-portal-refresh-token') ?? ''
-  sessionStorage.removeItem('ppvt-portal-access-token')
-  sessionStorage.removeItem('ppvt-portal-refresh-token')
-  sessionStorage.removeItem('ppvt-portal-id-token')
+  const accessToken = getCurrentAccessToken()
+  const refreshToken = getCurrentRefreshToken()
+  clearPortalAuthSession()
   const url = new URL(`${authBaseUrl}/auth/end_session`)
   if (postLogoutRedirectUri) {
     url.searchParams.set('post_logout_redirect_uri', postLogoutRedirectUri)
