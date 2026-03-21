@@ -10,6 +10,7 @@ import (
 
 	authservice "pass-pivot/internal/server/auth/service"
 	coreservice "pass-pivot/internal/server/core/service"
+	authnapi "pass-pivot/internal/server/shared/authnapi"
 	sharedhandler "pass-pivot/internal/server/shared/handler"
 	sharedweb "pass-pivot/internal/server/shared/web"
 )
@@ -25,7 +26,7 @@ type authorizeInteractionResponse struct {
 func (h *OIDCHandler) QueryMetadataAPI(w http.ResponseWriter, r *http.Request) {
 	result, err := h.oidc.MetadataByIssuer(r.Context())
 	if err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		authnapi.WriteKnown(w, err)
 		return
 	}
 	sharedweb.JSON(w, http.StatusOK, result)
@@ -34,7 +35,7 @@ func (h *OIDCHandler) QueryMetadataAPI(w http.ResponseWriter, r *http.Request) {
 func (h *OIDCHandler) QueryKeysAPI(w http.ResponseWriter, r *http.Request) {
 	keys, err := h.oidc.JWKSByIssuer(r.Context())
 	if err != nil {
-		sharedweb.Error(w, http.StatusInternalServerError, err.Error())
+		authnapi.WriteKnown(w, err)
 		return
 	}
 	sharedweb.JSON(w, http.StatusOK, keys)
@@ -54,7 +55,7 @@ func (h *OIDCHandler) QueryAuthorizeInteractionAPI(w http.ResponseWriter, r *htt
 		Prompt              string `json:"prompt"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
 		return
 	}
 	in := authservice.StandardAuthorizeRequest{
@@ -71,7 +72,7 @@ func (h *OIDCHandler) QueryAuthorizeInteractionAPI(w http.ResponseWriter, r *htt
 	}
 	_, redirectError, err := h.oidc.ValidateAuthorizationRequest(r.Context(), in)
 	if err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		authnapi.WriteKnown(w, err)
 		return
 	}
 	if redirectError != "" {
@@ -83,7 +84,7 @@ func (h *OIDCHandler) QueryAuthorizeInteractionAPI(w http.ResponseWriter, r *htt
 	}
 	target, err := h.platform.GetLoginTarget(r.Context(), in.ClientID)
 	if err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		authnapi.WriteKnown(w, err)
 		return
 	}
 	sessionID := in.SessionID
@@ -97,7 +98,7 @@ func (h *OIDCHandler) QueryAuthorizeInteractionAPI(w http.ResponseWriter, r *htt
 				in.SessionID = sessionID
 				redirectTarget, redirectErr := h.oidc.BuildAuthorizationRedirect(r.Context(), in)
 				if redirectErr != nil {
-					sharedweb.Error(w, http.StatusBadRequest, redirectErr.Error())
+					authnapi.WriteKnown(w, redirectErr)
 					return
 				}
 				sharedweb.JSON(w, http.StatusOK, authorizeInteractionResponse{
@@ -154,16 +155,16 @@ func (h *OIDCHandler) ExchangeTokenAPI(w http.ResponseWriter, r *http.Request) {
 		Scope               string `json:"scope"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
 		return
 	}
 	audience := requestIssuer(r) + "/auth/token"
 	switch strings.TrimSpace(payload.GrantType) {
 	case "authorization_code_pkce":
-		sharedweb.Error(w, http.StatusBadRequest, "unsupported grant_type: use authorization_code with code_verifier for PKCE")
+		authnapi.WriteKnown(w, errors.New("unsupported grant_type: use authorization_code with code_verifier for PKCE"))
 		return
 	case "code":
-		sharedweb.Error(w, http.StatusBadRequest, "unsupported grant_type: OAuth requires grant_type=authorization_code")
+		authnapi.WriteKnown(w, errors.New("unsupported grant_type: OAuth requires grant_type=authorization_code"))
 		return
 	case "authorization_code":
 		pair, idToken, err := h.oidc.ExchangeCode(
@@ -178,7 +179,7 @@ func (h *OIDCHandler) ExchangeTokenAPI(w http.ResponseWriter, r *http.Request) {
 			payload.CodeVerifier,
 		)
 		if err != nil {
-			sharedweb.Error(w, http.StatusBadRequest, err.Error())
+			authnapi.WriteKnown(w, err)
 			return
 		}
 		sharedweb.JSON(w, http.StatusOK, authservice.BuildStandardTokenResponse(pair, idToken))
@@ -192,16 +193,16 @@ func (h *OIDCHandler) ExchangeTokenAPI(w http.ResponseWriter, r *http.Request) {
 			audience,
 		)
 		if err != nil {
-			sharedweb.Error(w, http.StatusUnauthorized, err.Error())
+			authnapi.WriteKnown(w, err)
 			return
 		}
 		if !coreservice.AppGrantTypesContain(app.GrantType, "client_credentials") {
-			sharedweb.Error(w, http.StatusUnauthorized, "client_credentials grant is not enabled for this application")
+			authnapi.WriteKnown(w, errors.New("client_credentials grant is not enabled for this application"))
 			return
 		}
 		pair, err := h.auth.IssueClientCredentialTokenForApplication(r.Context(), app, payload.Scope)
 		if err != nil {
-			sharedweb.Error(w, http.StatusUnauthorized, err.Error())
+			authnapi.WriteKnown(w, err)
 			return
 		}
 		sharedweb.JSON(w, http.StatusOK, authservice.BuildStandardTokenResponse(pair, ""))
@@ -217,7 +218,7 @@ func (h *OIDCHandler) ExchangeTokenAPI(w http.ResponseWriter, r *http.Request) {
 			payload.Scope,
 		)
 		if err != nil {
-			sharedweb.Error(w, http.StatusBadRequest, err.Error())
+			authnapi.WriteKnown(w, err)
 			return
 		}
 		sharedweb.JSON(w, http.StatusOK, authservice.BuildStandardTokenResponse(pair, idToken))
@@ -231,11 +232,11 @@ func (h *OIDCHandler) ExchangeTokenAPI(w http.ResponseWriter, r *http.Request) {
 			audience,
 		)
 		if err != nil {
-			sharedweb.Error(w, http.StatusUnauthorized, err.Error())
+			authnapi.WriteKnown(w, err)
 			return
 		}
 		if !coreservice.AppGrantTypesContain(app.GrantType, "password") {
-			sharedweb.Error(w, http.StatusUnauthorized, "password grant is not enabled for this application")
+			authnapi.WriteKnown(w, errors.New("password grant is not enabled for this application"))
 			return
 		}
 		pair, user, session, err := h.auth.IssuePasswordGrantTokenForApplication(
@@ -248,7 +249,7 @@ func (h *OIDCHandler) ExchangeTokenAPI(w http.ResponseWriter, r *http.Request) {
 			sharedhandler.OriginalUserAgent(r),
 		)
 		if err != nil {
-			sharedweb.Error(w, http.StatusBadRequest, err.Error())
+			authnapi.WriteKnown(w, err)
 			return
 		}
 		idToken := ""
@@ -256,25 +257,25 @@ func (h *OIDCHandler) ExchangeTokenAPI(w http.ResponseWriter, r *http.Request) {
 			authTime := session.CreatedAt
 			idToken, err = h.oidc.SignIDTokenForApplication(r.Context(), app.ID, *user, app.ID, payload.Scope, "", &authTime, session.ID)
 			if err != nil {
-				sharedweb.Error(w, http.StatusBadRequest, err.Error())
+				authnapi.WriteKnown(w, err)
 				return
 			}
 		}
 		sharedweb.JSON(w, http.StatusOK, authservice.BuildStandardTokenResponse(pair, idToken))
 	default:
-		sharedweb.Error(w, http.StatusBadRequest, "unsupported grant_type")
+		authnapi.WriteKnown(w, errors.New("unsupported grant_type"))
 	}
 }
 
 func (h *OIDCHandler) QueryUserInfoAPI(w http.ResponseWriter, r *http.Request) {
 	auth := r.Header.Get("Authorization")
 	if !strings.HasPrefix(auth, "Bearer ") {
-		sharedweb.Error(w, http.StatusUnauthorized, "missing bearer token")
+		authnapi.WriteKnown(w, errors.New("missing bearer token"))
 		return
 	}
 	profile, err := h.oidc.UserInfo(r.Context(), strings.TrimSpace(strings.TrimPrefix(auth, "Bearer ")))
 	if err != nil {
-		sharedweb.Error(w, http.StatusUnauthorized, err.Error())
+		authnapi.WriteKnown(w, err)
 		return
 	}
 	sharedweb.JSON(w, http.StatusOK, profile)
@@ -289,7 +290,7 @@ func (h *OIDCHandler) ValidateClientAPI(w http.ResponseWriter, r *http.Request) 
 		Audience            string `json:"audience"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
 		return
 	}
 	app, err := h.oidc.ValidateClientAuthentication(
@@ -301,7 +302,7 @@ func (h *OIDCHandler) ValidateClientAPI(w http.ResponseWriter, r *http.Request) 
 		payload.Audience,
 	)
 	if err != nil {
-		sharedweb.Error(w, http.StatusUnauthorized, err.Error())
+		authnapi.WriteKnown(w, err)
 		return
 	}
 	sharedweb.JSON(w, http.StatusOK, map[string]any{
@@ -321,7 +322,7 @@ func (h *OIDCHandler) RevokeTokenAPI(w http.ResponseWriter, r *http.Request) {
 		Reason              string `json:"reason"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
 		return
 	}
 	if _, err := h.oidc.ValidateClientAuthentication(
@@ -332,11 +333,11 @@ func (h *OIDCHandler) RevokeTokenAPI(w http.ResponseWriter, r *http.Request) {
 		payload.ClientAssertion,
 		requestIssuer(r)+"/auth/revoke",
 	); err != nil {
-		sharedweb.Error(w, http.StatusUnauthorized, err.Error())
+		authnapi.WriteKnown(w, err)
 		return
 	}
 	if err := h.auth.RevokeToken(r.Context(), strings.TrimSpace(payload.Token), strings.TrimSpace(payload.Reason)); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		authnapi.WriteKnown(w, err)
 		return
 	}
 	sharedweb.JSON(w, http.StatusOK, map[string]any{})
@@ -349,7 +350,7 @@ func (h *OIDCHandler) LogoutAPI(w http.ResponseWriter, r *http.Request) {
 		Reason       string `json:"reason"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
 		return
 	}
 	reason := strings.TrimSpace(payload.Reason)
@@ -358,13 +359,13 @@ func (h *OIDCHandler) LogoutAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	if token := strings.TrimSpace(payload.AccessToken); token != "" {
 		if err := h.auth.RevokeToken(r.Context(), token, reason); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			sharedweb.Error(w, http.StatusBadRequest, err.Error())
+			authnapi.WriteKnown(w, err)
 			return
 		}
 	}
 	if token := strings.TrimSpace(payload.RefreshToken); token != "" {
 		if err := h.auth.RevokeToken(r.Context(), token, reason); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			sharedweb.Error(w, http.StatusBadRequest, err.Error())
+			authnapi.WriteKnown(w, err)
 			return
 		}
 	}

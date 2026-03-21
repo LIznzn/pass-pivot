@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	authnapi "pass-pivot/internal/server/shared/authnapi"
 	sharedweb "pass-pivot/internal/server/shared/web"
 )
 
@@ -31,12 +32,12 @@ func (h *Handler) IntrospectToken(w http.ResponseWriter, r *http.Request) {
 		Token string `json:"token"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
 		return
 	}
 	result, err := h.service.IntrospectToken(r.Context(), payload.Token)
 	if err != nil {
-		sharedweb.Error(w, http.StatusInternalServerError, err.Error())
+		authnapi.WriteKnown(w, err)
 		return
 	}
 	sharedweb.JSON(w, http.StatusOK, result)
@@ -51,7 +52,7 @@ func (h *Handler) ListPublicExternalIDPs(w http.ResponseWriter, r *http.Request)
 	}
 	items, err := h.service.ListPublicExternalIDPsByApplication(r.Context(), payload.ApplicationID)
 	if err != nil {
-		sharedweb.Error(w, http.StatusInternalServerError, err.Error())
+		authnapi.WriteKnown(w, err)
 		return
 	}
 	type publicProvider struct {
@@ -79,12 +80,12 @@ func (h *Handler) GetLoginTarget(w http.ResponseWriter, r *http.Request) {
 		ApplicationID string `json:"applicationId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
 		return
 	}
 	item, err := h.service.GetLoginTarget(r.Context(), payload.ApplicationID)
 	if err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		authnapi.WriteKnown(w, err)
 		return
 	}
 	sharedweb.JSON(w, http.StatusOK, item)

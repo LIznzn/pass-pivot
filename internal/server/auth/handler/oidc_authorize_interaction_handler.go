@@ -42,7 +42,8 @@ type authorizeUIAPIConfig struct {
 }
 
 type authnAPIError struct {
-	Error string `json:"error"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
 }
 
 func (h *OIDCHandler) callAuthnAPI(w http.ResponseWriter, r *http.Request, path string, payload any) ([]byte, error) {
@@ -91,8 +92,10 @@ func (h *OIDCHandler) callAuthnAPIWithHeaders(w http.ResponseWriter, r *http.Req
 	}
 	if resp.StatusCode >= http.StatusBadRequest {
 		var apiErr authnAPIError
-		if json.Unmarshal(responseBody, &apiErr) == nil && strings.TrimSpace(apiErr.Error) != "" {
-			return nil, errAuthorizeAPI(apiErr.Error)
+		if json.Unmarshal(responseBody, &apiErr) == nil {
+			if strings.TrimSpace(apiErr.Message) != "" {
+				return nil, errAuthorizeAPI(apiErr.Message)
+			}
 		}
 		return nil, errAuthorizeAPI(strings.TrimSpace(string(responseBody)))
 	}

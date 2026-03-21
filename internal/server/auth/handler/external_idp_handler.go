@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	authservice "pass-pivot/internal/server/auth/service"
+	authnapi "pass-pivot/internal/server/shared/authnapi"
 	sharedhandler "pass-pivot/internal/server/shared/handler"
 	sharedweb "pass-pivot/internal/server/shared/web"
 )
@@ -24,12 +25,12 @@ func (h *ExternalIDPHandler) StartLogin(w http.ResponseWriter, r *http.Request) 
 		RedirectURI   string `json:"redirectUri"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
 		return
 	}
 	result, err := h.externalIDP.StartLogin(r.Context(), payload.ProviderID, payload.ApplicationID, payload.RedirectURI)
 	if err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		authnapi.WriteKnown(w, err)
 		return
 	}
 	sharedweb.JSON(w, http.StatusOK, result)
@@ -42,12 +43,12 @@ func (h *ExternalIDPHandler) CompleteLogin(w http.ResponseWriter, r *http.Reques
 		ApplicationID string `json:"applicationId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
 		return
 	}
 	result, err := h.externalIDP.CompleteLogin(r.Context(), payload.State, payload.Code, payload.ApplicationID)
 	if err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		authnapi.WriteKnown(w, err)
 		return
 	}
 	sharedhandler.WritePortalSessionCookie(w, r, result.Session.ID)

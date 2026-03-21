@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	sharedauthn "pass-pivot/internal/server/shared/authn"
+	authnapi "pass-pivot/internal/server/shared/authnapi"
 	sharedhandler "pass-pivot/internal/server/shared/handler"
 	sharedweb "pass-pivot/internal/server/shared/web"
 )
@@ -28,7 +29,7 @@ func (h *MFAU2FHandler) BeginAssertion(w http.ResponseWriter, r *http.Request) {
 		SessionID string `json:"sessionId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
 		return
 	}
 	sessionID := payload.SessionID
@@ -37,7 +38,7 @@ func (h *MFAU2FHandler) BeginAssertion(w http.ResponseWriter, r *http.Request) {
 	}
 	challengeID, options, err := h.service.BeginU2FAssertion(r.Context(), sessionID)
 	if err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		authnapi.WriteKnown(w, err)
 		return
 	}
 	sharedweb.JSON(w, http.StatusOK, map[string]any{"challengeId": challengeID, "options": options})
@@ -50,12 +51,12 @@ func (h *MFAU2FHandler) FinishAssertion(w http.ResponseWriter, r *http.Request) 
 		TrustDevice bool            `json:"trustDevice"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
 		return
 	}
 	result, err := h.service.FinishU2FAssertion(r.Context(), payload.ChallengeID, payload.Response, payload.TrustDevice)
 	if err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		authnapi.WriteKnown(w, err)
 		return
 	}
 	sharedhandler.WritePortalSessionCookie(w, r, result.Session.ID)

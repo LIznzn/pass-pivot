@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	sharedauthn "pass-pivot/internal/server/shared/authn"
+	authnapi "pass-pivot/internal/server/shared/authnapi"
 	sharedhandler "pass-pivot/internal/server/shared/handler"
 	sharedweb "pass-pivot/internal/server/shared/web"
 )
@@ -27,7 +28,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		RequireAnnouncement bool   `json:"requireAnnouncement"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
 		return
 	}
 	deviceKey := h.service.ParseFingerprint(sharedhandler.ReadFingerprintCookie(r))
@@ -44,7 +45,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		RequireAnnouncement: payload.RequireAnnouncement,
 	})
 	if err != nil {
-		sharedweb.Error(w, http.StatusUnauthorized, err.Error())
+		authnapi.WriteKnown(w, err)
 		return
 	}
 	sharedhandler.WriteFingerprintCookie(w, r, result.Fingerprint)
@@ -58,7 +59,7 @@ func (h *Handler) Confirm(w http.ResponseWriter, r *http.Request) {
 		Accept    bool   `json:"accept"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
 		return
 	}
 	sessionID := payload.SessionID
@@ -67,7 +68,7 @@ func (h *Handler) Confirm(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.service.ConfirmSession(r.Context(), sessionID, payload.Accept)
 	if err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		authnapi.WriteKnown(w, err)
 		return
 	}
 	if !payload.Accept {
@@ -86,7 +87,7 @@ func (h *Handler) VerifyMFA(w http.ResponseWriter, r *http.Request) {
 		TrustDevice bool   `json:"trustDevice"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
 		return
 	}
 	sessionID := payload.SessionID
@@ -95,7 +96,7 @@ func (h *Handler) VerifyMFA(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.service.VerifyMFA(r.Context(), sessionID, payload.Method, payload.Code, payload.TrustDevice)
 	if err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		authnapi.WriteKnown(w, err)
 		return
 	}
 	sharedhandler.WritePortalSessionCookie(w, r, result.Session.ID)
@@ -108,7 +109,7 @@ func (h *Handler) CreateMFAChallenge(w http.ResponseWriter, r *http.Request) {
 		Method    string `json:"method"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
 		return
 	}
 	sessionID := payload.SessionID
@@ -117,7 +118,7 @@ func (h *Handler) CreateMFAChallenge(w http.ResponseWriter, r *http.Request) {
 	}
 	challenge, demoCode, err := h.service.RequestMFAChallenge(r.Context(), sessionID, payload.Method)
 	if err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		authnapi.WriteKnown(w, err)
 		return
 	}
 	sharedweb.JSON(w, http.StatusOK, map[string]any{
@@ -132,7 +133,7 @@ func (h *Handler) EnrollTOTP(w http.ResponseWriter, r *http.Request) {
 		ApplicationID string `json:"applicationId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
 		return
 	}
 	var (
@@ -142,17 +143,17 @@ func (h *Handler) EnrollTOTP(w http.ResponseWriter, r *http.Request) {
 	if identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r); ok && identity.User != nil {
 		targetUserID, allowed := sharedhandler.CurrentUserIDOrTarget(identity, payload.UserID)
 		if !allowed {
-			sharedweb.Error(w, http.StatusForbidden, "organization management role is required")
+			authnapi.Write(w, http.StatusForbidden, authnapi.CodeForbidden, "organization management role is required")
 			return
 		}
 		if targetUserID != identity.User.ID {
 			allowed, err = h.service.CanManageUser(r.Context(), identity.User.Roles, targetUserID)
 			if err != nil {
-				sharedweb.Error(w, http.StatusBadRequest, err.Error())
+				authnapi.WriteKnown(w, err)
 				return
 			}
 			if !allowed {
-				sharedweb.Error(w, http.StatusForbidden, "organization management role is required")
+				authnapi.Write(w, http.StatusForbidden, authnapi.CodeForbidden, "organization management role is required")
 				return
 			}
 		}
@@ -161,7 +162,7 @@ func (h *Handler) EnrollTOTP(w http.ResponseWriter, r *http.Request) {
 		result, err = h.service.EnrollTOTP(r.Context(), payload.UserID, payload.ApplicationID)
 	}
 	if err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		authnapi.WriteKnown(w, err)
 		return
 	}
 	sharedweb.JSON(w, http.StatusOK, result)
@@ -172,12 +173,12 @@ func (h *Handler) EnrollPortalTOTP(w http.ResponseWriter, r *http.Request) {
 		ApplicationID string `json:"applicationId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
 		return
 	}
 	result, err := h.service.EnrollCurrentUserTOTP(r.Context(), sharedhandler.ReadPortalSessionCookie(r), payload.ApplicationID)
 	if err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		authnapi.WriteKnown(w, err)
 		return
 	}
 	sharedweb.JSON(w, http.StatusOK, result)
@@ -190,24 +191,24 @@ func (h *Handler) VerifyTOTPEnrollment(w http.ResponseWriter, r *http.Request) {
 		Code         string `json:"code"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
 		return
 	}
 	var err error
 	if identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r); ok && identity.User != nil {
 		targetUserID, allowed := sharedhandler.CurrentUserIDOrTarget(identity, payload.UserID)
 		if !allowed {
-			sharedweb.Error(w, http.StatusForbidden, "organization management role is required")
+			authnapi.Write(w, http.StatusForbidden, authnapi.CodeForbidden, "organization management role is required")
 			return
 		}
 		if targetUserID != identity.User.ID {
 			allowed, err = h.service.CanManageUser(r.Context(), identity.User.Roles, targetUserID)
 			if err != nil {
-				sharedweb.Error(w, http.StatusBadRequest, err.Error())
+				authnapi.WriteKnown(w, err)
 				return
 			}
 			if !allowed {
-				sharedweb.Error(w, http.StatusForbidden, "organization management role is required")
+				authnapi.Write(w, http.StatusForbidden, authnapi.CodeForbidden, "organization management role is required")
 				return
 			}
 		}
@@ -216,7 +217,7 @@ func (h *Handler) VerifyTOTPEnrollment(w http.ResponseWriter, r *http.Request) {
 		err = h.service.VerifyTOTPEnrollment(r.Context(), payload.UserID, payload.EnrollmentID, payload.Code)
 	}
 	if err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		authnapi.WriteKnown(w, err)
 		return
 	}
 	sharedweb.JSON(w, http.StatusOK, map[string]any{"verified": true})
@@ -228,11 +229,11 @@ func (h *Handler) VerifyPortalTOTPEnrollment(w http.ResponseWriter, r *http.Requ
 		Code         string `json:"code"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
 		return
 	}
 	if err := h.service.VerifyCurrentUserTOTPEnrollment(r.Context(), sharedhandler.ReadPortalSessionCookie(r), payload.EnrollmentID, payload.Code); err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		authnapi.WriteKnown(w, err)
 		return
 	}
 	sharedweb.JSON(w, http.StatusOK, map[string]any{"verified": true})
@@ -243,7 +244,7 @@ func (h *Handler) GenerateRecoveryCodes(w http.ResponseWriter, r *http.Request) 
 		UserID string `json:"userId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
 		return
 	}
 	var (
@@ -253,17 +254,17 @@ func (h *Handler) GenerateRecoveryCodes(w http.ResponseWriter, r *http.Request) 
 	if identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r); ok && identity.User != nil {
 		targetUserID, allowed := sharedhandler.CurrentUserIDOrTarget(identity, payload.UserID)
 		if !allowed {
-			sharedweb.Error(w, http.StatusForbidden, "organization management role is required")
+			authnapi.Write(w, http.StatusForbidden, authnapi.CodeForbidden, "organization management role is required")
 			return
 		}
 		if targetUserID != identity.User.ID {
 			allowed, err = h.service.CanManageUser(r.Context(), identity.User.Roles, targetUserID)
 			if err != nil {
-				sharedweb.Error(w, http.StatusBadRequest, err.Error())
+				authnapi.WriteKnown(w, err)
 				return
 			}
 			if !allowed {
-				sharedweb.Error(w, http.StatusForbidden, "organization management role is required")
+				authnapi.Write(w, http.StatusForbidden, authnapi.CodeForbidden, "organization management role is required")
 				return
 			}
 		}
@@ -272,7 +273,7 @@ func (h *Handler) GenerateRecoveryCodes(w http.ResponseWriter, r *http.Request) 
 		codes, err = h.service.GenerateRecoveryCodes(r.Context(), payload.UserID)
 	}
 	if err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		authnapi.WriteKnown(w, err)
 		return
 	}
 	sharedweb.JSON(w, http.StatusOK, map[string]any{"codes": codes})
@@ -281,7 +282,7 @@ func (h *Handler) GenerateRecoveryCodes(w http.ResponseWriter, r *http.Request) 
 func (h *Handler) GeneratePortalRecoveryCodes(w http.ResponseWriter, r *http.Request) {
 	codes, err := h.service.GenerateCurrentUserRecoveryCodes(r.Context(), sharedhandler.ReadPortalSessionCookie(r))
 	if err != nil {
-		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		authnapi.WriteKnown(w, err)
 		return
 	}
 	sharedweb.JSON(w, http.StatusOK, map[string]any{"codes": codes})
@@ -291,11 +292,11 @@ func (h *Handler) ResetUKID(w http.ResponseWriter, r *http.Request) {
 	if identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r); ok && identity.User != nil {
 		ukid, err := h.service.ResetUserUKID(r.Context(), identity.User.ID)
 		if err != nil {
-			sharedweb.Error(w, http.StatusBadRequest, err.Error())
+			authnapi.WriteKnown(w, err)
 			return
 		}
 		sharedweb.JSON(w, http.StatusOK, map[string]any{"reset": true, "ukid": ukid})
 		return
 	}
-	sharedweb.Error(w, http.StatusForbidden, "user context is required")
+	authnapi.Write(w, http.StatusForbidden, authnapi.CodeForbidden, "user context is required")
 }
