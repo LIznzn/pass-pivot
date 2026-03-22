@@ -89,8 +89,26 @@ func (h *OIDCHandler) Token(w http.ResponseWriter, r *http.Request) {
 	if clientSecret == "" {
 		clientSecret = strings.TrimSpace(r.Form.Get("client_secret"))
 	}
+	grantType := strings.TrimSpace(r.Form.Get("grant_type"))
+	if grantType == "urn:ietf:params:oauth:grant-type:device_code" {
+		tokens, idToken, err := h.oidc.ExchangeDeviceCode(
+			r.Context(),
+			requestIssuer(r)+"/auth/token",
+			clientID,
+			clientSecret,
+			strings.TrimSpace(r.Form.Get("client_assertion_type")),
+			strings.TrimSpace(r.Form.Get("client_assertion")),
+			strings.TrimSpace(r.Form.Get("device_code")),
+		)
+		if err != nil {
+			writeOAuthTokenError(w, http.StatusBadRequest, oauthErrorCode(err), err.Error())
+			return
+		}
+		sharedweb.JSON(w, http.StatusOK, authservice.BuildStandardTokenResponse(tokens, idToken))
+		return
+	}
 	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/token/exchange", map[string]any{
-		"grantType":           strings.TrimSpace(r.Form.Get("grant_type")),
+		"grantType":           grantType,
 		"clientId":            clientID,
 		"clientSecret":        clientSecret,
 		"clientAssertionType": strings.TrimSpace(r.Form.Get("client_assertion_type")),

@@ -268,6 +268,8 @@ func initSchema(database *gorm.DB) error {
 		&model.MFAEnrollment{},
 		&model.MFARecoveryCode{},
 		&model.Session{},
+		&model.AuthorizationCode{},
+		&model.DeviceAuthorization{},
 		&model.Token{},
 		&model.Device{},
 		&model.Role{},

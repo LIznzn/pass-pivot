@@ -30,6 +30,7 @@ type OIDCMetadata struct {
 	JWKSURI                                            string   `json:"jwks_uri"`
 	AuthorizationEndpoint                              string   `json:"authorization_endpoint"`
 	TokenEndpoint                                      string   `json:"token_endpoint"`
+	DeviceAuthorizationEndpoint                        string   `json:"device_authorization_endpoint,omitempty"`
 	UserInfoEndpoint                                   string   `json:"userinfo_endpoint"`
 	RevocationEndpoint                                 string   `json:"revocation_endpoint,omitempty"`
 	IntrospectionEndpoint                              string   `json:"introspection_endpoint,omitempty"`
@@ -391,13 +392,14 @@ func buildOIDCMetadata(issuer string) OIDCMetadata {
 		Issuer:                                             issuer,
 		AuthorizationEndpoint:                              issuer + "/auth/authorize",
 		TokenEndpoint:                                      issuer + "/auth/token",
+		DeviceAuthorizationEndpoint:                        issuer + "/auth/device_authorization",
 		UserInfoEndpoint:                                   issuer + "/auth/userinfo",
 		JWKSURI:                                            issuer + "/auth/keys",
 		EndSessionEndpoint:                                 issuer + "/auth/end_session",
 		ScopesSupported:                                    []string{"openid", "profile", "email", "phone"},
 		ResponseTypesSupported:                             []string{"code", "token", "id_token", "id_token token"},
 		ResponseModesSupported:                             []string{"query", "fragment"},
-		GrantTypesSupported:                                []string{"authorization_code", "implicit", "client_credentials", "password", "refresh_token"},
+		GrantTypesSupported:                                []string{"authorization_code", "implicit", "client_credentials", "password", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code"},
 		SubjectTypesSupported:                              []string{"public"},
 		IDTokenSigningAlgValuesSupported:                   []string{"RS256"},
 		TokenEndpointAuthMethodsSupported:                  []string{"client_secret_basic", "client_secret_post", "private_key_jwt", "none"},

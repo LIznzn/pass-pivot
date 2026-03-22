@@ -311,6 +311,26 @@ func (AuthorizationCode) TableName() string {
 	return "authorization_code"
 }
 
+type DeviceAuthorization struct {
+	BaseModel
+	ApplicationID   string     `gorm:"index;size:36" json:"applicationId"`
+	UserID          string     `gorm:"index;size:36" json:"userId"`
+	SessionID       string     `gorm:"index;size:36" json:"sessionId"`
+	DeviceCode      string     `gorm:"uniqueIndex;size:128" json:"deviceCode"`
+	UserCode        string     `gorm:"uniqueIndex;size:32" json:"userCode"`
+	Scope           string     `gorm:"size:255" json:"scope"`
+	Status          string     `gorm:"size:32;index" json:"status"`
+	IntervalSeconds int        `json:"intervalSeconds"`
+	LastPolledAt    *time.Time `json:"lastPolledAt"`
+	ApprovedAt      *time.Time `json:"approvedAt"`
+	DeniedAt        *time.Time `json:"deniedAt"`
+	ExpiresAt       time.Time  `json:"expiresAt"`
+}
+
+func (DeviceAuthorization) TableName() string {
+	return "device_authorization"
+}
+
 type Token struct {
 	BaseModel
 	SessionID      string     `gorm:"index;size:36" json:"sessionId"`
