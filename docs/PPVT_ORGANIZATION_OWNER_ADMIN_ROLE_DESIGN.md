@@ -39,14 +39,12 @@
 4. 用户能否管理某个组织，由其角色中是否包含该组织的 `owner/admin` 角色决定
 5. 业务组织删除时，不必删除登录账号
 
-同时需要明确一个旧角色的迁移语义：
+同时需要明确系统管理角色的实际语义：
 
-- 现在的 `console:admin`
-  - 实质上等价于 `internal` 组织的 owner
-- 在本方案落地后，应收敛为：
-  - `organization:{internalOrganizationId}:owner`
+- 共享 `console` 下的系统管理权限
+  - 由 `organization:{internalOrganizationId}:owner/admin` 承担
 
-也就是说，后续不再把 `console:admin` 作为共享 console 的核心管理角色，而是统一归并到组织级 owner/admin 语义中。
+也就是说，共享 `console` 的核心管理角色统一使用组织级 owner/admin 语义，不再额外引入 `console:admin` 这类独立角色。
 
 
 ## 核心设计
@@ -97,7 +95,7 @@
 
 本质上就是普通的用户角色
 
-它们与 `console:admin`、`user:self:all`、`api:*` 在“角色字符串”这个层面没有本质区别，只是语义上表达的是“该用户对某个组织具有管理权限”。
+它们与 `api:*` 在“角色字符串”这个层面没有本质区别，只是语义上表达的是“该用户对某个组织具有管理权限”。
 
 因此：
 
@@ -561,10 +559,8 @@
 
 同时还要补充一条关键定位：
 
-- 现有 `console:admin`
-  - 应视为历史角色
-  - 在该方案下应被组织级角色替代
-  - 实际语义应收敛为 `organization:{internalOrganizationId}:owner`
+- 共享 `console` 的系统管理入口
+  - 实际由 `organization:{internalOrganizationId}:owner/admin` 控制
 
 但必须明确：
 

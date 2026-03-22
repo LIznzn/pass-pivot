@@ -1375,8 +1375,8 @@ func validateApplicationProtocol(app model.Application) error {
 	}
 	if app.ClientAuthenticationType == "none" {
 		for _, grantType := range app.GrantType {
-			if grantType != "authorization_code_pkce" && grantType != "device_code" && grantType != "password" {
-				return errors.New("clientAuthenticationType=none is only allowed for authorization_code_pkce, device_code, or password")
+			if grantType != "authorization_code_pkce" && grantType != "device_code" && grantType != "password" && grantType != "implicit" {
+				return errors.New("clientAuthenticationType=none is only allowed for authorization_code_pkce, device_code, password, or implicit")
 			}
 		}
 	}
@@ -1863,11 +1863,6 @@ func (s *Service) CreateUser(ctx context.Context, user model.User, identifier, p
 	if user.Status == "" {
 		user.Status = "active"
 	}
-	if len(user.Roles) == 0 {
-		user.Roles = []string{"user:self:all"}
-	} else if !containsString(user.Roles, "user:self:all") {
-		user.Roles = append(user.Roles, "user:self:all")
-	}
 	validatedRoles, err := s.validateRoleAssignments(ctx, user.OrganizationID, user.Roles, "user")
 	if err != nil {
 		return nil, err
@@ -1916,9 +1911,6 @@ func (s *Service) UpdateUser(ctx context.Context, user model.User) (*model.User,
 		return nil, err
 	}
 	nextRoles := coalesceRoles(user.Roles, existing.Roles)
-	if !containsString(nextRoles, "user:self:all") {
-		nextRoles = append(nextRoles, "user:self:all")
-	}
 	validatedRoles, err := s.validateRoleAssignments(ctx, existing.OrganizationID, nextRoles, "user")
 	if err != nil {
 		return nil, err

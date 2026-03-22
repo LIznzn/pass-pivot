@@ -14,6 +14,7 @@ import (
 	"gorm.io/gorm"
 
 	"pass-pivot/internal/model"
+	coreservice "pass-pivot/internal/server/core/service"
 	"pass-pivot/util"
 )
 
@@ -35,18 +36,43 @@ func (s *OIDCService) ValidateAuthorizationRequest(ctx context.Context, in Stand
 	if err != nil {
 		return nil, "", err
 	}
-	if in.ResponseType != "code" {
-		return nil, s.redirectWithOAuthError(in.RedirectURI, "unsupported_response_type", in.State, "only code is supported"), nil
+	response := parseAuthorizeResponseType(in.ResponseType)
+	if !response.Valid {
+		return nil, s.redirectWithOAuthErrorForResponseType(in.RedirectURI, in.ResponseType, "unsupported_response_type", in.State, "unsupported response_type"), nil
+	}
+	if response.UsesCode && response.UsesImplicit {
+		return nil, s.redirectWithOAuthErrorForResponseType(in.RedirectURI, in.ResponseType, "unsupported_response_type", in.State, "hybrid response_type is not supported"), nil
+	}
+	if response.UsesCode {
+		if strings.TrimSpace(in.CodeChallenge) != "" {
+			if !applicationSupportsAuthorizationCodePKCE(app) {
+				return nil, s.redirectWithOAuthErrorForResponseType(in.RedirectURI, in.ResponseType, "unauthorized_client", in.State, "pkce is not enabled for this client"), nil
+			}
+			if !strings.EqualFold(strings.TrimSpace(in.CodeChallengeMethod), "S256") {
+				return nil, s.redirectWithOAuthErrorForResponseType(in.RedirectURI, in.ResponseType, "invalid_request", in.State, "only S256 code_challenge_method is supported"), nil
+			}
+		} else if !applicationSupportsAuthorizationCode(app) {
+			return nil, s.redirectWithOAuthErrorForResponseType(in.RedirectURI, in.ResponseType, "unauthorized_client", in.State, "authorization_code grant is not enabled"), nil
+		}
+		return &app, "", nil
+	}
+	if !response.UsesImplicit {
+		return nil, s.redirectWithOAuthErrorForResponseType(in.RedirectURI, in.ResponseType, "unsupported_response_type", in.State, "unsupported response_type"), nil
+	}
+	if !coreservice.AppGrantTypesContain(app.GrantType, "implicit") {
+		return nil, s.redirectWithOAuthErrorForResponseType(in.RedirectURI, in.ResponseType, "unauthorized_client", in.State, "implicit grant is not enabled for this client"), nil
 	}
 	if strings.TrimSpace(in.CodeChallenge) != "" {
-		if !applicationSupportsAuthorizationCodePKCE(app) {
-			return nil, s.redirectWithOAuthError(in.RedirectURI, "unauthorized_client", in.State, "pkce is not enabled for this client"), nil
-		}
-		if !strings.EqualFold(strings.TrimSpace(in.CodeChallengeMethod), "S256") {
-			return nil, s.redirectWithOAuthError(in.RedirectURI, "invalid_request", in.State, "only S256 code_challenge_method is supported"), nil
-		}
-	} else if !applicationSupportsAuthorizationCode(app) {
-		return nil, s.redirectWithOAuthError(in.RedirectURI, "unauthorized_client", in.State, "authorization_code grant is not enabled"), nil
+		return nil, s.redirectWithOAuthErrorForResponseType(in.RedirectURI, in.ResponseType, "invalid_request", in.State, "code_challenge is not supported for implicit"), nil
+	}
+	if response.NeedsIDToken && strings.TrimSpace(in.Nonce) == "" {
+		return nil, s.redirectWithOAuthErrorForResponseType(in.RedirectURI, in.ResponseType, "invalid_request", in.State, "nonce is required for implicit id_token responses"), nil
+	}
+	if response.NeedsAccessToken && !coreservice.TokenTypesContain(app.TokenType, "access_token") {
+		return nil, s.redirectWithOAuthErrorForResponseType(in.RedirectURI, in.ResponseType, "unsupported_response_type", in.State, "access_token response is not enabled for this client"), nil
+	}
+	if response.NeedsIDToken && !applicationReturnsIDToken(app.TokenType) {
+		return nil, s.redirectWithOAuthErrorForResponseType(in.RedirectURI, in.ResponseType, "unsupported_response_type", in.State, "id_token response is not enabled for this client"), nil
 	}
 	return &app, "", nil
 }
@@ -88,18 +114,38 @@ func (s *OIDCService) BuildAuthorizationRedirect(ctx context.Context, in Standar
 	if redirectError != "" {
 		return redirectError, nil
 	}
+	response := parseAuthorizeResponseType(in.ResponseType)
 	if strings.TrimSpace(in.SessionID) == "" {
 		if strings.EqualFold(strings.TrimSpace(in.Prompt), "none") {
-			return s.redirectWithOAuthError(in.RedirectURI, "login_required", in.State, "interactive login is required"), nil
+			return s.redirectWithOAuthErrorForResponseType(in.RedirectURI, in.ResponseType, "login_required", in.State, "interactive login is required"), nil
 		}
-		return s.redirectWithOAuthError(in.RedirectURI, "login_required", in.State, "session is not active"), nil
+		return s.redirectWithOAuthErrorForResponseType(in.RedirectURI, in.ResponseType, "login_required", in.State, "session is not active"), nil
 	}
 	session, err := s.GetSession(ctx, in.SessionID)
 	if err != nil {
-		return s.redirectWithOAuthError(in.RedirectURI, "login_required", in.State, "session is not active"), nil
+		return s.redirectWithOAuthErrorForResponseType(in.RedirectURI, in.ResponseType, "login_required", in.State, "session is not active"), nil
 	}
 	if session.State != "authenticated" {
-		return s.redirectWithOAuthError(in.RedirectURI, "login_required", in.State, "session is not authenticated"), nil
+		return s.redirectWithOAuthErrorForResponseType(in.RedirectURI, in.ResponseType, "login_required", in.State, "session is not authenticated"), nil
+	}
+	if response.UsesImplicit {
+		var user model.User
+		if err := s.db.WithContext(ctx).First(&user, "id = ?", session.UserID).Error; err != nil {
+			return "", err
+		}
+		tokens, err := s.auth.IssueTokensForApplication(ctx, user, *session, app.ID, strings.TrimSpace(in.Scope))
+		if err != nil {
+			return "", err
+		}
+		idToken := ""
+		if response.NeedsIDToken {
+			authTime := session.CreatedAt
+			idToken, err = s.signIDToken(ctx, app.ID, user, app.ID, strings.TrimSpace(in.Scope), strings.TrimSpace(in.Nonce), &authTime, session.ID)
+			if err != nil {
+				return "", err
+			}
+		}
+		return buildImplicitRedirect(in.RedirectURI, in.State, tokens, idToken)
 	}
 	codeValue, err := util.RandomToken(24)
 	if err != nil {
@@ -129,6 +175,43 @@ func (s *OIDCService) BuildAuthorizationRedirect(ctx context.Context, in Standar
 	}
 	redirect.RawQuery = query.Encode()
 	return redirect.String(), nil
+}
+
+type authorizeResponseType struct {
+	Valid            bool
+	UsesCode         bool
+	UsesImplicit     bool
+	NeedsAccessToken bool
+	NeedsIDToken     bool
+}
+
+func parseAuthorizeResponseType(value string) authorizeResponseType {
+	parts := strings.Fields(strings.TrimSpace(value))
+	if len(parts) == 0 {
+		return authorizeResponseType{}
+	}
+	var response authorizeResponseType
+	seen := map[string]bool{}
+	for _, part := range parts {
+		if seen[part] {
+			return authorizeResponseType{}
+		}
+		seen[part] = true
+		switch part {
+		case "code":
+			response.UsesCode = true
+		case "token":
+			response.UsesImplicit = true
+			response.NeedsAccessToken = true
+		case "id_token":
+			response.UsesImplicit = true
+			response.NeedsIDToken = true
+		default:
+			return authorizeResponseType{}
+		}
+	}
+	response.Valid = true
+	return response
 }
 
 func (s *OIDCService) ExchangeRefreshToken(ctx context.Context, audience, clientID, clientSecret, clientAssertionType, clientAssertion, refreshTokenValue, scope string) ([]model.Token, string, error) {
@@ -364,21 +447,61 @@ func (s *OIDCService) loadAuthorizedApplication(ctx context.Context, clientID, r
 	return app, nil
 }
 
-func (s *OIDCService) redirectWithOAuthError(redirectURI, code, state, description string) string {
+func (s *OIDCService) redirectWithOAuthErrorForResponseType(redirectURI, responseType, code, state, description string) string {
 	redirect, err := url.Parse(redirectURI)
 	if err != nil {
 		return redirectURI
 	}
-	query := redirect.Query()
-	query.Set("error", code)
+	response := parseAuthorizeResponseType(responseType)
+	values := url.Values{}
+	values.Set("error", code)
 	if description != "" {
-		query.Set("error_description", description)
+		values.Set("error_description", description)
 	}
 	if state != "" {
-		query.Set("state", state)
+		values.Set("state", state)
+	}
+	if response.UsesImplicit && !response.UsesCode {
+		redirect.Fragment = values.Encode()
+		return redirect.String()
+	}
+	query := redirect.Query()
+	for key, items := range values {
+		for _, item := range items {
+			query.Add(key, item)
+		}
 	}
 	redirect.RawQuery = query.Encode()
 	return redirect.String()
+}
+
+func buildImplicitRedirect(redirectURI, state string, tokens []model.Token, idToken string) (string, error) {
+	redirect, err := url.Parse(redirectURI)
+	if err != nil {
+		return "", err
+	}
+	values := url.Values{}
+	if state != "" {
+		values.Set("state", state)
+	}
+	response := BuildStandardTokenResponse(tokens, idToken)
+	if token, ok := response["access_token"].(string); ok && token != "" {
+		values.Set("access_token", token)
+	}
+	if tokenType, ok := response["token_type"].(string); ok && tokenType != "" {
+		values.Set("token_type", tokenType)
+	}
+	if expiresIn, ok := response["expires_in"].(int64); ok && expiresIn > 0 {
+		values.Set("expires_in", fmt.Sprintf("%d", expiresIn))
+	}
+	if scope, ok := response["scope"].(string); ok && scope != "" {
+		values.Set("scope", scope)
+	}
+	if token, ok := response["id_token"].(string); ok && token != "" {
+		values.Set("id_token", token)
+	}
+	redirect.Fragment = values.Encode()
+	return redirect.String(), nil
 }
 
 func redirectURIAllowed(allowedRaw, candidate string) bool {

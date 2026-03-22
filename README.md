@@ -158,7 +158,7 @@ npm run dev:console
 - application: `console-web`
 - application: `portal-web`
 - 默认内置管理员用户：`admin@example.com / ChangeMe123!`
-- 默认管理员角色标签：`console:admin`
+- 默认内置管理员角色标签：`organization:{internalOrganizationId}:owner`
 
 说明：
 
@@ -166,8 +166,9 @@ npm run dev:console
 - `/auth/*` 与 `/.well-known/*` 由 `ppvt-auth` 暴露
 - `/api/*` 由 `ppvt-core` 暴露
 - `/api/system/v1/*` 与 `/auth/*` 默认无需鉴权
-- `/api/manage/v1/*` 仅允许 `manage-api` 与 `console-web` 调用；其中 `console-web` 还要求用户具备 `console:admin`
+- `/api/manage/v1/*` 仅允许 `manage-api` 与 `console-web` 调用；其中 `console-web` 还要求用户具备目标组织的 `organization:{organizationId}:owner/admin`
 - `/api/user/v1/*` 仅允许 `user-api` 与 `portal-web` 调用，且必须具备当前登录用户上下文
+- `/api/user/v1/*` 的“用户操作自己”语义由系统内建规则判定，不再依赖 `user:self:all` 之类的显式用户角色
 - `/api/authn/v1/*` 仅允许 `authn-api` 调用
 - `/api/authz/v1/*` 仅允许 `authz-api` 调用
 - `ppvt-auth` 调用 `ppvt-core` 时也走正式 `/api/authn/v1/*`、`/api/authz/v1/*`
