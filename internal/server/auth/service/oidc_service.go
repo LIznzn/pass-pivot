@@ -44,8 +44,6 @@ type OIDCMetadata struct {
 	TokenEndpointAuthMethodsSupported                  []string `json:"token_endpoint_auth_methods_supported,omitempty"`
 	TokenEndpointAuthSigningAlgValuesSupported         []string `json:"token_endpoint_auth_signing_alg_values_supported,omitempty"`
 	ClaimsSupported                                    []string `json:"claims_supported,omitempty"`
-	ClaimsParameterSupported                           bool     `json:"claims_parameter_supported"`
-	RequestParameterSupported                          bool     `json:"request_parameter_supported"`
 	RequestURIParameterSupported                       bool     `json:"request_uri_parameter_supported"`
 	CodeChallengeMethodsSupported                      []string `json:"code_challenge_methods_supported,omitempty"`
 }
@@ -400,9 +398,7 @@ func buildOIDCMetadata(issuer string) OIDCMetadata {
 		IDTokenSigningAlgValuesSupported:                   []string{"RS256"},
 		TokenEndpointAuthMethodsSupported:                  []string{"client_secret_basic", "client_secret_post", "private_key_jwt", "none"},
 		TokenEndpointAuthSigningAlgValuesSupported:         []string{"RS256"},
-		ClaimsSupported:                                    []string{"sub", "iss", "name", "email", "phone_number", "preferred_username"},
-		ClaimsParameterSupported:                           false,
-		RequestParameterSupported:                          false,
+		ClaimsSupported:                                    []string{"sub", "iss", "aud", "iat", "exp", "auth_time", "nonce", "sid", "name", "email", "phone_number", "preferred_username"},
 		RequestURIParameterSupported:                       false,
 		CodeChallengeMethodsSupported:                      []string{"S256"},
 		RevocationEndpoint:                                 issuer + "/auth/revoke",
