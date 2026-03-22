@@ -11,6 +11,7 @@ import (
 	"pass-pivot/internal/model"
 	authservice "pass-pivot/internal/server/auth/service"
 	coreservice "pass-pivot/internal/server/core/service"
+	captchaprovider "pass-pivot/provider/captcha"
 	sharedauthn "pass-pivot/internal/server/shared/authn"
 	sharedfido "pass-pivot/internal/server/shared/fido"
 	sharedhandler "pass-pivot/internal/server/shared/handler"
@@ -140,6 +141,25 @@ func (s *AuthnService) LoginWithUserCredential(ctx context.Context, in sharedaut
 			return nil, errors.New("application is disabled")
 		}
 	}
+	var organization model.Organization
+	if err := s.db.WithContext(ctx).First(&organization, "id = ?", in.OrganizationID).Error; err != nil {
+		return nil, err
+	}
+	if !organizationIsActive(organization) {
+		return nil, errors.New("organization is disabled")
+	}
+	settings := coreservice.NormalizeOrganizationConsoleSettings(&model.OrganizationSetting{
+		SupportEmail:   organization.SupportEmail,
+		LogoURL:        organization.LogoURL,
+		Domains:        organization.Domains,
+		LoginPolicy:    organization.LoginPolicy,
+		PasswordPolicy: organization.PasswordPolicy,
+		MFAPolicy:      organization.MFAPolicy,
+		Captcha:        organization.Captcha,
+	})
+	if err := s.verifyLoginCaptcha(settings.Captcha, organization.ID, in.CaptchaProvider, in.CaptchaToken); err != nil {
+		return nil, err
+	}
 	user, err := s.findUserByIdentifier(ctx, in.OrganizationID, in.Identifier)
 	if err != nil {
 		_ = s.audit.Record(ctx, coreservice.AuditEvent{
@@ -172,13 +192,6 @@ func (s *AuthnService) LoginWithUserCredential(ctx context.Context, in sharedaut
 	}
 	if user.Status != "active" {
 		return nil, errors.New("user is not active")
-	}
-	var organization model.Organization
-	if err := s.db.WithContext(ctx).First(&organization, "id = ?", user.OrganizationID).Error; err != nil {
-		return nil, err
-	}
-	if !organizationIsActive(organization) {
-		return nil, errors.New("organization is disabled")
 	}
 	allowed, err := s.isUserAllowedForApplication(ctx, in.ApplicationID, user.ID)
 	if err != nil {
@@ -269,6 +282,31 @@ func (s *AuthnService) LoginWithUserCredential(ctx context.Context, in sharedaut
 		"trustedDevice": trusted,
 	})
 	return &sharedauthn.LoginResult{Session: session, NextStep: "done", Fingerprint: fingerprint}, nil
+}
+
+func (s *AuthnService) verifyLoginCaptcha(settings model.OrganizationCaptchaSettings, organizationID, providerName, token string) error {
+	settings = coreservice.NormalizeOrganizationConsoleSettings(&model.OrganizationSetting{Captcha: settings}).Captcha
+	switch settings.Provider {
+	case "", "disabled":
+		return nil
+	case "default":
+		if strings.TrimSpace(providerName) != "default" {
+			return errors.New("captcha is required")
+		}
+		secret := authservice.DefaultCaptchaSecret(s.cfg.Secret, organizationID)
+		ok, err := captchaprovider.VerifyCaptchaByCaptchaType("Default", token, "", secret)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return errors.New("invalid captcha")
+		}
+		return nil
+	case "google", "cloudflare":
+		return errors.New("captcha provider is not yet supported on the authorize page")
+	default:
+		return errors.New("invalid captcha provider")
+	}
 }
 
 func (s *AuthnService) evaluateMFALoginRequirement(ctx context.Context, user model.User) (bool, string, error) {

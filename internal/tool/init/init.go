@@ -309,6 +309,7 @@ func seed(ctx context.Context, database *gorm.DB, cfg config.Config) error {
 			LoginPolicy:       defaultConsoleSettings().LoginPolicy,
 			PasswordPolicy:    defaultConsoleSettings().PasswordPolicy,
 			MFAPolicy:         defaultConsoleSettings().MFAPolicy,
+			Captcha:           defaultConsoleSettings().Captcha,
 		}
 		if err := upsertByID(tx, &organization); err != nil {
 			return err
@@ -624,6 +625,9 @@ func defaultConsoleSettings() model.OrganizationSetting {
 				Username: "",
 				Password: "",
 			},
+		},
+		Captcha: model.OrganizationCaptchaSettings{
+			Provider: "disabled",
 		},
 	}
 }

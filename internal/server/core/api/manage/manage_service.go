@@ -72,10 +72,10 @@ var (
 		"password":                true,
 	}
 	clientAuthenticationTypeOptions = map[string]bool{
-		"none":                        true,
-		"client_secret_basic":         true,
-		"client_secret_post":          true,
-		"private_key_jwt":             true,
+		"none":                true,
+		"client_secret_basic": true,
+		"client_secret_post":  true,
+		"private_key_jwt":     true,
 	}
 	tokenTypeOptions = map[string]bool{
 		"access_token": true,
@@ -415,8 +415,11 @@ func (s *Service) CreateOrganization(ctx context.Context, org model.Organization
 			return nil
 		}
 		settings := coreservice.NormalizeOrganizationConsoleSettings(org.ConsoleSettings)
+		if err := coreservice.ValidateOrganizationCaptchaSettings(settings.Captcha); err != nil {
+			return err
+		}
 		return tx.Model(&org).
-			Select("SupportEmail", "LogoURL", "Domains", "LoginPolicy", "PasswordPolicy", "MFAPolicy").
+			Select("SupportEmail", "LogoURL", "Domains", "LoginPolicy", "PasswordPolicy", "MFAPolicy", "Captcha").
 			Updates(model.Organization{
 				SupportEmail:   settings.SupportEmail,
 				LogoURL:        settings.LogoURL,
@@ -424,6 +427,7 @@ func (s *Service) CreateOrganization(ctx context.Context, org model.Organization
 				LoginPolicy:    settings.LoginPolicy,
 				PasswordPolicy: settings.PasswordPolicy,
 				MFAPolicy:      settings.MFAPolicy,
+				Captcha:        settings.Captcha,
 			}).Error
 	}); err != nil {
 		return nil, err
@@ -482,12 +486,16 @@ func (s *Service) UpdateOrganization(ctx context.Context, org model.Organization
 	}
 	if org.ConsoleSettings != nil {
 		settings := coreservice.NormalizeOrganizationConsoleSettings(org.ConsoleSettings)
+		if err := coreservice.ValidateOrganizationCaptchaSettings(settings.Captcha); err != nil {
+			return nil, err
+		}
 		updateModel.SupportEmail = settings.SupportEmail
 		updateModel.LogoURL = settings.LogoURL
 		updateModel.Domains = settings.Domains
 		updateModel.LoginPolicy = settings.LoginPolicy
 		updateModel.PasswordPolicy = settings.PasswordPolicy
 		updateModel.MFAPolicy = settings.MFAPolicy
+		updateModel.Captcha = settings.Captcha
 		selectedFields = append(selectedFields,
 			"SupportEmail",
 			"LogoURL",
@@ -495,6 +503,7 @@ func (s *Service) UpdateOrganization(ctx context.Context, org model.Organization
 			"LoginPolicy",
 			"PasswordPolicy",
 			"MFAPolicy",
+			"Captcha",
 		)
 	}
 	if !organizationNamePattern.MatchString(updateModel.Name) {
@@ -739,6 +748,7 @@ func (s *Service) attachOrganizationSettings(ctx context.Context, organizations 
 			LoginPolicy:    current.LoginPolicy,
 			PasswordPolicy: current.PasswordPolicy,
 			MFAPolicy:      current.MFAPolicy,
+			Captcha:        current.Captcha,
 		})
 		organizations[index].ConsoleSettings = &settings
 	}

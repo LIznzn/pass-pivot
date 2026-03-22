@@ -177,6 +177,32 @@
         </BForm>
       </div>
 
+      <div id="setting-captcha" class="info-card">
+        <div class="section-title">验证码设置</div>
+        <BForm @submit.prevent="saveOrganizationCaptchaSettings">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">验证码类型</label>
+              <BFormSelect v-model="organizationCaptchaForm.provider" :options="captchaProviderOptions" />
+            </div>
+            <template v-if="organizationCaptchaForm.provider === 'google' || organizationCaptchaForm.provider === 'cloudflare'">
+              <div class="col-md-4">
+                <label class="form-label">client_key</label>
+                <BFormInput v-model="organizationCaptchaForm.client_key" />
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">client_secret</label>
+                <BFormInput v-model="organizationCaptchaForm.client_secret" type="password" />
+              </div>
+            </template>
+          </div>
+          <div class="record-meta mt-3">选择 Google 或 Cloudflare 时，必须填写 client_key 和 client_secret。默认验证码不需要这两个值。</div>
+          <div class="d-flex justify-content-end mt-3">
+            <BButton type="submit" variant="primary">保存验证码设置</BButton>
+          </div>
+        </BForm>
+      </div>
+
       <div id="setting-external-idp" class="info-card">
         <div class="section-title">外部 IdP 设置</div>
         <div class="record-meta mb-3">采用预置 Provider 模板，点击启用后在弹窗中配置应用参数。</div>
@@ -238,6 +264,12 @@ const fieldVisibilityOptions = [
   { value: 'optional', text: '选填' },
   { value: 'required', text: '必填' }
 ]
+const captchaProviderOptions = [
+  { value: 'disabled', text: '不开启' },
+  { value: 'default', text: '默认' },
+  { value: 'google', text: 'Google' },
+  { value: 'cloudflare', text: 'Cloudflare' }
+]
 const externalIdps = ref<any[]>([])
 const externalIDPConfigModalVisible = ref(false)
 const currentExternalIDPKind = ref<'google' | 'github' | 'apple' | 'qq' | 'weibo' | 'custom_oauth' | 'custom_oidc'>('google')
@@ -291,6 +323,11 @@ const organizationMFAPolicyForm = reactive({
   emailChannelUsername: '',
   emailChannelPassword: ''
 })
+const organizationCaptchaForm = reactive({
+  provider: 'disabled' as 'disabled' | 'default' | 'google' | 'cloudflare',
+  client_key: '',
+  client_secret: ''
+})
 
 type ProviderKind = typeof providerKinds[number]
 type OrganizationDomainRow = {
@@ -340,6 +377,11 @@ type OrganizationConsoleSettings = {
       password: string
     }
   }
+  captcha: {
+    provider: 'disabled' | 'default' | 'google' | 'cloudflare'
+    client_key: string
+    client_secret: string
+  }
 }
 
 type ExternalIdpFormPayload = {
@@ -365,6 +407,7 @@ const currentModulePanels = [
   { id: 'setting-login-policy', label: '登录策略设置' },
   { id: 'setting-password-policy', label: '密码策略设置' },
   { id: 'setting-mfa-policy', label: '两步验证策略' },
+  { id: 'setting-captcha', label: '验证码设置' },
   { id: 'setting-external-idp', label: '外部 IdP 设置' }
 ]
 
@@ -418,6 +461,9 @@ watch(
     organizationMFAPolicyForm.emailChannelPort = settings.mfaPolicy.emailChannel.port
     organizationMFAPolicyForm.emailChannelUsername = settings.mfaPolicy.emailChannel.username
     organizationMFAPolicyForm.emailChannelPassword = settings.mfaPolicy.emailChannel.password
+    organizationCaptchaForm.provider = settings.captcha.provider
+    organizationCaptchaForm.client_key = settings.captcha.client_key
+    organizationCaptchaForm.client_secret = settings.captcha.client_secret
     organizationDomainRows.value = settings.domains.map((item) => ({
       id: createLocalRowId(),
       host: item.host,
@@ -661,6 +707,11 @@ function parseOrganizationConsoleSettings(organization?: any): OrganizationConso
         username: '',
         password: ''
       }
+    },
+    captcha: {
+      provider: 'disabled',
+      client_key: '',
+      client_secret: ''
     }
   }
   const parsed = organization?.consoleSettings
@@ -679,6 +730,15 @@ function parseOrganizationConsoleSettings(organization?: any): OrganizationConso
         ...defaults.mfaPolicy.emailChannel,
         ...((parsed.mfaPolicy && parsed.mfaPolicy.emailChannel) || {})
       }
+    },
+    captcha: {
+      ...defaults.captcha,
+      ...(parsed.captcha || {}),
+      provider: ['disabled', 'default', 'google', 'cloudflare'].includes(String(parsed?.captcha?.provider || '').toLowerCase())
+        ? String(parsed.captcha.provider).toLowerCase() as OrganizationConsoleSettings['captcha']['provider']
+        : defaults.captcha.provider,
+      client_key: String(parsed?.captcha?.client_key || parsed?.captcha?.clientKey || ''),
+      client_secret: String(parsed?.captcha?.client_secret || parsed?.captcha?.clientSecret || '')
     },
     domains: Array.isArray(parsed.domains)
       ? parsed.domains.map((item: any) => ({
@@ -732,6 +792,11 @@ function buildOrganizationConsoleSettings(): OrganizationConsoleSettings {
         username: organizationMFAPolicyForm.emailChannelUsername.trim(),
         password: organizationMFAPolicyForm.emailChannelPassword
       }
+    },
+    captcha: {
+      provider: organizationCaptchaForm.provider,
+      client_key: organizationCaptchaForm.client_key.trim(),
+      client_secret: organizationCaptchaForm.client_secret.trim()
     }
   }
 }
@@ -755,6 +820,12 @@ async function saveOrganizationPasswordPolicy() {
 }
 
 async function saveOrganizationMFAPolicy() {
+  await withFeedback(async () => {
+    await saveOrganizationConsoleSettings()
+  })
+}
+
+async function saveOrganizationCaptchaSettings() {
   await withFeedback(async () => {
     await saveOrganizationConsoleSettings()
   })

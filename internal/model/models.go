@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -25,29 +26,30 @@ func (b *BaseModel) BeforeCreate(tx *gorm.DB) error {
 
 type Organization struct {
 	BaseModel
-	Name              string                     `gorm:"size:128" json:"name"`
-	Description       string                     `gorm:"size:255" json:"description"`
-	Status            string                     `gorm:"size:32;default:active" json:"status"`
-	Metadata          map[string]string          `gorm:"serializer:json;type:json" json:"metadata"`
-	AllowJWTAccess    bool                       `json:"allowJwtAccess"`
-	AllowBasicAccess  bool                       `json:"allowBasicAccess"`
-	AllowNoAuthAccess bool                       `json:"allowNoAuthAccess"`
-	AllowRefreshToken bool                       `json:"allowRefreshToken"`
-	AllowAuthCode     bool                       `json:"allowAuthorizationCode"`
-	AllowPKCE         bool                       `json:"allowPKCE"`
-	TOSURL            string                     `gorm:"size:255" json:"-"`
-	PrivacyPolicyURL  string                     `gorm:"size:255" json:"-"`
-	SupportEmail      string                     `gorm:"size:255" json:"-"`
-	LogoURL           string                     `gorm:"size:255" json:"-"`
-	Domains           []OrganizationDomain       `gorm:"serializer:json;type:json" json:"-"`
-	LoginPolicy       OrganizationLoginPolicy    `gorm:"serializer:json;type:json" json:"-"`
-	PasswordPolicy    OrganizationPasswordPolicy `gorm:"serializer:json;type:json" json:"-"`
-	MFAPolicy         OrganizationMFAPolicy      `gorm:"serializer:json;type:json" json:"-"`
-	ConsoleSettings   *OrganizationSetting       `gorm:"-" json:"consoleSettings,omitempty"`
-	Projects          []Project                  `json:"projects,omitempty"`
-	Users             []User                     `json:"users,omitempty"`
-	Roles             []Role                     `json:"roles,omitempty"`
-	ExternalIDPs      []ExternalIDP              `json:"externalIdps,omitempty"`
+	Name              string                      `gorm:"size:128" json:"name"`
+	Description       string                      `gorm:"size:255" json:"description"`
+	Status            string                      `gorm:"size:32;default:active" json:"status"`
+	Metadata          map[string]string           `gorm:"serializer:json;type:json" json:"metadata"`
+	AllowJWTAccess    bool                        `json:"allowJwtAccess"`
+	AllowBasicAccess  bool                        `json:"allowBasicAccess"`
+	AllowNoAuthAccess bool                        `json:"allowNoAuthAccess"`
+	AllowRefreshToken bool                        `json:"allowRefreshToken"`
+	AllowAuthCode     bool                        `json:"allowAuthorizationCode"`
+	AllowPKCE         bool                        `json:"allowPKCE"`
+	TOSURL            string                      `gorm:"size:255" json:"-"`
+	PrivacyPolicyURL  string                      `gorm:"size:255" json:"-"`
+	SupportEmail      string                      `gorm:"size:255" json:"-"`
+	LogoURL           string                      `gorm:"size:255" json:"-"`
+	Domains           []OrganizationDomain        `gorm:"serializer:json;type:json" json:"-"`
+	LoginPolicy       OrganizationLoginPolicy     `gorm:"serializer:json;type:json" json:"-"`
+	PasswordPolicy    OrganizationPasswordPolicy  `gorm:"serializer:json;type:json" json:"-"`
+	MFAPolicy         OrganizationMFAPolicy       `gorm:"serializer:json;type:json" json:"-"`
+	Captcha           OrganizationCaptchaSettings `gorm:"serializer:json;type:json" json:"-"`
+	ConsoleSettings   *OrganizationSetting        `gorm:"-" json:"consoleSettings,omitempty"`
+	Projects          []Project                   `json:"projects,omitempty"`
+	Users             []User                      `json:"users,omitempty"`
+	Roles             []Role                      `json:"roles,omitempty"`
+	ExternalIDPs      []ExternalIDP               `json:"externalIdps,omitempty"`
 }
 
 func (Organization) TableName() string {
@@ -100,13 +102,40 @@ type OrganizationMFAPolicy struct {
 	EmailChannel       OrganizationEmailChannel `json:"emailChannel"`
 }
 
+type OrganizationCaptchaSettings struct {
+	Provider     string `json:"provider"`
+	ClientKey    string `json:"client_key"`
+	ClientSecret string `json:"client_secret"`
+}
+
+func (s *OrganizationCaptchaSettings) UnmarshalJSON(data []byte) error {
+	type organizationCaptchaSettings OrganizationCaptchaSettings
+	var payload struct {
+		organizationCaptchaSettings
+		ClientKeyLegacy    string `json:"clientKey"`
+		ClientSecretLegacy string `json:"clientSecret"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return err
+	}
+	*s = OrganizationCaptchaSettings(payload.organizationCaptchaSettings)
+	if s.ClientKey == "" {
+		s.ClientKey = payload.ClientKeyLegacy
+	}
+	if s.ClientSecret == "" {
+		s.ClientSecret = payload.ClientSecretLegacy
+	}
+	return nil
+}
+
 type OrganizationSetting struct {
-	SupportEmail   string                     `gorm:"size:255" json:"supportEmail"`
-	LogoURL        string                     `gorm:"size:255" json:"logoUrl"`
-	Domains        []OrganizationDomain       `gorm:"serializer:json;type:json" json:"domains"`
-	LoginPolicy    OrganizationLoginPolicy    `gorm:"serializer:json;type:json" json:"loginPolicy"`
-	PasswordPolicy OrganizationPasswordPolicy `gorm:"serializer:json;type:json" json:"passwordPolicy"`
-	MFAPolicy      OrganizationMFAPolicy      `gorm:"serializer:json;type:json" json:"mfaPolicy"`
+	SupportEmail   string                      `gorm:"size:255" json:"supportEmail"`
+	LogoURL        string                      `gorm:"size:255" json:"logoUrl"`
+	Domains        []OrganizationDomain        `gorm:"serializer:json;type:json" json:"domains"`
+	LoginPolicy    OrganizationLoginPolicy     `gorm:"serializer:json;type:json" json:"loginPolicy"`
+	PasswordPolicy OrganizationPasswordPolicy  `gorm:"serializer:json;type:json" json:"passwordPolicy"`
+	MFAPolicy      OrganizationMFAPolicy       `gorm:"serializer:json;type:json" json:"mfaPolicy"`
+	Captcha        OrganizationCaptchaSettings `gorm:"serializer:json;type:json" json:"captcha"`
 }
 
 type Project struct {

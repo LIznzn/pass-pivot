@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -15,21 +16,22 @@ import (
 )
 
 type authorizeUIBootstrap struct {
-	Stage               string                    `json:"stage"`
-	Title               string                    `json:"title"`
-	Error               string                    `json:"error,omitempty"`
-	AuthorizeReturnURL  string                    `json:"authorizeReturnUrl"`
-	Target              *coreservice.LoginTarget  `json:"target"`
-	CurrentUser         *authorizeCurrentUser     `json:"currentUser,omitempty"`
-	ApplicationID       string                    `json:"applicationId"`
-	LoginAction         string                    `json:"loginAction"`
-	AccountAction       string                    `json:"accountAction"`
-	SwitchAccountAction string                    `json:"switchAccountAction"`
-	ConfirmAction       string                    `json:"confirmAction"`
-	MFAAction           string                    `json:"mfaAction"`
-	SecondFactorMethod  string                    `json:"secondFactorMethod,omitempty"`
-	MFAOptions          []authorizeUIMethodOption `json:"mfaOptions"`
-	API                 authorizeUIAPIConfig      `json:"api"`
+	Stage               string                                 `json:"stage"`
+	Title               string                                 `json:"title"`
+	Error               string                                 `json:"error,omitempty"`
+	AuthorizeReturnURL  string                                 `json:"authorizeReturnUrl"`
+	Target              *coreservice.LoginTarget               `json:"target"`
+	CurrentUser         *authorizeCurrentUser                  `json:"currentUser,omitempty"`
+	ApplicationID       string                                 `json:"applicationId"`
+	LoginAction         string                                 `json:"loginAction"`
+	AccountAction       string                                 `json:"accountAction"`
+	SwitchAccountAction string                                 `json:"switchAccountAction"`
+	ConfirmAction       string                                 `json:"confirmAction"`
+	MFAAction           string                                 `json:"mfaAction"`
+	SecondFactorMethod  string                                 `json:"secondFactorMethod,omitempty"`
+	MFAOptions          []authorizeUIMethodOption              `json:"mfaOptions"`
+	Captcha             *authservice.AuthorizeCaptchaBootstrap `json:"captcha,omitempty"`
+	API                 authorizeUIAPIConfig                   `json:"api"`
 }
 
 const loginChallengeQueryKey = "ppvt_login_challenge"
@@ -45,6 +47,7 @@ type authorizeUIAPIConfig struct {
 	SessionU2FBegin    string `json:"sessionU2fBegin"`
 	SessionU2FFinish   string `json:"sessionU2fFinish"`
 	MFAChallenge       string `json:"mfaChallenge"`
+	CaptchaRefresh     string `json:"captchaRefresh"`
 }
 
 type authnAPIError struct {
@@ -223,6 +226,29 @@ func (h *OIDCHandler) AuthorizeWebAuthnLoginFinish(w http.ResponseWriter, r *htt
 	_, _ = w.Write(body)
 }
 
+func (h *OIDCHandler) AuthorizeCaptchaRefresh(w http.ResponseWriter, r *http.Request) {
+	response, err := h.queryAuthorizeInteraction(w, r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	if response.Target == nil {
+		http.Error(w, "login target is not available", http.StatusBadRequest)
+		return
+	}
+	captcha, err := h.oidc.BuildAuthorizeCaptchaChallengeBootstrap(r.Context(), response.Target.OrganizationID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if captcha == nil {
+		http.Error(w, "captcha is not enabled", http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(captcha)
+}
+
 func (h *OIDCHandler) AuthorizeSessionU2FBegin(w http.ResponseWriter, r *http.Request) {
 	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/session/u2f/begin", map[string]any{
 		"sessionId": resolveLoginSessionRef(r),
@@ -278,10 +304,12 @@ func (h *OIDCHandler) AuthorizeLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/session/create", map[string]any{
-		"organizationId": response.Target.OrganizationID,
-		"applicationId":  response.Target.ApplicationID,
-		"identifier":     strings.TrimSpace(r.Form.Get("identifier")),
-		"secret":         r.Form.Get("secret"),
+		"organizationId":  response.Target.OrganizationID,
+		"applicationId":   response.Target.ApplicationID,
+		"identifier":      strings.TrimSpace(r.Form.Get("identifier")),
+		"secret":          r.Form.Get("secret"),
+		"captchaProvider": strings.TrimSpace(r.Form.Get("captcha_provider")),
+		"captchaToken":    buildAuthorizeCaptchaToken(r),
 	})
 	if err != nil {
 		h.renderAuthorizeInteraction(w, r, err.Error())
@@ -365,7 +393,12 @@ func (h *OIDCHandler) renderAuthorizeInteraction(w http.ResponseWriter, r *http.
 		h.writeAuthorizeErrorPage(w, http.StatusBadRequest, "login target is not available")
 		return
 	}
-	h.writeAuthorizeApp(w, http.StatusOK, buildAuthorizeBootstrap(r, response.Target, response.CurrentUser, response.Stage, response.SessionRef, response.SecondFactorMethod, response.MFAOptions, bannerError))
+	bootstrap, buildErr := h.buildAuthorizeBootstrap(r, response.Target, response.CurrentUser, response.Stage, response.SessionRef, response.SecondFactorMethod, response.MFAOptions, response.Captcha, bannerError)
+	if buildErr != nil {
+		h.writeAuthorizeErrorPage(w, http.StatusInternalServerError, buildErr.Error())
+		return
+	}
+	h.writeAuthorizeApp(w, http.StatusOK, bootstrap)
 }
 
 func (h *OIDCHandler) queryAuthorizeInteraction(w http.ResponseWriter, r *http.Request) (*authorizeInteractionResponse, error) {
@@ -406,15 +439,23 @@ func (h *OIDCHandler) writeAuthorizeApp(w http.ResponseWriter, status int, boots
 		h.writeAuthorizeErrorPage(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	setAuthorizePageNoStore(w)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	_, _ = w.Write(body)
 }
 
 func (h *OIDCHandler) writeAuthorizeErrorPage(w http.ResponseWriter, status int, message string) {
+	setAuthorizePageNoStore(w)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	_, _ = w.Write(authservice.BuildOAuthErrorPage(message))
+}
+
+func setAuthorizePageNoStore(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
 }
 
 func standardAuthorizeRequestFromHTTP(r *http.Request) authservice.StandardAuthorizeRequest {
@@ -497,7 +538,7 @@ func redirectErrorOrDefault(redirectError, redirectURI, state string) string {
 	return redirect.String()
 }
 
-func buildAuthorizeBootstrap(r *http.Request, target *coreservice.LoginTarget, currentUser *authorizeCurrentUser, stage, sessionRef, secondFactorMethod string, mfaMethods []string, bannerError string) authorizeUIBootstrap {
+func (h *OIDCHandler) buildAuthorizeBootstrap(r *http.Request, target *coreservice.LoginTarget, currentUser *authorizeCurrentUser, stage, sessionRef, secondFactorMethod string, mfaMethods []string, captcha *authservice.AuthorizeCaptchaBootstrap, bannerError string) (authorizeUIBootstrap, error) {
 	title := "登录"
 	switch stage {
 	case "account":
@@ -508,6 +549,13 @@ func buildAuthorizeBootstrap(r *http.Request, target *coreservice.LoginTarget, c
 		title = "多因素认证"
 	}
 	loginChallenge := strings.TrimSpace(sessionRef)
+	if stage == "login" && captcha == nil {
+		var err error
+		captcha, err = h.oidc.BuildAuthorizeCaptchaBootstrap(r.Context(), target.OrganizationID)
+		if err != nil {
+			return authorizeUIBootstrap{}, err
+		}
+	}
 	return authorizeUIBootstrap{
 		Stage:               stage,
 		Title:               title,
@@ -523,14 +571,36 @@ func buildAuthorizeBootstrap(r *http.Request, target *coreservice.LoginTarget, c
 		MFAAction:           appendLoginChallenge("/auth/headless/mfa?"+r.URL.RawQuery, loginChallenge),
 		SecondFactorMethod:  strings.TrimSpace(secondFactorMethod),
 		MFAOptions:          buildAuthorizeMFAOptions(mfaMethods),
+		Captcha:             captcha,
 		API: authorizeUIAPIConfig{
 			WebAuthnLoginBegin: "/auth/headless/login/webauthn/begin?" + r.URL.RawQuery,
 			WebAuthnLoginEnd:   "/auth/headless/login/webauthn/finish?" + r.URL.RawQuery,
 			SessionU2FBegin:    appendLoginChallenge("/auth/headless/mfa/u2f/begin?"+r.URL.RawQuery, loginChallenge),
 			SessionU2FFinish:   appendLoginChallenge("/auth/headless/mfa/u2f/finish?"+r.URL.RawQuery, loginChallenge),
 			MFAChallenge:       appendLoginChallenge("/auth/headless/mfa/challenge/generator?"+r.URL.RawQuery, loginChallenge),
+			CaptchaRefresh:     "/auth/headless/login/captcha?" + r.URL.RawQuery,
 		},
+	}, nil
+}
+
+func (h *OIDCHandler) mustBuildAuthorizeCaptcha(ctx context.Context, organizationID string) *authservice.AuthorizeCaptchaBootstrap {
+	captcha, err := h.oidc.BuildAuthorizeCaptchaBootstrap(ctx, organizationID)
+	if err != nil {
+		return nil
 	}
+	return captcha
+}
+
+func buildAuthorizeCaptchaToken(r *http.Request) string {
+	if strings.TrimSpace(r.Form.Get("captcha_provider")) != "default" {
+		return strings.TrimSpace(r.Form.Get("captcha_token"))
+	}
+	challengeToken := strings.TrimSpace(r.Form.Get("captcha_challenge_token"))
+	answer := strings.TrimSpace(r.Form.Get("captcha_answer"))
+	if challengeToken == "" || answer == "" {
+		return ""
+	}
+	return coreservice.BuildDefaultCaptchaResponseToken(challengeToken, answer)
 }
 
 func buildAuthorizeMFAOptions(methods []string) []authorizeUIMethodOption {

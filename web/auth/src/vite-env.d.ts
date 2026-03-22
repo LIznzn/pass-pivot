@@ -41,6 +41,14 @@ type OAuthBootstrapAPIConfig = {
   sessionU2fBegin: string
   sessionU2fFinish: string
   mfaChallenge: string
+  captchaRefresh: string
+}
+
+type OAuthBootstrapCaptcha = {
+  provider: string
+  client_key?: string
+  imageDataUrl?: string
+  challengeToken?: string
 }
 
 type OAuthBootstrapPayload = {
@@ -58,6 +66,7 @@ type OAuthBootstrapPayload = {
   mfaAction: string
   secondFactorMethod?: string
   mfaOptions: OAuthBootstrapMethodOption[]
+  captcha?: OAuthBootstrapCaptcha
   api: OAuthBootstrapAPIConfig
 }
 

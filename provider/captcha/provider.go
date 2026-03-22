@@ -3,7 +3,7 @@ package captcha
 import "fmt"
 
 type CaptchaProvider interface {
-	VerifyCaptcha(token, clientId, clientSecret, clientId2 string) (bool, error)
+	VerifyCaptcha(token, clientId, clientSecret string) (bool, error)
 }
 
 func GetCaptchaProvider(captchaType string) CaptchaProvider {
@@ -16,16 +16,14 @@ func GetCaptchaProvider(captchaType string) CaptchaProvider {
 		return NewGoogleCaptchaProvider()
 	case "Cloudflare Turnstile":
 		return NewCloudflareCaptchaProvider()
-	case "GeeTest CAPTCHA":
-		return NewGeetestCaptchaProvider()
 	}
 }
 
-func VerifyCaptchaByCaptchaType(captchaType, token, clientId, clientSecret, clientId2 string) (bool, error) {
+func VerifyCaptchaByCaptchaType(captchaType, token, clientId, clientSecret string) (bool, error) {
 	provider := GetCaptchaProvider(captchaType)
 	if provider == nil {
 		return false, fmt.Errorf("invalid captcha provider: %s", captchaType)
 	}
 
-	return provider.VerifyCaptcha(token, clientId, clientSecret, clientId2)
+	return provider.VerifyCaptcha(token, clientId, clientSecret)
 }

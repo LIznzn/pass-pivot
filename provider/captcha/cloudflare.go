@@ -22,7 +22,7 @@ func NewCloudflareCaptchaProvider() *CloudflareCaptchaProvider {
 	return captcha
 }
 
-func (captcha *CloudflareCaptchaProvider) VerifyCaptcha(token, clientId, clientSecret, clientId2 string) (bool, error) {
+func (captcha *CloudflareCaptchaProvider) VerifyCaptcha(token, clientId, clientSecret string) (bool, error) {
 	if strings.TrimSpace(token) == "" {
 		return false, fmt.Errorf("cloudflare captcha token is empty")
 	}

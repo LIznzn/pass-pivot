@@ -35,6 +35,8 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		ApplicationID       string `json:"applicationId"`
 		Identifier          string `json:"identifier"`
 		Secret              string `json:"secret"`
+		CaptchaProvider     string `json:"captchaProvider"`
+		CaptchaToken        string `json:"captchaToken"`
 		TrustCurrentDevice  bool   `json:"trustCurrentDevice"`
 		RequireAnnouncement bool   `json:"requireAnnouncement"`
 	}
@@ -49,6 +51,8 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		ApplicationID:       payload.ApplicationID,
 		Identifier:          payload.Identifier,
 		Secret:              payload.Secret,
+		CaptchaProvider:     payload.CaptchaProvider,
+		CaptchaToken:        payload.CaptchaToken,
 		IPAddress:           ipAddress,
 		UserAgent:           sharedhandler.OriginalUserAgent(r),
 		DeviceKey:           deviceKey,

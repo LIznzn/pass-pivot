@@ -22,7 +22,7 @@ func NewGoogleCaptchaProvider() *GoogleCaptchaProvider {
 	return captcha
 }
 
-func (captcha *GoogleCaptchaProvider) VerifyCaptcha(token, clientId, clientSecret, clientId2 string) (bool, error) {
+func (captcha *GoogleCaptchaProvider) VerifyCaptcha(token, clientId, clientSecret string) (bool, error) {
 	if strings.TrimSpace(token) == "" {
 		return false, fmt.Errorf("google captcha token is empty")
 	}

@@ -7,6 +7,8 @@ type LoginInput struct {
 	ApplicationID       string
 	Identifier          string
 	Secret              string
+	CaptchaProvider     string
+	CaptchaToken        string
 	IPAddress           string
 	UserAgent           string
 	DeviceKey           string

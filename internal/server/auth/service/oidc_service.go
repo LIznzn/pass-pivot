@@ -25,27 +25,37 @@ type OIDCService struct {
 	keys  *ProviderKeyStore
 }
 
+type AuthorizeCaptchaBootstrap struct {
+	Provider  string `json:"provider"`
+	ClientKey string `json:"client_key,omitempty"`
+}
+
+type AuthorizeCaptchaChallengeBootstrap struct {
+	ImageDataURL   string `json:"imageDataUrl,omitempty"`
+	ChallengeToken string `json:"challengeToken,omitempty"`
+}
+
 type OIDCMetadata struct {
-	Issuer                                             string   `json:"issuer"`
-	JWKSURI                                            string   `json:"jwks_uri"`
-	AuthorizationEndpoint                              string   `json:"authorization_endpoint"`
-	DeviceAuthorizationEndpoint                        string   `json:"device_authorization_endpoint,omitempty"`
-	TokenEndpoint                                      string   `json:"token_endpoint"`
-	UserInfoEndpoint                                   string   `json:"userinfo_endpoint"`
-	RevocationEndpoint                                 string   `json:"revocation_endpoint,omitempty"`
-	IntrospectionEndpoint                              string   `json:"introspection_endpoint,omitempty"`
-	EndSessionEndpoint                                 string   `json:"end_session_endpoint,omitempty"`
-	ScopesSupported                                    []string `json:"scopes_supported"`
-	ResponseTypesSupported                             []string `json:"response_types_supported"`
-	ResponseModesSupported                             []string `json:"response_modes_supported,omitempty"`
-	GrantTypesSupported                                []string `json:"grant_types_supported,omitempty"`
-	SubjectTypesSupported                              []string `json:"subject_types_supported"`
-	IDTokenSigningAlgValuesSupported                   []string `json:"id_token_signing_alg_values_supported"`
-	TokenEndpointAuthMethodsSupported                  []string `json:"token_endpoint_auth_methods_supported,omitempty"`
-	TokenEndpointAuthSigningAlgValuesSupported         []string `json:"token_endpoint_auth_signing_alg_values_supported,omitempty"`
-	ClaimsSupported                                    []string `json:"claims_supported,omitempty"`
-	RequestURIParameterSupported                       bool     `json:"request_uri_parameter_supported"`
-	CodeChallengeMethodsSupported                      []string `json:"code_challenge_methods_supported,omitempty"`
+	Issuer                                     string   `json:"issuer"`
+	JWKSURI                                    string   `json:"jwks_uri"`
+	AuthorizationEndpoint                      string   `json:"authorization_endpoint"`
+	DeviceAuthorizationEndpoint                string   `json:"device_authorization_endpoint,omitempty"`
+	TokenEndpoint                              string   `json:"token_endpoint"`
+	UserInfoEndpoint                           string   `json:"userinfo_endpoint"`
+	RevocationEndpoint                         string   `json:"revocation_endpoint,omitempty"`
+	IntrospectionEndpoint                      string   `json:"introspection_endpoint,omitempty"`
+	EndSessionEndpoint                         string   `json:"end_session_endpoint,omitempty"`
+	ScopesSupported                            []string `json:"scopes_supported"`
+	ResponseTypesSupported                     []string `json:"response_types_supported"`
+	ResponseModesSupported                     []string `json:"response_modes_supported,omitempty"`
+	GrantTypesSupported                        []string `json:"grant_types_supported,omitempty"`
+	SubjectTypesSupported                      []string `json:"subject_types_supported"`
+	IDTokenSigningAlgValuesSupported           []string `json:"id_token_signing_alg_values_supported"`
+	TokenEndpointAuthMethodsSupported          []string `json:"token_endpoint_auth_methods_supported,omitempty"`
+	TokenEndpointAuthSigningAlgValuesSupported []string `json:"token_endpoint_auth_signing_alg_values_supported,omitempty"`
+	ClaimsSupported                            []string `json:"claims_supported,omitempty"`
+	RequestURIParameterSupported               bool     `json:"request_uri_parameter_supported"`
+	CodeChallengeMethodsSupported              []string `json:"code_challenge_methods_supported,omitempty"`
 }
 
 type oidcAuthService interface {
@@ -58,6 +68,66 @@ type oidcAuthService interface {
 
 func NewOIDCService(db *gorm.DB, cfg config.Config, audit *AuditService, auth oidcAuthService, keys *ProviderKeyStore) *OIDCService {
 	return &OIDCService{db: db, cfg: cfg, audit: audit, auth: auth, keys: keys}
+}
+
+func DefaultCaptchaSecret(rootSecret, organizationID string) string {
+	return strings.TrimSpace(rootSecret) + ":" + strings.TrimSpace(organizationID) + ":default-captcha"
+}
+
+func (s *OIDCService) BuildAuthorizeCaptchaBootstrap(ctx context.Context, organizationID string) (*AuthorizeCaptchaBootstrap, error) {
+	config, err := s.authorizeCaptchaPublicConfig(ctx, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	if config == nil {
+		return nil, nil
+	}
+	return config, nil
+}
+
+func (s *OIDCService) BuildAuthorizeCaptchaChallengeBootstrap(ctx context.Context, organizationID string) (*AuthorizeCaptchaChallengeBootstrap, error) {
+	config, err := s.authorizeCaptchaPublicConfig(ctx, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	if config == nil {
+		return nil, nil
+	}
+	switch config.Provider {
+	case "default":
+		challenge, err := coreservice.CreateDefaultCaptcha(DefaultCaptchaSecret(s.cfg.Secret, organizationID), time.Now())
+		if err != nil {
+			return nil, err
+		}
+		return &AuthorizeCaptchaChallengeBootstrap{
+			ImageDataURL:   challenge.ImageDataURL,
+			ChallengeToken: challenge.ChallengeToken,
+		}, nil
+	case "google", "cloudflare":
+		return &AuthorizeCaptchaChallengeBootstrap{}, nil
+	default:
+		return nil, errors.New("invalid captcha provider")
+	}
+}
+
+func (s *OIDCService) authorizeCaptchaPublicConfig(ctx context.Context, organizationID string) (*AuthorizeCaptchaBootstrap, error) {
+	_, settings, err := coreservice.LoadOrganizationConsoleSettings(ctx, s.db, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	switch settings.Captcha.Provider {
+	case "", "disabled":
+		return nil, nil
+	case "default":
+		return &AuthorizeCaptchaBootstrap{Provider: "default"}, nil
+	case "google", "cloudflare":
+		return &AuthorizeCaptchaBootstrap{
+			Provider:  settings.Captcha.Provider,
+			ClientKey: strings.TrimSpace(settings.Captcha.ClientKey),
+		}, nil
+	default:
+		return nil, errors.New("invalid captcha provider")
+	}
 }
 
 func (s *OIDCService) AvailableMFAMethodsForSession(ctx context.Context, sessionID string) ([]string, error) {
@@ -383,25 +453,25 @@ func (s *OIDCService) resolveSettings(ctx context.Context, clientID, application
 
 func buildOIDCMetadata(issuer string) OIDCMetadata {
 	return OIDCMetadata{
-		Issuer:                                             issuer,
-		AuthorizationEndpoint:                              issuer + "/auth/authorize",
-		TokenEndpoint:                                      issuer + "/auth/token",
-		DeviceAuthorizationEndpoint:                        issuer + "/auth/device_authorization",
-		UserInfoEndpoint:                                   issuer + "/auth/userinfo",
-		JWKSURI:                                            issuer + "/auth/keys",
-		EndSessionEndpoint:                                 issuer + "/auth/end_session",
-		ScopesSupported:                                    []string{"openid", "profile", "email", "phone"},
-		ResponseTypesSupported:                             []string{"code", "token", "id_token", "id_token token"},
-		ResponseModesSupported:                             []string{"query", "fragment"},
-		GrantTypesSupported:                                []string{"authorization_code", "implicit", "client_credentials", "password", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code"},
-		SubjectTypesSupported:                              []string{"public"},
-		IDTokenSigningAlgValuesSupported:                   []string{"RS256"},
-		TokenEndpointAuthMethodsSupported:                  []string{"client_secret_basic", "client_secret_post", "private_key_jwt", "none"},
-		TokenEndpointAuthSigningAlgValuesSupported:         []string{"RS256"},
-		ClaimsSupported:                                    []string{"sub", "iss", "aud", "iat", "exp", "auth_time", "nonce", "sid", "name", "email", "phone_number", "preferred_username"},
-		RequestURIParameterSupported:                       false,
-		CodeChallengeMethodsSupported:                      []string{"S256"},
-		RevocationEndpoint:                                 issuer + "/auth/revoke",
-		IntrospectionEndpoint:                              issuer + "/auth/introspect",
+		Issuer:                                     issuer,
+		AuthorizationEndpoint:                      issuer + "/auth/authorize",
+		TokenEndpoint:                              issuer + "/auth/token",
+		DeviceAuthorizationEndpoint:                issuer + "/auth/device_authorization",
+		UserInfoEndpoint:                           issuer + "/auth/userinfo",
+		JWKSURI:                                    issuer + "/auth/keys",
+		EndSessionEndpoint:                         issuer + "/auth/end_session",
+		ScopesSupported:                            []string{"openid", "profile", "email", "phone"},
+		ResponseTypesSupported:                     []string{"code", "token", "id_token", "id_token token"},
+		ResponseModesSupported:                     []string{"query", "fragment"},
+		GrantTypesSupported:                        []string{"authorization_code", "implicit", "client_credentials", "password", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code"},
+		SubjectTypesSupported:                      []string{"public"},
+		IDTokenSigningAlgValuesSupported:           []string{"RS256"},
+		TokenEndpointAuthMethodsSupported:          []string{"client_secret_basic", "client_secret_post", "private_key_jwt", "none"},
+		TokenEndpointAuthSigningAlgValuesSupported: []string{"RS256"},
+		ClaimsSupported:                            []string{"sub", "iss", "aud", "iat", "exp", "auth_time", "nonce", "sid", "name", "email", "phone_number", "preferred_username"},
+		RequestURIParameterSupported:               false,
+		CodeChallengeMethodsSupported:              []string{"S256"},
+		RevocationEndpoint:                         issuer + "/auth/revoke",
+		IntrospectionEndpoint:                      issuer + "/auth/introspect",
 	}
 }

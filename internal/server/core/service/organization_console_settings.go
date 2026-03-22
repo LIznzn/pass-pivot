@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"gorm.io/gorm"
@@ -11,21 +12,21 @@ import (
 )
 
 const (
-	OrganizationMetadataDisplayName      = "displayName"
-	OrganizationMetadataDisplayNameEN    = "displayName.en"
-	OrganizationMetadataDisplayNameJA    = "displayName.ja"
-	OrganizationMetadataDisplayNameCHS   = "displayName.chs"
-	OrganizationMetadataDisplayNameCHT   = "displayName.cht"
-	OrganizationMetadataWebsiteURL       = "websiteUrl"
+	OrganizationMetadataDisplayName       = "displayName"
+	OrganizationMetadataDisplayNameEN     = "displayName.en"
+	OrganizationMetadataDisplayNameJA     = "displayName.ja"
+	OrganizationMetadataDisplayNameCHS    = "displayName.chs"
+	OrganizationMetadataDisplayNameCHT    = "displayName.cht"
+	OrganizationMetadataWebsiteURL        = "websiteUrl"
 	OrganizationMetadataTermsOfServiceURL = "termsOfServiceUrl"
-	OrganizationMetadataPrivacyPolicyURL = "privacyPolicyUrl"
+	OrganizationMetadataPrivacyPolicyURL  = "privacyPolicyUrl"
 )
 
 func defaultOrganizationConsoleSettings() model.OrganizationSetting {
 	return model.OrganizationSetting{
-		SupportEmail:     "",
-		LogoURL:          "",
-		Domains:          []model.OrganizationDomain{},
+		SupportEmail: "",
+		LogoURL:      "",
+		Domains:      []model.OrganizationDomain{},
 		LoginPolicy: model.OrganizationLoginPolicy{
 			PasswordLoginEnabled: true,
 			WebAuthnLoginEnabled: true,
@@ -57,6 +58,9 @@ func defaultOrganizationConsoleSettings() model.OrganizationSetting {
 				Port: 587,
 			},
 		},
+		Captcha: model.OrganizationCaptchaSettings{
+			Provider: "disabled",
+		},
 	}
 }
 
@@ -71,19 +75,53 @@ func normalizeOrganizationConsoleSettings(input *model.OrganizationSetting) mode
 			settings.MFAPolicy.EmailChannel.Port = 587
 		}
 	}
+	settings.Captcha = normalizeOrganizationCaptchaSettings(settings.Captcha)
 	return settings
+}
+
+func normalizeOrganizationCaptchaSettings(input model.OrganizationCaptchaSettings) model.OrganizationCaptchaSettings {
+	settings := model.OrganizationCaptchaSettings{
+		Provider:     strings.ToLower(strings.TrimSpace(input.Provider)),
+		ClientKey:    strings.TrimSpace(input.ClientKey),
+		ClientSecret: strings.TrimSpace(input.ClientSecret),
+	}
+	if settings.Provider == "disabled" {
+		settings.ClientKey = ""
+		settings.ClientSecret = ""
+	}
+	return settings
+}
+
+func ValidateOrganizationCaptchaSettings(input model.OrganizationCaptchaSettings) error {
+	settings := normalizeOrganizationCaptchaSettings(input)
+	switch settings.Provider {
+	case "disabled":
+		return nil
+	case "default":
+		return nil
+	case "google", "cloudflare":
+		if settings.ClientKey == "" {
+			return fmt.Errorf("captcha clientKey is required when provider is %s", settings.Provider)
+		}
+		if settings.ClientSecret == "" {
+			return fmt.Errorf("captcha clientSecret is required when provider is %s", settings.Provider)
+		}
+		return nil
+	default:
+		return fmt.Errorf("invalid captcha provider: %s", settings.Provider)
+	}
 }
 
 func defaultOrganizationMetadata() map[string]string {
 	return map[string]string{
-		OrganizationMetadataDisplayName:      "",
-		OrganizationMetadataDisplayNameEN:    "",
-		OrganizationMetadataDisplayNameJA:    "",
-		OrganizationMetadataDisplayNameCHS:   "",
-		OrganizationMetadataDisplayNameCHT:   "",
-		OrganizationMetadataWebsiteURL:       "http://example.com",
+		OrganizationMetadataDisplayName:       "",
+		OrganizationMetadataDisplayNameEN:     "",
+		OrganizationMetadataDisplayNameJA:     "",
+		OrganizationMetadataDisplayNameCHS:    "",
+		OrganizationMetadataDisplayNameCHT:    "",
+		OrganizationMetadataWebsiteURL:        "http://example.com",
 		OrganizationMetadataTermsOfServiceURL: "http://example.com/terms-of-service",
-		OrganizationMetadataPrivacyPolicyURL: "http://example.com/privacy-policy",
+		OrganizationMetadataPrivacyPolicyURL:  "http://example.com/privacy-policy",
 	}
 }
 
@@ -168,12 +206,13 @@ func loadOrganizationConsoleSettings(ctx context.Context, db *gorm.DB, organizat
 		return organization, settings, nil
 	}
 	settings := normalizeOrganizationConsoleSettings(&model.OrganizationSetting{
-		SupportEmail:     organization.SupportEmail,
-		LogoURL:          organization.LogoURL,
-		Domains:          organization.Domains,
-		LoginPolicy:      organization.LoginPolicy,
-		PasswordPolicy:   organization.PasswordPolicy,
-		MFAPolicy:        organization.MFAPolicy,
+		SupportEmail:   organization.SupportEmail,
+		LogoURL:        organization.LogoURL,
+		Domains:        organization.Domains,
+		LoginPolicy:    organization.LoginPolicy,
+		PasswordPolicy: organization.PasswordPolicy,
+		MFAPolicy:      organization.MFAPolicy,
+		Captcha:        organization.Captcha,
 	})
 	return organization, settings, nil
 }

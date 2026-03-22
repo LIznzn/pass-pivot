@@ -24,6 +24,7 @@ type authorizeInteractionResponse struct {
 	MFAOptions         []string                 `json:"mfaOptions,omitempty"`
 	Target             *coreservice.LoginTarget `json:"target,omitempty"`
 	CurrentUser        *authorizeCurrentUser    `json:"currentUser,omitempty"`
+	Captcha            *authservice.AuthorizeCaptchaBootstrap `json:"captcha,omitempty"`
 }
 
 type authorizeCurrentUser struct {
@@ -192,6 +193,7 @@ func (h *OIDCHandler) QueryAuthorizeInteractionAPI(w http.ResponseWriter, r *htt
 		Action: "render",
 		Stage:  "login",
 		Target: target,
+		Captcha: h.mustBuildAuthorizeCaptcha(r.Context(), target.OrganizationID),
 	})
 }
 

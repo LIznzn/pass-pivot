@@ -27,6 +27,7 @@ func NewAuthRouter(oidc *authhandler.OIDCHandler, staticAssetHandler func(string
 	mux.HandleFunc("POST /auth/device/confirm", oidc.DeviceVerificationConfirm)
 	mux.HandleFunc("POST /auth/device_authorization", oidc.DeviceAuthorization)
 	mux.HandleFunc("POST /auth/headless/login", oidc.AuthorizeLogin)
+	mux.HandleFunc("POST /auth/headless/login/captcha", oidc.AuthorizeCaptchaRefresh)
 	mux.HandleFunc("POST /auth/headless/account", oidc.AuthorizeAccount)
 	mux.HandleFunc("POST /auth/headless/confirm", oidc.AuthorizeConfirm)
 	mux.HandleFunc("POST /auth/headless/mfa", oidc.AuthorizeMFA)

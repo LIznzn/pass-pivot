@@ -11,12 +11,9 @@
         </header>
 
         <section class="auth-card">
-          <div v-if="localizedBootstrapError" class="auth-alert auth-alert-danger">
-            {{ localizedBootstrapError }}
-          </div>
-
           <form v-if="bootstrap.stage === 'login'" :action="bootstrap.loginAction" method="post" class="auth-form">
             <input type="hidden" name="interaction" value="login" />
+            <input v-if="bootstrap.captcha?.provider" type="hidden" name="captcha_provider" :value="bootstrap.captcha.provider" />
 
             <label class="auth-field">
               <span>{{ text.identifier }}</span>
@@ -35,6 +32,28 @@
                 autocomplete="current-password"
                 :placeholder="text.passwordPlaceholder"
               />
+            </label>
+
+            <label v-if="bootstrap.captcha?.provider === 'default'" class="auth-field">
+              <input type="hidden" name="captcha_challenge_token" :value="captchaChallengeToken" />
+              <span>{{ text.captcha }}</span>
+              <div class="auth-captcha-row">
+                <label class="auth-captcha-input">
+                  <input
+                    name="captcha_answer"
+                    autocomplete="off"
+                    :placeholder="text.captchaAnswerPlaceholder"
+                  />
+                </label>
+                <div v-if="captchaImageDataUrl" class="auth-captcha-image-frame">
+                  <img
+                    class="auth-captcha-image"
+                    :src="captchaImageDataUrl"
+                    :alt="text.captchaImageAlt"
+                    @click="refreshCaptcha"
+                  />
+                </div>
+              </div>
             </label>
 
             <button type="submit" class="auth-button auth-button-primary auth-button-block">
@@ -197,7 +216,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { normalizeRequestOptions, serializeCredential } from '@shared/api/webauthn'
 import ToastHost from '@shared/components/ToastHost.vue'
 import { useToast } from '@shared/composables/toast'
@@ -205,6 +224,15 @@ import { RequestError, requestPost } from './util/request'
 
 type LocaleKey = 'en' | 'ja' | 'chs' | 'cht'
 type AuthStage = 'login' | 'account' | 'confirmation' | 'mfa'
+type AuthCaptchaBootstrap = {
+  provider: string
+  client_key?: string
+}
+
+type AuthCaptchaChallenge = {
+  imageDataUrl?: string
+  challengeToken?: string
+}
 
 type TranslationShape = {
   productTagline: string
@@ -232,6 +260,10 @@ type TranslationShape = {
   confirmTrustDevice: string
   confirmContinueWithoutTrust: string
   verificationMethod: string
+  captcha: string
+  captchaImageAlt: string
+  captchaAnswer: string
+  captchaAnswerPlaceholder: string
   verificationCode: string
   verificationCodePlaceholder: string
   verifyAndContinue: string
@@ -287,6 +319,10 @@ const translations: Record<LocaleKey, TranslationShape> = {
     confirmTrustDevice: 'Add as trusted device and continue',
     confirmContinueWithoutTrust: 'Continue without trusting this device',
     verificationMethod: 'Verification method',
+    captcha: 'Captcha',
+    captchaImageAlt: 'Captcha image',
+    captchaAnswer: 'Captcha',
+    captchaAnswerPlaceholder: 'Enter the characters shown in the image',
     verificationCode: 'Verification code',
     verificationCodePlaceholder: 'Enter your verification code',
     verifyAndContinue: 'Verify and continue',
@@ -320,6 +356,8 @@ const translations: Record<LocaleKey, TranslationShape> = {
       'authn.mfa_challenge_expired': 'The verification challenge has expired.',
       'authn.mfa_challenge_not_found': 'No active verification challenge was found.',
       'authn.webauthn_login_disabled': 'Passkey sign-in is not enabled for this account.',
+      'captcha is required': 'Captcha is required.',
+      'invalid captcha': 'Captcha verification failed.',
       'authn.webauthn_challenge_not_found': 'The passkey challenge was not found.',
       'authn.webauthn_challenge_expired': 'The passkey challenge has expired.',
       'authn.external_idp_identity_unbound': 'This external identity is not bound to an existing account.',
@@ -368,6 +406,10 @@ const translations: Record<LocaleKey, TranslationShape> = {
     confirmTrustDevice: '加入可信设备并继续',
     confirmContinueWithoutTrust: '不加入可信设备，继续登录',
     verificationMethod: '验证方式',
+    captcha: '验证码',
+    captchaImageAlt: '验证码图片',
+    captchaAnswer: '验证码',
+    captchaAnswerPlaceholder: '请输入图片中的字符',
     verificationCode: '验证码',
     verificationCodePlaceholder: '请输入验证码',
     verifyAndContinue: '验证并继续',
@@ -401,6 +443,8 @@ const translations: Record<LocaleKey, TranslationShape> = {
       'authn.mfa_challenge_expired': '验证码挑战已过期。',
       'authn.mfa_challenge_not_found': '未找到有效的验证码挑战。',
       'authn.webauthn_login_disabled': '当前账号未启用通行密钥登录。',
+      'captcha is required': '请先完成验证码。',
+      'invalid captcha': '验证码校验失败。',
       'authn.webauthn_challenge_not_found': '未找到通行密钥挑战。',
       'authn.webauthn_challenge_expired': '通行密钥挑战已过期。',
       'authn.external_idp_identity_unbound': '该外部身份尚未绑定到现有账号。',
@@ -449,6 +493,10 @@ const translations: Record<LocaleKey, TranslationShape> = {
     confirmTrustDevice: '加入可信裝置並繼續',
     confirmContinueWithoutTrust: '不加入可信裝置，繼續登入',
     verificationMethod: '驗證方式',
+    captcha: '驗證碼',
+    captchaImageAlt: '驗證碼圖片',
+    captchaAnswer: '驗證碼',
+    captchaAnswerPlaceholder: '請輸入圖片中的字元',
     verificationCode: '驗證碼',
     verificationCodePlaceholder: '請輸入驗證碼',
     verifyAndContinue: '驗證並繼續',
@@ -482,6 +530,8 @@ const translations: Record<LocaleKey, TranslationShape> = {
       'authn.mfa_challenge_expired': '驗證碼挑戰已過期。',
       'authn.mfa_challenge_not_found': '未找到有效的驗證碼挑戰。',
       'authn.webauthn_login_disabled': '目前帳號未啟用通行密鑰登入。',
+      'captcha is required': '請先完成驗證碼。',
+      'invalid captcha': '驗證碼校驗失敗。',
       'authn.webauthn_challenge_not_found': '未找到通行密鑰挑戰。',
       'authn.webauthn_challenge_expired': '通行密鑰挑戰已過期。',
       'authn.external_idp_identity_unbound': '該外部身份尚未綁定到現有帳號。',
@@ -530,6 +580,10 @@ const translations: Record<LocaleKey, TranslationShape> = {
     confirmTrustDevice: '信頼済み端末に追加して続行',
     confirmContinueWithoutTrust: '追加せずに続行',
     verificationMethod: '認証方法',
+    captcha: '画像認証',
+    captchaImageAlt: 'Captcha image',
+    captchaAnswer: '認証コード',
+    captchaAnswerPlaceholder: '画像内の文字を入力',
     verificationCode: '認証コード',
     verificationCodePlaceholder: '認証コードを入力',
     verifyAndContinue: '認証して続行',
@@ -560,6 +614,8 @@ const translations: Record<LocaleKey, TranslationShape> = {
       'authn.application_access_denied': 'このアカウントには対象アプリケーションへのアクセス権がありません。',
       'authn.mfa_code_invalid': '認証コードが正しくありません。',
       'authn.webauthn_login_disabled': 'このアカウントではパスキーサインインが有効ではありません。',
+      'captcha is required': '画像認証を完了してください。',
+      'invalid captcha': '画像認証の検証に失敗しました。',
       'invalid credentials': 'アカウント識別子またはパスワードが正しくありません。'
     }
   },
@@ -582,6 +638,8 @@ if (!bootstrapPayload) {
 const bootstrap = bootstrapPayload
 const locale = ref<LocaleKey>(resolveInitialLocale())
 const challengeFeedback = ref('')
+const captchaImageDataUrl = ref(bootstrap.captcha?.imageDataUrl || '')
+const captchaChallengeToken = ref(bootstrap.captcha?.challengeToken || '')
 const supportsWebAuthnLogin = Boolean(bootstrap.api.webauthnLoginBegin && bootstrap.api.webauthnLoginEnd)
 const supportsSessionU2F = Boolean(bootstrap.api.sessionU2fBegin && bootstrap.api.sessionU2fFinish)
 const supportsEmailChallenge = Boolean(bootstrap.api.mfaChallenge)
@@ -637,6 +695,26 @@ watch(
   (value) => {
     document.documentElement.lang = value
     document.title = `Pass Pivot · ${translations[value].stageTitles[bootstrap.stage](applicationName.value)}`
+  },
+  { immediate: true }
+)
+
+watch(
+  localizedBootstrapError,
+  (value, previousValue) => {
+    if (!value || value === previousValue) {
+      return
+    }
+    toast.error(value)
+  },
+  { immediate: true }
+)
+
+watch(
+  () => bootstrap.captcha,
+  (value) => {
+    captchaImageDataUrl.value = value?.imageDataUrl || ''
+    captchaChallengeToken.value = value?.challengeToken || ''
   },
   { immediate: true }
 )
@@ -751,6 +829,28 @@ async function verifyMFAWithU2F() {
   }
 }
 
+async function refreshCaptcha() {
+  if (bootstrap.captcha?.provider !== 'default' || !bootstrap.api.captchaRefresh) {
+    return
+  }
+  try {
+    const nextCaptcha = await requestPost<AuthCaptchaChallenge>(
+      bootstrap.api.captchaRefresh,
+      {}
+    )
+    captchaImageDataUrl.value = nextCaptcha.imageDataUrl || ''
+    captchaChallengeToken.value = nextCaptcha.challengeToken || ''
+  } catch (error) {
+    toast.error(formatRequestError(error))
+  }
+}
+
+onMounted(() => {
+  if (bootstrap.stage === 'login' && bootstrap.captcha?.provider === 'default') {
+    void refreshCaptcha()
+  }
+})
+
 function cancelLogin() {
   const form = document.createElement('form')
   form.method = 'post'
@@ -776,6 +876,8 @@ function cancelLogin() {
 <style scoped>
 :global(body) {
   margin: 0;
+  --auth-control-height: calc(2.5rem + 2px);
+  --auth-control-radius: 6px;
   background: #f6f8fa;
   color: #1f2328;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
@@ -899,8 +1001,9 @@ function cancelLogin() {
 .auth-field input,
 .auth-field select {
   width: 100%;
-  min-height: 2.5rem;
-  border-radius: 6px;
+  height: var(--auth-control-height);
+  min-height: var(--auth-control-height);
+  border-radius: var(--auth-control-radius);
   border: 1px solid #d0d7de;
   background: #fff;
   padding: 0.58rem 0.85rem;
@@ -932,9 +1035,10 @@ function cancelLogin() {
 }
 
 .auth-button {
-  min-height: 2.5rem;
+  height: var(--auth-control-height);
+  min-height: var(--auth-control-height);
   width: 100%;
-  border-radius: 6px;
+  border-radius: var(--auth-control-radius);
   border: 1px solid transparent;
   font: inherit;
   font-size: 0.92rem;
@@ -1050,7 +1154,8 @@ function cancelLogin() {
 }
 
 .auth-idp-button {
-  min-height: 2.5rem;
+  height: var(--auth-control-height);
+  min-height: var(--auth-control-height);
   width: 100%;
   border-radius: 10px;
   border: 1px solid #d0d7de;
@@ -1182,13 +1287,48 @@ function cancelLogin() {
   text-decoration: underline;
 }
 
+.auth-captcha-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.9rem;
+  align-items: end;
+}
+
+.auth-captcha-input {
+  margin: 0;
+  display: block;
+  min-width: 0;
+}
+
+.auth-captcha-input input {
+  width: 100%;
+}
+
+.auth-captcha-image-frame {
+  display: flex;
+  align-items: stretch;
+}
+
+.auth-captcha-image {
+  display: block;
+  box-sizing: border-box;
+  height: var(--auth-control-height);
+  min-height: var(--auth-control-height);
+  width: auto;
+  max-width: none;
+  border: 1px solid #d0d7de;
+  border-radius: var(--auth-control-radius);
+  background: #fff;
+  cursor: pointer;
+}
+
 @media (max-width: 940px) {
   .auth-main {
     padding-top: 1.5rem;
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 480px) {
   .auth-title {
     font-size: 1.7rem;
   }
@@ -1210,5 +1350,6 @@ function cancelLogin() {
   .auth-stack {
     width: 100%;
   }
+
 }
 </style>
