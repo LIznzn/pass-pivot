@@ -75,10 +75,7 @@ var (
 		"none":                        true,
 		"client_secret_basic":         true,
 		"client_secret_post":          true,
-		"client_secret_jwt":           true,
 		"private_key_jwt":             true,
-		"tls_client_auth":             true,
-		"self_signed_tls_client_auth": true,
 	}
 	tokenTypeOptions = map[string]bool{
 		"access_token": true,

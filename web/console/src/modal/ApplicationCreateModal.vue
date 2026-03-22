@@ -187,12 +187,12 @@ const tokenTypeOptionsByGrantType: Record<string, string[]> = {
 }
 
 const clientAuthenticationTypeOptionsByGrantType: Record<string, string[]> = {
-  authorization_code: ['client_secret_basic', 'client_secret_post', 'client_secret_jwt', 'private_key_jwt', 'tls_client_auth', 'self_signed_tls_client_auth'],
-  authorization_code_pkce: ['none', 'client_secret_basic', 'client_secret_post', 'client_secret_jwt', 'private_key_jwt', 'tls_client_auth', 'self_signed_tls_client_auth'],
-  implicit: ['client_secret_basic', 'client_secret_post', 'client_secret_jwt', 'private_key_jwt', 'tls_client_auth', 'self_signed_tls_client_auth'],
-  client_credentials: ['client_secret_basic', 'client_secret_post', 'client_secret_jwt', 'private_key_jwt', 'tls_client_auth', 'self_signed_tls_client_auth'],
-  device_code: ['none', 'client_secret_basic', 'client_secret_post', 'client_secret_jwt', 'private_key_jwt', 'tls_client_auth', 'self_signed_tls_client_auth'],
-  password: ['none', 'client_secret_basic', 'client_secret_post', 'client_secret_jwt', 'private_key_jwt', 'tls_client_auth', 'self_signed_tls_client_auth']
+  authorization_code: ['client_secret_basic', 'client_secret_post', 'private_key_jwt'],
+  authorization_code_pkce: ['none', 'client_secret_basic', 'client_secret_post', 'private_key_jwt'],
+  implicit: ['client_secret_basic', 'client_secret_post', 'private_key_jwt'],
+  client_credentials: ['client_secret_basic', 'client_secret_post', 'private_key_jwt'],
+  device_code: ['none', 'client_secret_basic', 'client_secret_post', 'private_key_jwt'],
+  password: ['none', 'client_secret_basic', 'client_secret_post', 'private_key_jwt']
 }
 
 const applicationFormTokenTypeOptions = computed(() => filterApplicationTokenTypeOptions(props.applicationForm.grantType))

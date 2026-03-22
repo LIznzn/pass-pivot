@@ -29,8 +29,8 @@ type OIDCMetadata struct {
 	Issuer                                             string   `json:"issuer"`
 	JWKSURI                                            string   `json:"jwks_uri"`
 	AuthorizationEndpoint                              string   `json:"authorization_endpoint"`
-	TokenEndpoint                                      string   `json:"token_endpoint"`
 	DeviceAuthorizationEndpoint                        string   `json:"device_authorization_endpoint,omitempty"`
+	TokenEndpoint                                      string   `json:"token_endpoint"`
 	UserInfoEndpoint                                   string   `json:"userinfo_endpoint"`
 	RevocationEndpoint                                 string   `json:"revocation_endpoint,omitempty"`
 	IntrospectionEndpoint                              string   `json:"introspection_endpoint,omitempty"`
@@ -48,10 +48,6 @@ type OIDCMetadata struct {
 	RequestParameterSupported                          bool     `json:"request_parameter_supported"`
 	RequestURIParameterSupported                       bool     `json:"request_uri_parameter_supported"`
 	CodeChallengeMethodsSupported                      []string `json:"code_challenge_methods_supported,omitempty"`
-	RevocationEndpointAuthMethodsSupported             []string `json:"revocation_endpoint_auth_methods_supported,omitempty"`
-	RevocationEndpointAuthSigningAlgValuesSupported    []string `json:"revocation_endpoint_auth_signing_alg_values_supported,omitempty"`
-	IntrospectionEndpointAuthMethodsSupported          []string `json:"introspection_endpoint_auth_methods_supported,omitempty"`
-	IntrospectionEndpointAuthSigningAlgValuesSupported []string `json:"introspection_endpoint_auth_signing_alg_values_supported,omitempty"`
 }
 
 type oidcAuthService interface {
@@ -410,10 +406,6 @@ func buildOIDCMetadata(issuer string) OIDCMetadata {
 		RequestURIParameterSupported:                       false,
 		CodeChallengeMethodsSupported:                      []string{"S256"},
 		RevocationEndpoint:                                 issuer + "/auth/revoke",
-		RevocationEndpointAuthMethodsSupported:             []string{"client_secret_basic", "client_secret_post", "private_key_jwt", "none"},
-		RevocationEndpointAuthSigningAlgValuesSupported:    []string{"RS256"},
 		IntrospectionEndpoint:                              issuer + "/auth/introspect",
-		IntrospectionEndpointAuthMethodsSupported:          []string{"client_secret_basic", "client_secret_post", "private_key_jwt", "none"},
-		IntrospectionEndpointAuthSigningAlgValuesSupported: []string{"RS256"},
 	}
 }

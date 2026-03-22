@@ -160,10 +160,7 @@ const clientAuthenticationTypeOptions = [
   { value: 'none', text: 'none' },
   { value: 'client_secret_basic', text: 'client_secret_basic' },
   { value: 'client_secret_post', text: 'client_secret_post' },
-  { value: 'client_secret_jwt', text: 'client_secret_jwt' },
-  { value: 'private_key_jwt', text: 'private_key_jwt' },
-  { value: 'tls_client_auth', text: 'tls_client_auth' },
-  { value: 'self_signed_tls_client_auth', text: 'self_signed_tls_client_auth' }
+  { value: 'private_key_jwt', text: 'private_key_jwt' }
 ]
 const applicationProtocolTemplates: Record<string, { text: string; allowedTypes: string[]; grantType: string[]; enableRefreshToken: boolean; tokenType: string[]; clientAuthenticationType: string }> = {
   'oauth21-oidc-pkce-private-key-jwt': { text: 'OAuth2.1 + OIDC 1.0 + Private Key JWT（高安全性）', allowedTypes: ['web'], grantType: ['authorization_code_pkce'], enableRefreshToken: false, tokenType: ['access_token'], clientAuthenticationType: 'private_key_jwt' },
