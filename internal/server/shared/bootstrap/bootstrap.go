@@ -69,12 +69,7 @@ func OpenBase(cfg config.Config) (*App, *Dependencies, error) {
 	manageService.SetAuthStateCleanup(authservice.DeleteAuthorizationCodesByUser, authservice.DeleteMFAChallengesByUser)
 	systemService := apisystem.NewService(manageService)
 	userService := apiuser.NewService(manageService)
-	keyStore := authservice.NewProviderKeyStore(map[string]string{
-		cfg.ManageAPIApplicationID: cfg.APIManagePrivateSeed,
-		cfg.UserAPIApplicationID:   cfg.APIUserPrivateSeed,
-		cfg.AuthnAPIApplicationID:  cfg.APIAuthnPrivateSeed,
-		cfg.AuthzAPIApplicationID:  cfg.APIAuthzPrivateSeed,
-	})
+	keyStore := authservice.NewProviderKeyStore(database)
 	oidcService := authservice.NewOIDCService(database, cfg, authAuditService, authService, keyStore)
 	externalIDPService := authservice.NewExternalIDPService(database, cfg, authAuditService, authService)
 	fidoService, err := sharedfido.NewService(database, cfg, func(ctx context.Context, record sharedfido.RegistrationAuditRecord) error {

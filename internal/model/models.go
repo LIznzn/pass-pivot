@@ -101,12 +101,12 @@ type OrganizationMFAPolicy struct {
 }
 
 type OrganizationSetting struct {
-	SupportEmail     string                     `gorm:"size:255" json:"supportEmail"`
-	LogoURL          string                     `gorm:"size:255" json:"logoUrl"`
-	Domains          []OrganizationDomain       `gorm:"serializer:json;type:json" json:"domains"`
-	LoginPolicy      OrganizationLoginPolicy    `gorm:"serializer:json;type:json" json:"loginPolicy"`
-	PasswordPolicy   OrganizationPasswordPolicy `gorm:"serializer:json;type:json" json:"passwordPolicy"`
-	MFAPolicy        OrganizationMFAPolicy      `gorm:"serializer:json;type:json" json:"mfaPolicy"`
+	SupportEmail   string                     `gorm:"size:255" json:"supportEmail"`
+	LogoURL        string                     `gorm:"size:255" json:"logoUrl"`
+	Domains        []OrganizationDomain       `gorm:"serializer:json;type:json" json:"domains"`
+	LoginPolicy    OrganizationLoginPolicy    `gorm:"serializer:json;type:json" json:"loginPolicy"`
+	PasswordPolicy OrganizationPasswordPolicy `gorm:"serializer:json;type:json" json:"passwordPolicy"`
+	MFAPolicy      OrganizationMFAPolicy      `gorm:"serializer:json;type:json" json:"mfaPolicy"`
 }
 
 type Project struct {
@@ -136,26 +136,52 @@ func (ProjectUserAssignment) TableName() string {
 
 type Application struct {
 	BaseModel
-	ProjectID                string   `gorm:"index;size:36" json:"projectId"`
-	Name                     string   `gorm:"size:128" json:"name"`
+	ProjectID                string            `gorm:"index;size:36" json:"projectId"`
+	Name                     string            `gorm:"size:128" json:"name"`
 	Metadata                 map[string]string `gorm:"serializer:json;type:json" json:"metadata"`
-	Description              string   `gorm:"size:255" json:"description"`
-	RedirectURIs             string   `gorm:"type:text" json:"redirectUris"`
-	Status                   string   `gorm:"size:32;default:active" json:"status"`
-	ApplicationType          string   `gorm:"size:32;default:web" json:"applicationType"`
-	GrantType                []string `gorm:"serializer:json;type:json" json:"grantType"`
-	EnableRefreshToken       bool     `json:"enableRefreshToken"`
-	ClientAuthenticationType string   `gorm:"size:64;default:none" json:"clientAuthenticationType"`
-	TokenType                []string `gorm:"serializer:json;type:json" json:"tokenType"`
-	Roles                    []string `gorm:"serializer:json;type:json" json:"roles"`
-	ClientSecretHash         string   `gorm:"size:255" json:"-"`
-	PublicKey                string   `gorm:"size:64" json:"publicKey"`
-	AccessTokenTTLMinutes    int      `json:"accessTokenTTLMinutes"`
-	RefreshTokenTTLHours     int      `json:"refreshTokenTTLHours"`
+	Description              string            `gorm:"size:255" json:"description"`
+	RedirectURIs             string            `gorm:"type:text" json:"redirectUris"`
+	Status                   string            `gorm:"size:32;default:active" json:"status"`
+	ApplicationType          string            `gorm:"size:32;default:web" json:"applicationType"`
+	GrantType                []string          `gorm:"serializer:json;type:json" json:"grantType"`
+	EnableRefreshToken       bool              `json:"enableRefreshToken"`
+	ClientAuthenticationType string            `gorm:"size:64;default:none" json:"clientAuthenticationType"`
+	TokenType                []string          `gorm:"serializer:json;type:json" json:"tokenType"`
+	Roles                    []string          `gorm:"serializer:json;type:json" json:"roles"`
+	ClientSecretHash         string            `gorm:"size:255" json:"-"`
+	PublicKey                string            `gorm:"size:64" json:"publicKey"`
+	AccessTokenTTLMinutes    int               `json:"accessTokenTTLMinutes"`
+	RefreshTokenTTLHours     int               `json:"refreshTokenTTLHours"`
 }
 
 func (Application) TableName() string {
 	return "application"
+}
+
+type ApplicationKey struct {
+	BaseModel
+	ApplicationID string `gorm:"index;size:36" json:"applicationId"`
+	PublicKey     string `gorm:"size:64" json:"publicKey"`
+	PrivateSeed   string `gorm:"size:64" json:"-"`
+	KeyID         string `gorm:"size:16;index" json:"keyId"`
+	Status        string `gorm:"size:32;default:active;index" json:"status"`
+}
+
+func (ApplicationKey) TableName() string {
+	return "application_key"
+}
+
+type OrganizationSigningKey struct {
+	BaseModel
+	OrganizationID string `gorm:"index;size:36" json:"organizationId"`
+	PrivateKeyPEM  string `gorm:"type:text" json:"-"`
+	PublicKeyPEM   string `gorm:"type:text" json:"publicKeyPem"`
+	KeyID          string `gorm:"size:16;index" json:"keyId"`
+	Status         string `gorm:"size:32;default:active;index" json:"status"`
+}
+
+func (OrganizationSigningKey) TableName() string {
+	return "organization_signing_key"
 }
 
 type User struct {

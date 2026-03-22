@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-jose/go-jose/v4"
 	"github.com/golang-jwt/jwt/v5"
 	"gorm.io/gorm"
 
@@ -198,19 +197,19 @@ func (s *OIDCService) MetadataByIssuer(ctx context.Context) (map[string]any, err
 }
 
 func (s *OIDCService) JWKS(ctx context.Context, clientID, applicationID string) (map[string]any, error) {
-	keys, err := s.keys.Instance()
+	keys, err := s.keys.ProviderJWKs(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return keys.JWKS()
+	return map[string]any{"keys": keys}, nil
 }
 
 func (s *OIDCService) JWKSByIssuer(ctx context.Context) (map[string]any, error) {
-	instanceKeys, err := s.keys.Instance()
+	keys, err := s.keys.ProviderJWKs(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"keys": []jose.JSONWebKey{instanceKeys.PublicJWK()}}, nil
+	return map[string]any{"keys": keys}, nil
 }
 
 func (s *OIDCService) Authorize(ctx context.Context, in AuthorizeInput) (*model.AuthorizationCode, error) {
@@ -352,7 +351,7 @@ func (s *OIDCService) signIDToken(ctx context.Context, applicationID string, use
 	if err != nil {
 		return "", err
 	}
-	keys, err := s.keys.Instance()
+	keys, err := s.keys.ProviderKeysForApplication(ctx, applicationID)
 	if err != nil {
 		return "", err
 	}

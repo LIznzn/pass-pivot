@@ -15,6 +15,7 @@ import (
 	"pass-pivot/internal/config"
 	"pass-pivot/internal/db"
 	"pass-pivot/internal/model"
+	authservice "pass-pivot/internal/server/auth/service"
 	coreservice "pass-pivot/internal/server/core/service"
 	sharedhandler "pass-pivot/internal/server/shared/handler"
 	"pass-pivot/util"
@@ -78,27 +79,6 @@ func ensureSystemBootstrapConfig(cfg *config.Config) error {
 	ensureUUID("PPVT_PORTAL_APPLICATION_ID", &cfg.PortalApplicationID)
 	ensureUUID("PPVT_CONSOLE_ADMIN_ROLE_ID", &cfg.ConsoleAdminRoleID)
 	ensureUUID("PPVT_ADMIN_USER_ID", &cfg.AdminUserID)
-
-	ensurePublicKey := func(seed string, publicKeyKey string) error {
-		publicKey, err := util.DeriveEd25519PublicKey(seed)
-		if err != nil {
-			return err
-		}
-		rootValues[publicKeyKey] = publicKey
-		return nil
-	}
-	if err := ensurePublicKey(cfg.APIManagePrivateSeed, "PPVT_MANAGE_API_PUBLIC_KEY"); err != nil {
-		return err
-	}
-	if err := ensurePublicKey(cfg.APIUserPrivateSeed, "PPVT_USER_API_PUBLIC_KEY"); err != nil {
-		return err
-	}
-	if err := ensurePublicKey(cfg.APIAuthnPrivateSeed, "PPVT_AUTHN_API_PUBLIC_KEY"); err != nil {
-		return err
-	}
-	if err := ensurePublicKey(cfg.APIAuthzPrivateSeed, "PPVT_AUTHZ_API_PUBLIC_KEY"); err != nil {
-		return err
-	}
 	if err := writeEnvFile(".init", rootValues); err != nil {
 		return err
 	}
@@ -281,6 +261,8 @@ func initSchema(database *gorm.DB) error {
 		&model.Project{},
 		&model.ProjectUserAssignment{},
 		&model.Application{},
+		&model.ApplicationKey{},
+		&model.OrganizationSigningKey{},
 		&model.User{},
 		&model.SecureKey{},
 		&model.MFAEnrollment{},
@@ -327,6 +309,13 @@ func seed(ctx context.Context, database *gorm.DB, cfg config.Config) error {
 			MFAPolicy:         defaultConsoleSettings().MFAPolicy,
 		}
 		if err := upsertByID(tx, &organization); err != nil {
+			return err
+		}
+		signingKey, err := authservice.NewOrganizationSigningKey(cfg.InternalOrganizationID)
+		if err != nil {
+			return err
+		}
+		if err := tx.Create(signingKey).Error; err != nil {
 			return err
 		}
 
@@ -442,22 +431,16 @@ func seed(ctx context.Context, database *gorm.DB, cfg config.Config) error {
 			},
 		}
 		for i := range applications {
-			if applications[i].ClientAuthenticationType != "private_key_jwt" {
-				continue
+			if applications[i].ClientAuthenticationType == "private_key_jwt" {
+				clientKey, _, err := authservice.NewApplicationClientKey(applications[i].ID)
+				if err != nil {
+					return err
+				}
+				applications[i].PublicKey = clientKey.PublicKey
+				if err := tx.Create(clientKey).Error; err != nil {
+					return err
+				}
 			}
-			seedByID := map[string]string{
-				cfg.ManageAPIApplicationID: cfg.APIManagePrivateSeed,
-				cfg.UserAPIApplicationID:   cfg.APIUserPrivateSeed,
-				cfg.AuthnAPIApplicationID:  cfg.APIAuthnPrivateSeed,
-				cfg.AuthzAPIApplicationID:  cfg.APIAuthzPrivateSeed,
-			}
-			publicKey, err := util.DeriveEd25519PublicKey(seedByID[applications[i].ID])
-			if err != nil {
-				return err
-			}
-			applications[i].PublicKey = publicKey
-		}
-		for i := range applications {
 			if err := upsertByID(tx, &applications[i]); err != nil {
 				return err
 			}
@@ -573,14 +556,14 @@ func buildInternalApplicationMetadata(defaultDisplayName, englishDisplayName, ja
 
 func buildInternalOrganizationMetadata(displayName, englishDisplayName, japaneseDisplayName, simplifiedChineseDisplayName, traditionalChineseDisplayName, websiteURL, termsOfServiceURL, privacyPolicyURL string) map[string]string {
 	return coreservice.NormalizeOrganizationMetadata(map[string]string{
-		coreservice.OrganizationMetadataDisplayName:      displayName,
-		coreservice.OrganizationMetadataDisplayNameEN:    englishDisplayName,
-		coreservice.OrganizationMetadataDisplayNameJA:    japaneseDisplayName,
-		coreservice.OrganizationMetadataDisplayNameCHS:   simplifiedChineseDisplayName,
-		coreservice.OrganizationMetadataDisplayNameCHT:   traditionalChineseDisplayName,
-		coreservice.OrganizationMetadataWebsiteURL:       websiteURL,
+		coreservice.OrganizationMetadataDisplayName:       displayName,
+		coreservice.OrganizationMetadataDisplayNameEN:     englishDisplayName,
+		coreservice.OrganizationMetadataDisplayNameJA:     japaneseDisplayName,
+		coreservice.OrganizationMetadataDisplayNameCHS:    simplifiedChineseDisplayName,
+		coreservice.OrganizationMetadataDisplayNameCHT:    traditionalChineseDisplayName,
+		coreservice.OrganizationMetadataWebsiteURL:        websiteURL,
 		coreservice.OrganizationMetadataTermsOfServiceURL: termsOfServiceURL,
-		coreservice.OrganizationMetadataPrivacyPolicyURL: privacyPolicyURL,
+		coreservice.OrganizationMetadataPrivacyPolicyURL:  privacyPolicyURL,
 	}, nil)
 }
 
@@ -609,9 +592,9 @@ func newPolicy(organizationID, roleID, name, effect string, priority int, rules 
 
 func defaultConsoleSettings() model.OrganizationSetting {
 	return model.OrganizationSetting{
-		SupportEmail:     "",
-		LogoURL:          "",
-		Domains:          []model.OrganizationDomain{},
+		SupportEmail: "",
+		LogoURL:      "",
+		Domains:      []model.OrganizationDomain{},
 		LoginPolicy: model.OrganizationLoginPolicy{
 			PasswordLoginEnabled: true,
 			WebAuthnLoginEnabled: true,

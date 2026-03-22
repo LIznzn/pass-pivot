@@ -16,6 +16,13 @@ PPVT 是一个控制面导向的 IAM 平台实现。
 - 外部 OAuth/OIDC Provider 管理配置
 - Captcha / GeoIP / 外部 IdP 扩展接入骨架
 
+当前密钥模型：
+
+- OIDC Provider 使用单一 issuer、组织级 RSA signing key
+- `/auth/keys` 返回所有 active 组织公钥
+- `private_key_jwt` 客户端统一使用应用级 Ed25519 持久化密钥
+- 内置 application 与外部 application 走同一套 client key 模型
+
 ## 仓库结构
 
 - `cmd/ppvt-auth`: 协议面入口，只承载 `/auth/*` 与 `/.well-known/*`
@@ -58,10 +65,6 @@ PPVT 是一个控制面导向的 IAM 平台实现。
 - `PPVT_REDIS_DB`
 - `PPVT_LOG_LEVEL`
 - `PPVT_SECRET`
-- `PPVT_API_MANAGE_PRIVATE_SEED`
-- `PPVT_API_USER_PRIVATE_SEED`
-- `PPVT_API_AUTHN_PRIVATE_SEED`
-- `PPVT_API_AUTHZ_PRIVATE_SEED`
 
 示例见 [`.env.example`](.env.example)。
 
@@ -70,7 +73,8 @@ PPVT 是一个控制面导向的 IAM 平台实现。
 这部分只供 `ppvt-init` 使用，主要包含：
 
 - 内置 organization / project / application / role / user 的固定 ID
-- 内置 internal application 的 public key
+
+`.init` 不再保存内置 application 的 client seed / public key。内置 application 的 `private_key_jwt` 密钥和组织级 OIDC signing key 都由 `ppvt-init` 直接生成并写入数据库。
 
 示例见 [`.init.example`](.init.example)。
 
@@ -131,6 +135,8 @@ npm run dev:console
 - `ppvt-init` 默认会先检查目标数据库是否已存在表；如果存在则直接退出，避免覆盖现有数据
 - 只有显式传入 `--force` 时，`ppvt-init` 才会删除并重建目标数据库
 - 在允许初始化时，`ppvt-init` 会创建表并写入系统内置基础数据
+- `ppvt-init` 会为内置 organization 生成 OIDC provider signing key
+- `ppvt-init` 会为内置 `manage-api` / `user-api` / `authn-api` / `authz-api` 生成应用级 client key
 - `ppvt-init` 不负责历史版本迁移兼容，当前开发流程以重建数据库为准
 
 当前默认本地数据库配置：
@@ -186,6 +192,13 @@ npm run dev:console
 - 外部 IdP 配置管理
 - OIDC metadata、JWKS、authorize、token、userinfo
 - 审计日志
+
+当前 OIDC / OAuth 密钥行为：
+
+- `id_token` 按所属 organization 的 RSA key 签名
+- 所有 organization 的 active RSA 公钥统一通过 `/auth/keys` 暴露
+- `private_key_jwt` 校验从数据库读取 application 的 active Ed25519 公钥
+- 应用重置 key 会使旧的 application key 记录失活，并写入新的 active key
 
 未完全实现：
 

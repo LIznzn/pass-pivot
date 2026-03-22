@@ -35,10 +35,6 @@ type Config struct {
 	PortalApplicationID    string
 	ConsoleAdminRoleID     string
 	AdminUserID            string
-	APIManagePrivateSeed   string
-	APIUserPrivateSeed     string
-	APIAuthnPrivateSeed    string
-	APIAuthzPrivateSeed    string
 }
 
 func Load() Config {
@@ -81,10 +77,6 @@ func loadFromEnv() Config {
 		PortalApplicationID:    getenv("PPVT_PORTAL_APPLICATION_ID", ""),
 		ConsoleAdminRoleID:     getenv("PPVT_CONSOLE_ADMIN_ROLE_ID", ""),
 		AdminUserID:            getenv("PPVT_ADMIN_USER_ID", ""),
-		APIManagePrivateSeed:   getenv("PPVT_API_MANAGE_PRIVATE_SEED", ""),
-		APIUserPrivateSeed:     getenv("PPVT_API_USER_PRIVATE_SEED", ""),
-		APIAuthnPrivateSeed:    getenv("PPVT_API_AUTHN_PRIVATE_SEED", ""),
-		APIAuthzPrivateSeed:    getenv("PPVT_API_AUTHZ_PRIVATE_SEED", ""),
 	}
 }
 

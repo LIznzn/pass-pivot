@@ -11,8 +11,9 @@ import (
 
 	"pass-pivot/internal/config"
 	"pass-pivot/internal/model"
-	sharedauthn "pass-pivot/internal/server/shared/authn"
+	authservice "pass-pivot/internal/server/auth/service"
 	coreservice "pass-pivot/internal/server/core/service"
+	sharedauthn "pass-pivot/internal/server/shared/authn"
 	sharedfido "pass-pivot/internal/server/shared/fido"
 	sharedhandler "pass-pivot/internal/server/shared/handler"
 	"pass-pivot/util"
@@ -307,19 +308,19 @@ func (s *Service) GetLoginTarget(ctx context.Context, applicationID string) (*co
 		})
 	}
 	return &coreservice.LoginTarget{
-		OrganizationID:   organization.ID,
-		OrganizationName: organization.Name,
-		DisplayName:      organization.Metadata[coreservice.OrganizationMetadataDisplayName],
+		OrganizationID:           organization.ID,
+		OrganizationName:         organization.Name,
+		DisplayName:              organization.Metadata[coreservice.OrganizationMetadataDisplayName],
 		OrganizationDisplayNames: coreservice.BuildOrganizationDisplayNameMap(organization.Metadata),
-		WebsiteURL:       organization.Metadata[coreservice.OrganizationMetadataWebsiteURL],
-		TermsOfServiceURL: organization.Metadata[coreservice.OrganizationMetadataTermsOfServiceURL],
-		PrivacyPolicyURL: organization.Metadata[coreservice.OrganizationMetadataPrivacyPolicyURL],
-		ProjectID:        project.ID,
-		ProjectName:      project.Name,
-		ApplicationID:    application.ID,
-		ApplicationName:  application.Name,
-		ApplicationDisplayNames: coreservice.BuildApplicationDisplayNameMap(application.Metadata),
-		ExternalIDPs:     publicProviders,
+		WebsiteURL:               organization.Metadata[coreservice.OrganizationMetadataWebsiteURL],
+		TermsOfServiceURL:        organization.Metadata[coreservice.OrganizationMetadataTermsOfServiceURL],
+		PrivacyPolicyURL:         organization.Metadata[coreservice.OrganizationMetadataPrivacyPolicyURL],
+		ProjectID:                project.ID,
+		ProjectName:              project.Name,
+		ApplicationID:            application.ID,
+		ApplicationName:          application.Name,
+		ApplicationDisplayNames:  coreservice.BuildApplicationDisplayNameMap(application.Metadata),
+		ExternalIDPs:             publicProviders,
 	}, nil
 }
 
@@ -377,6 +378,9 @@ func (s *Service) CreateOrganization(ctx context.Context, org model.Organization
 		if err := tx.Create(&org).Error; err != nil {
 			return err
 		}
+		if err := s.createOrganizationSigningKey(tx, org.ID); err != nil {
+			return err
+		}
 		organizationOwnerRole := model.Role{
 			OrganizationID: s.cfg.InternalOrganizationID,
 			Name:           ownerRoleName,
@@ -417,12 +421,12 @@ func (s *Service) CreateOrganization(ctx context.Context, org model.Organization
 		return tx.Model(&org).
 			Select("SupportEmail", "LogoURL", "Domains", "LoginPolicy", "PasswordPolicy", "MFAPolicy").
 			Updates(model.Organization{
-				SupportEmail:     settings.SupportEmail,
-				LogoURL:          settings.LogoURL,
-				Domains:          settings.Domains,
-				LoginPolicy:      settings.LoginPolicy,
-				PasswordPolicy:   settings.PasswordPolicy,
-				MFAPolicy:        settings.MFAPolicy,
+				SupportEmail:   settings.SupportEmail,
+				LogoURL:        settings.LogoURL,
+				Domains:        settings.Domains,
+				LoginPolicy:    settings.LoginPolicy,
+				PasswordPolicy: settings.PasswordPolicy,
+				MFAPolicy:      settings.MFAPolicy,
 			}).Error
 	}); err != nil {
 		return nil, err
@@ -599,6 +603,9 @@ func (s *Service) DeleteOrganization(ctx context.Context, organizationID string)
 			if err := tx.Where("application_id IN ?", appIDs).Delete(&model.Token{}).Error; err != nil {
 				return err
 			}
+			if err := tx.Where("application_id IN ?", appIDs).Delete(&model.ApplicationKey{}).Error; err != nil {
+				return err
+			}
 		}
 		if len(userIDs) > 0 {
 			if err := tx.Where("user_id IN ?", userIDs).Delete(&model.AuthorizationCode{}).Error; err != nil {
@@ -652,6 +659,9 @@ func (s *Service) DeleteOrganization(ctx context.Context, organizationID string)
 			return err
 		}
 		if err := tx.Where("organization_id = ?", organization.ID).Delete(&model.ExternalIDP{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("organization_id = ?", organization.ID).Delete(&model.OrganizationSigningKey{}).Error; err != nil {
 			return err
 		}
 		organizationRoleNames := []string{
@@ -726,12 +736,12 @@ func (s *Service) attachOrganizationSettings(ctx context.Context, organizations 
 			continue
 		}
 		settings := coreservice.NormalizeOrganizationConsoleSettings(&model.OrganizationSetting{
-			SupportEmail:     current.SupportEmail,
-			LogoURL:          current.LogoURL,
-			Domains:          current.Domains,
-			LoginPolicy:      current.LoginPolicy,
-			PasswordPolicy:   current.PasswordPolicy,
-			MFAPolicy:        current.MFAPolicy,
+			SupportEmail:   current.SupportEmail,
+			LogoURL:        current.LogoURL,
+			Domains:        current.Domains,
+			LoginPolicy:    current.LoginPolicy,
+			PasswordPolicy: current.PasswordPolicy,
+			MFAPolicy:      current.MFAPolicy,
 		})
 		organizations[index].ConsoleSettings = &settings
 	}
@@ -1027,15 +1037,19 @@ func (s *Service) CreateApplication(ctx context.Context, app model.Application) 
 		app.Status = "active"
 	}
 	generatedPrivateKey := ""
-	if app.ClientAuthenticationType == "private_key_jwt" {
-		publicKey, privateKey, err := util.GenerateEd25519KeyMaterial()
-		if err != nil {
-			return nil, err
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if app.ClientAuthenticationType == "private_key_jwt" {
+			publicKey, privateKey, err := s.rotateApplicationClientKey(tx, app.ID)
+			if err != nil {
+				return err
+			}
+			app.PublicKey = publicKey
+			generatedPrivateKey = privateKey
+		} else {
+			app.PublicKey = ""
 		}
-		app.PublicKey = publicKey
-		generatedPrivateKey = privateKey
-	}
-	if err := s.db.WithContext(ctx).Create(&app).Error; err != nil {
+		return tx.Create(&app).Error
+	}); err != nil {
 		return nil, err
 	}
 	_ = s.audit.Record(ctx, coreservice.AuditEvent{
@@ -1103,16 +1117,6 @@ func (s *Service) UpdateApplication(ctx context.Context, app model.Application) 
 	updateModel.ClientAuthenticationType = candidate.ClientAuthenticationType
 	updateModel.TokenType = candidate.TokenType
 	updateModel.Roles = candidate.Roles
-	if candidate.ClientAuthenticationType == "private_key_jwt" && strings.TrimSpace(existing.PublicKey) == "" {
-		publicKey, privateKey, err := util.GenerateEd25519KeyMaterial()
-		if err != nil {
-			return nil, err
-		}
-		updateModel.PublicKey = publicKey
-		generatedPrivateKey = privateKey
-	} else if candidate.ClientAuthenticationType != "private_key_jwt" {
-		updateModel.PublicKey = ""
-	}
 	selectedFields := []string{
 		"Name",
 		"Metadata",
@@ -1130,10 +1134,25 @@ func (s *Service) UpdateApplication(ctx context.Context, app model.Application) 
 	if candidate.ClientAuthenticationType == "private_key_jwt" || strings.TrimSpace(existing.PublicKey) != "" {
 		selectedFields = append(selectedFields, "PublicKey")
 	}
-	if err := s.db.WithContext(ctx).Model(existing).Select(selectedFields).Updates(updateModel).Error; err != nil {
-		return nil, err
-	}
-	if err := s.db.WithContext(ctx).First(existing, "id = ?", app.ID).Error; err != nil {
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if candidate.ClientAuthenticationType == "private_key_jwt" && strings.TrimSpace(existing.PublicKey) == "" {
+			publicKey, privateKey, err := s.rotateApplicationClientKey(tx, existing.ID)
+			if err != nil {
+				return err
+			}
+			updateModel.PublicKey = publicKey
+			generatedPrivateKey = privateKey
+		} else if candidate.ClientAuthenticationType != "private_key_jwt" {
+			if err := s.deactivateApplicationClientKeys(tx, existing.ID); err != nil {
+				return err
+			}
+			updateModel.PublicKey = ""
+		}
+		if err := tx.Model(existing).Select(selectedFields).Updates(updateModel).Error; err != nil {
+			return err
+		}
+		return tx.First(existing, "id = ?", app.ID).Error
+	}); err != nil {
 		return nil, err
 	}
 	return &coreservice.ApplicationMutationResult{
@@ -1196,6 +1215,9 @@ func (s *Service) DeleteApplication(ctx context.Context, applicationID string) e
 		if err := tx.Where("application_id = ?", app.ID).Delete(&model.Session{}).Error; err != nil {
 			return err
 		}
+		if err := tx.Where("application_id = ?", app.ID).Delete(&model.ApplicationKey{}).Error; err != nil {
+			return err
+		}
 		if err := tx.Delete(app).Error; err != nil {
 			return err
 		}
@@ -1222,16 +1244,20 @@ func (s *Service) ResetApplicationKey(ctx context.Context, applicationID string)
 	if app.ClientAuthenticationType != "private_key_jwt" {
 		return nil, errors.New("application is not configured for private_key_jwt")
 	}
-	publicKey, privateKey, err := util.GenerateEd25519KeyMaterial()
-	if err != nil {
-		return nil, err
-	}
-	if err := s.db.WithContext(ctx).Model(&app).Updates(map[string]any{
-		"public_key": publicKey,
-	}).Error; err != nil {
-		return nil, err
-	}
-	if err := s.db.WithContext(ctx).First(&app, "id = ?", applicationID).Error; err != nil {
+	privateKey := ""
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		publicKey, generatedPrivateKey, err := s.rotateApplicationClientKey(tx, app.ID)
+		if err != nil {
+			return err
+		}
+		privateKey = generatedPrivateKey
+		if err := tx.Model(&app).Updates(map[string]any{
+			"public_key": publicKey,
+		}).Error; err != nil {
+			return err
+		}
+		return tx.First(&app, "id = ?", applicationID).Error
+	}); err != nil {
 		return nil, err
 	}
 	_ = s.audit.Record(ctx, coreservice.AuditEvent{
@@ -1247,6 +1273,34 @@ func (s *Service) ResetApplicationKey(ctx context.Context, applicationID string)
 		Application:         app,
 		GeneratedPrivateKey: privateKey,
 	}, nil
+}
+
+func (s *Service) createOrganizationSigningKey(tx *gorm.DB, organizationID string) error {
+	record, err := authservice.NewOrganizationSigningKey(organizationID)
+	if err != nil {
+		return err
+	}
+	return tx.Create(record).Error
+}
+
+func (s *Service) deactivateApplicationClientKeys(tx *gorm.DB, applicationID string) error {
+	return tx.Model(&model.ApplicationKey{}).
+		Where("application_id = ? AND status = ?", applicationID, "active").
+		Update("status", "inactive").Error
+}
+
+func (s *Service) rotateApplicationClientKey(tx *gorm.DB, applicationID string) (string, string, error) {
+	if err := s.deactivateApplicationClientKeys(tx, applicationID); err != nil {
+		return "", "", err
+	}
+	record, generatedPrivateKey, err := authservice.NewApplicationClientKey(applicationID)
+	if err != nil {
+		return "", "", err
+	}
+	if err := tx.Create(record).Error; err != nil {
+		return "", "", err
+	}
+	return record.PublicKey, generatedPrivateKey, nil
 }
 
 func applyApplicationDefaults(app *model.Application) {

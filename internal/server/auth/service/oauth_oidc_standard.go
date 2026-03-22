@@ -264,7 +264,7 @@ func (s *OIDCService) BuildNamedClientAssertion(ctx context.Context, application
 	if app.ClientAuthenticationType != "private_key_jwt" {
 		return "", "", errors.New("internal client is not configured for private_key_jwt")
 	}
-	keys, err := s.keys.LoadInternalClientSigningKey(app.ID, app.PublicKey)
+	keys, err := s.keys.LoadClientSigningKey(ctx, app.ID)
 	if err != nil {
 		return "", "", err
 	}
@@ -304,13 +304,13 @@ func (s *OIDCService) validateClientAuthentication(ctx context.Context, audience
 		}
 		return app, nil
 	case "private_key_jwt":
-		return s.validatePrivateKeyJWTAssertion(app, clientAssertionType, clientAssertion, audience)
+		return s.validatePrivateKeyJWTAssertion(ctx, app, clientAssertionType, clientAssertion, audience)
 	default:
 		return app, errors.New("unsupported client authentication method")
 	}
 }
 
-func (s *OIDCService) validatePrivateKeyJWTAssertion(app model.Application, assertionType, assertion, audience string) (model.Application, error) {
+func (s *OIDCService) validatePrivateKeyJWTAssertion(ctx context.Context, app model.Application, assertionType, assertion, audience string) (model.Application, error) {
 	if assertionType != "urn:ietf:params:oauth:client-assertion-type:jwt-bearer" {
 		return app, errors.New("invalid client_assertion_type")
 	}
@@ -320,7 +320,7 @@ func (s *OIDCService) validatePrivateKeyJWTAssertion(app model.Application, asse
 	if strings.TrimSpace(app.PublicKey) == "" {
 		return app, errors.New("client public key is not configured")
 	}
-	keys, err := s.keys.LoadClientVerificationKey(app.PublicKey)
+	keys, err := s.keys.LoadClientVerificationKey(ctx, app.ID, app.PublicKey)
 	if err != nil {
 		return app, err
 	}
