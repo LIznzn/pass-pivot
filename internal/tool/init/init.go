@@ -436,7 +436,7 @@ func seed(ctx context.Context, database *gorm.DB, cfg config.Config) error {
 				if err != nil {
 					return err
 				}
-				applications[i].PublicKey = clientKey.PublicKey
+				applications[i].PublicKey = clientKey.PublicKeyBase64
 				if err := tx.Create(clientKey).Error; err != nil {
 					return err
 				}

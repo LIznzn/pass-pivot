@@ -281,7 +281,7 @@ func (s *OIDCService) BuildNamedClientAssertion(ctx context.Context, application
 		IssuedAt:  jwt.NewNumericDate(now),
 		ID:        jti,
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	token.Header["kid"] = keys.KeyID
 	assertion, err := token.SignedString(keys.SigningKey)
 	if err != nil {
@@ -326,7 +326,7 @@ func (s *OIDCService) validatePrivateKeyJWTAssertion(ctx context.Context, app mo
 	}
 	claims := &jwt.RegisteredClaims{}
 	token, err := jwt.ParseWithClaims(assertion, claims, func(token *jwt.Token) (any, error) {
-		if token.Method.Alg() != jwt.SigningMethodEdDSA.Alg() {
+		if token.Method.Alg() != jwt.SigningMethodRS256.Alg() {
 			return nil, errors.New("unsupported client assertion alg")
 		}
 		return keys.PublicKey, nil

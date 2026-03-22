@@ -1300,7 +1300,7 @@ func (s *Service) rotateApplicationClientKey(tx *gorm.DB, applicationID string) 
 	if err := tx.Create(record).Error; err != nil {
 		return "", "", err
 	}
-	return record.PublicKey, generatedPrivateKey, nil
+	return record.PublicKeyBase64, generatedPrivateKey, nil
 }
 
 func applyApplicationDefaults(app *model.Application) {

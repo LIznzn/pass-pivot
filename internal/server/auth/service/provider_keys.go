@@ -2,20 +2,18 @@ package service
 
 import (
 	"context"
-	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
-	"encoding/pem"
 	"errors"
 
 	"github.com/go-jose/go-jose/v4"
 	"gorm.io/gorm"
 
 	"pass-pivot/internal/model"
-	"pass-pivot/util"
 )
 
 type ProviderKeys struct {
@@ -25,8 +23,8 @@ type ProviderKeys struct {
 }
 
 type ClientAssertionKeys struct {
-	SigningKey ed25519.PrivateKey
-	PublicKey  ed25519.PublicKey
+	SigningKey *rsa.PrivateKey
+	PublicKey  *rsa.PublicKey
 	KeyID      string
 }
 
@@ -34,7 +32,7 @@ func (p *ClientAssertionKeys) PublicJWK() jose.JSONWebKey {
 	return jose.JSONWebKey{
 		Key:       p.PublicKey,
 		KeyID:     p.KeyID,
-		Algorithm: string(jose.EdDSA),
+		Algorithm: string(jose.RS256),
 		Use:       "sig",
 	}
 }
@@ -67,20 +65,20 @@ func NewOrganizationSigningKey(organizationID string) (*model.OrganizationSignin
 	if err != nil {
 		return nil, err
 	}
-	privateKeyPEM, err := EncodeRSAPrivateKeyPEM(keys.SigningKey)
+	privateKeyBase64, err := EncodeRSAPrivateKeyBase64(keys.SigningKey)
 	if err != nil {
 		return nil, err
 	}
-	publicKeyPEM, err := EncodeRSAPublicKeyPEM(keys.PublicKey)
+	publicKeyBase64, err := EncodeRSAPublicKeyBase64(keys.PublicKey)
 	if err != nil {
 		return nil, err
 	}
 	return &model.OrganizationSigningKey{
-		OrganizationID: organizationID,
-		PrivateKeyPEM:  privateKeyPEM,
-		PublicKeyPEM:   publicKeyPEM,
-		KeyID:          keys.KeyID,
-		Status:         "active",
+		OrganizationID:   organizationID,
+		PrivateKeyBase64: privateKeyBase64,
+		PublicKeyBase64:  publicKeyBase64,
+		KeyID:            keys.KeyID,
+		Status:           "active",
 	}, nil
 }
 
@@ -88,21 +86,25 @@ func NewApplicationClientKey(applicationID string) (*model.ApplicationKey, strin
 	if applicationID == "" {
 		return nil, "", errors.New("application id is required")
 	}
-	publicKey, privateSeed, err := util.GenerateEd25519KeyMaterial()
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return nil, "", err
 	}
-	parsedPublicKey, err := util.ParseEd25519PublicKey(publicKey)
+	privateKeyBase64, err := EncodeRSAPrivateKeyBase64(privateKey)
+	if err != nil {
+		return nil, "", err
+	}
+	publicKeyBase64, err := EncodeRSAPublicKeyBase64(&privateKey.PublicKey)
 	if err != nil {
 		return nil, "", err
 	}
 	return &model.ApplicationKey{
-		ApplicationID: applicationID,
-		PublicKey:     publicKey,
-		PrivateSeed:   privateSeed,
-		KeyID:         keyIDForEd25519PublicKey(parsedPublicKey),
-		Status:        "active",
-	}, privateSeed, nil
+		ApplicationID:    applicationID,
+		PublicKeyBase64:  publicKeyBase64,
+		PrivateKeyBase64: privateKeyBase64,
+		KeyID:            keyIDForRSAPublicKey(&privateKey.PublicKey),
+		Status:           "active",
+	}, privateKeyBase64, nil
 }
 
 func (s *ProviderKeyStore) ProviderKeysForOrganization(ctx context.Context, organizationID string) (*ProviderKeys, error) {
@@ -171,15 +173,7 @@ func (s *ProviderKeyStore) LoadClientVerificationKey(ctx context.Context, applic
 	return clientAssertionVerificationKeysFromRecord(record)
 }
 
-func GenerateClientKeyMaterial() (publicKey, privateKey string, err error) {
-	return util.GenerateEd25519KeyMaterial()
-}
-
-func GenerateEd25519PrivateSeed() (string, error) {
-	return util.GenerateEd25519PrivateSeed()
-}
-
-func EncodeRSAPrivateKeyPEM(privateKey *rsa.PrivateKey) (string, error) {
+func EncodeRSAPrivateKeyBase64(privateKey *rsa.PrivateKey) (string, error) {
 	if privateKey == nil {
 		return "", errors.New("private key is required")
 	}
@@ -187,29 +181,26 @@ func EncodeRSAPrivateKeyPEM(privateKey *rsa.PrivateKey) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: raw})), nil
+	return base64.StdEncoding.EncodeToString(raw), nil
 }
 
-func ParseRSAPrivateKeyPEM(value string) (*rsa.PrivateKey, error) {
-	block, _ := pem.Decode([]byte(value))
-	if block == nil {
-		return nil, errors.New("invalid rsa private key pem")
+func ParseRSAPrivateKeyBase64(value string) (*rsa.PrivateKey, error) {
+	raw, err := base64.StdEncoding.DecodeString(value)
+	if err != nil {
+		return nil, errors.New("invalid rsa private key base64")
 	}
-	if key, err := x509.ParsePKCS8PrivateKey(block.Bytes); err == nil {
-		rsaKey, ok := key.(*rsa.PrivateKey)
-		if !ok {
-			return nil, errors.New("invalid rsa private key type")
-		}
-		return rsaKey, nil
-	}
-	key, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	key, err := x509.ParsePKCS8PrivateKey(raw)
 	if err != nil {
 		return nil, errors.New("invalid rsa private key")
 	}
-	return key, nil
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	if !ok {
+		return nil, errors.New("invalid rsa private key type")
+	}
+	return rsaKey, nil
 }
 
-func EncodeRSAPublicKeyPEM(publicKey *rsa.PublicKey) (string, error) {
+func EncodeRSAPublicKeyBase64(publicKey *rsa.PublicKey) (string, error) {
 	if publicKey == nil {
 		return "", errors.New("public key is required")
 	}
@@ -217,15 +208,15 @@ func EncodeRSAPublicKeyPEM(publicKey *rsa.PublicKey) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: raw})), nil
+	return base64.StdEncoding.EncodeToString(raw), nil
 }
 
-func ParseRSAPublicKeyPEM(value string) (*rsa.PublicKey, error) {
-	block, _ := pem.Decode([]byte(value))
-	if block == nil {
-		return nil, errors.New("invalid rsa public key pem")
+func ParseRSAPublicKeyBase64(value string) (*rsa.PublicKey, error) {
+	raw, err := base64.StdEncoding.DecodeString(value)
+	if err != nil {
+		return nil, errors.New("invalid rsa public key base64")
 	}
-	key, err := x509.ParsePKIXPublicKey(block.Bytes)
+	key, err := x509.ParsePKIXPublicKey(raw)
 	if err != nil {
 		return nil, errors.New("invalid rsa public key")
 	}
@@ -266,11 +257,11 @@ func providerKeysFromRecord(record *model.OrganizationSigningKey) (*ProviderKeys
 	if record == nil {
 		return nil, errors.New("organization signing key is required")
 	}
-	privateKey, err := ParseRSAPrivateKeyPEM(record.PrivateKeyPEM)
+	privateKey, err := ParseRSAPrivateKeyBase64(record.PrivateKeyBase64)
 	if err != nil {
 		return nil, err
 	}
-	publicKey, err := ParseRSAPublicKeyPEM(record.PublicKeyPEM)
+	publicKey, err := ParseRSAPublicKeyBase64(record.PublicKeyBase64)
 	if err != nil {
 		return nil, err
 	}
@@ -285,13 +276,19 @@ func clientAssertionSigningKeysFromRecord(record *model.ApplicationKey) (*Client
 	if record == nil {
 		return nil, errors.New("application key is required")
 	}
-	privateKey, err := util.NewEd25519PrivateKeyFromSeed(record.PrivateSeed)
+	privateKey, err := ParseRSAPrivateKeyBase64(record.PrivateKeyBase64)
 	if err != nil {
 		return nil, err
 	}
-	publicKey := privateKey.Public().(ed25519.PublicKey)
-	if record.PublicKey != "" && record.PublicKey != util.EncodeEd25519PublicKey(publicKey) {
-		return nil, errors.New("application client public key does not match derived key")
+	publicKey := &privateKey.PublicKey
+	if record.PublicKeyBase64 != "" {
+		encodedPublicKey, err := EncodeRSAPublicKeyBase64(publicKey)
+		if err != nil {
+			return nil, err
+		}
+		if record.PublicKeyBase64 != encodedPublicKey {
+			return nil, errors.New("application client public key does not match derived key")
+		}
 	}
 	return &ClientAssertionKeys{
 		SigningKey: privateKey,
@@ -304,17 +301,17 @@ func clientAssertionVerificationKeysFromRecord(record *model.ApplicationKey) (*C
 	if record == nil {
 		return nil, errors.New("application key is required")
 	}
-	return loadClientVerificationKeyFromPublicKey(record.PublicKey)
+	return loadClientVerificationKeyFromPublicKey(record.PublicKeyBase64)
 }
 
 func loadClientVerificationKeyFromPublicKey(publicKey string) (*ClientAssertionKeys, error) {
-	key, err := util.ParseEd25519PublicKey(publicKey)
+	key, err := ParseRSAPublicKeyBase64(publicKey)
 	if err != nil {
 		return nil, err
 	}
 	return &ClientAssertionKeys{
 		PublicKey: key,
-		KeyID:     keyIDForEd25519PublicKey(key),
+		KeyID:     keyIDForRSAPublicKey(key),
 	}, nil
 }
 
@@ -327,14 +324,6 @@ func keyIDForRSAPublicKey(publicKey *rsa.PublicKey) string {
 		return ""
 	}
 	sum := sha256.Sum256(raw)
-	return hex.EncodeToString(sum[:8])
-}
-
-func keyIDForEd25519PublicKey(publicKey ed25519.PublicKey) string {
-	if len(publicKey) == 0 {
-		return ""
-	}
-	sum := sha256.Sum256(publicKey)
 	return hex.EncodeToString(sum[:8])
 }
 

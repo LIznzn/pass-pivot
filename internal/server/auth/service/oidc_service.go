@@ -25,6 +25,34 @@ type OIDCService struct {
 	keys  *ProviderKeyStore
 }
 
+type OIDCMetadata struct {
+	Issuer                                             string   `json:"issuer"`
+	JWKSURI                                            string   `json:"jwks_uri"`
+	AuthorizationEndpoint                              string   `json:"authorization_endpoint"`
+	TokenEndpoint                                      string   `json:"token_endpoint"`
+	UserInfoEndpoint                                   string   `json:"userinfo_endpoint"`
+	RevocationEndpoint                                 string   `json:"revocation_endpoint,omitempty"`
+	IntrospectionEndpoint                              string   `json:"introspection_endpoint,omitempty"`
+	EndSessionEndpoint                                 string   `json:"end_session_endpoint,omitempty"`
+	ScopesSupported                                    []string `json:"scopes_supported"`
+	ResponseTypesSupported                             []string `json:"response_types_supported"`
+	ResponseModesSupported                             []string `json:"response_modes_supported,omitempty"`
+	GrantTypesSupported                                []string `json:"grant_types_supported,omitempty"`
+	SubjectTypesSupported                              []string `json:"subject_types_supported"`
+	IDTokenSigningAlgValuesSupported                   []string `json:"id_token_signing_alg_values_supported"`
+	TokenEndpointAuthMethodsSupported                  []string `json:"token_endpoint_auth_methods_supported,omitempty"`
+	TokenEndpointAuthSigningAlgValuesSupported         []string `json:"token_endpoint_auth_signing_alg_values_supported,omitempty"`
+	ClaimsSupported                                    []string `json:"claims_supported,omitempty"`
+	ClaimsParameterSupported                           bool     `json:"claims_parameter_supported"`
+	RequestParameterSupported                          bool     `json:"request_parameter_supported"`
+	RequestURIParameterSupported                       bool     `json:"request_uri_parameter_supported"`
+	CodeChallengeMethodsSupported                      []string `json:"code_challenge_methods_supported,omitempty"`
+	RevocationEndpointAuthMethodsSupported             []string `json:"revocation_endpoint_auth_methods_supported,omitempty"`
+	RevocationEndpointAuthSigningAlgValuesSupported    []string `json:"revocation_endpoint_auth_signing_alg_values_supported,omitempty"`
+	IntrospectionEndpointAuthMethodsSupported          []string `json:"introspection_endpoint_auth_methods_supported,omitempty"`
+	IntrospectionEndpointAuthSigningAlgValuesSupported []string `json:"introspection_endpoint_auth_signing_alg_values_supported,omitempty"`
+}
+
 type oidcAuthService interface {
 	IssueClientCredentialTokenForApplication(ctx context.Context, app model.Application, scope string) ([]model.Token, error)
 	IssuePasswordGrantTokenForApplication(ctx context.Context, app model.Application, identifier, password, scope, ipAddress, userAgent string) ([]model.Token, *model.User, *model.Session, error)
@@ -139,61 +167,17 @@ type AuthorizeInput struct {
 	CodeChallengeMethod string
 }
 
-func (s *OIDCService) Metadata(ctx context.Context, clientID, applicationID string) (map[string]any, error) {
+func (s *OIDCService) Metadata(ctx context.Context, clientID, applicationID string) (OIDCMetadata, error) {
 	settings, err := s.resolveSettings(ctx, clientID, applicationID)
 	if err != nil {
-		return nil, err
+		return OIDCMetadata{}, err
 	}
-	return map[string]any{
-		"issuer":                                settings.TokenIssuer,
-		"authorization_endpoint":                settings.TokenIssuer + "/auth/authorize",
-		"token_endpoint":                        settings.TokenIssuer + "/auth/token",
-		"userinfo_endpoint":                     settings.TokenIssuer + "/auth/userinfo",
-		"jwks_uri":                              settings.TokenIssuer + "/auth/keys",
-		"revocation_endpoint":                   settings.TokenIssuer + "/auth/revoke",
-		"introspection_endpoint":                settings.TokenIssuer + "/auth/introspect",
-		"response_types_supported":              []string{"code"},
-		"grant_types_supported":                 []string{"authorization_code", "client_credentials", "password", "refresh_token"},
-		"scopes_supported":                      []string{"openid", "profile", "email", "phone"},
-		"token_endpoint_auth_methods_supported": []string{"client_secret_basic", "client_secret_post", "private_key_jwt", "none"},
-		"token_endpoint_auth_signing_alg_values_supported":         []string{"EdDSA"},
-		"revocation_endpoint_auth_methods_supported":               []string{"client_secret_basic", "client_secret_post", "private_key_jwt", "none"},
-		"revocation_endpoint_auth_signing_alg_values_supported":    []string{"EdDSA"},
-		"introspection_endpoint_auth_methods_supported":            []string{"client_secret_basic", "client_secret_post", "private_key_jwt", "none"},
-		"introspection_endpoint_auth_signing_alg_values_supported": []string{"EdDSA"},
-		"response_modes_supported":                                 []string{"query"},
-		"code_challenge_methods_supported":                         []string{"S256"},
-		"id_token_signing_alg_values_supported":                    []string{"RS256"},
-		"subject_types_supported":                                  []string{"public"},
-		"claims_supported":                                         []string{"sub", "iss", "name", "email", "phone_number", "preferred_username"},
-	}, nil
+	return buildOIDCMetadata(settings.TokenIssuer), nil
 }
 
-func (s *OIDCService) MetadataByIssuer(ctx context.Context) (map[string]any, error) {
+func (s *OIDCService) MetadataByIssuer(ctx context.Context) (OIDCMetadata, error) {
 	settings := coreservice.ApplicationSettings{TokenIssuer: s.cfg.AuthURL}
-	return map[string]any{
-		"issuer":                                settings.TokenIssuer,
-		"authorization_endpoint":                settings.TokenIssuer + "/auth/authorize",
-		"token_endpoint":                        settings.TokenIssuer + "/auth/token",
-		"userinfo_endpoint":                     settings.TokenIssuer + "/auth/userinfo",
-		"jwks_uri":                              settings.TokenIssuer + "/auth/keys",
-		"revocation_endpoint":                   settings.TokenIssuer + "/auth/revoke",
-		"introspection_endpoint":                settings.TokenIssuer + "/auth/introspect",
-		"response_types_supported":              []string{"code"},
-		"grant_types_supported":                 []string{"authorization_code", "client_credentials", "password", "refresh_token"},
-		"scopes_supported":                      []string{"openid", "profile", "email", "phone"},
-		"token_endpoint_auth_methods_supported": []string{"client_secret_basic", "client_secret_post", "private_key_jwt", "none"},
-		"token_endpoint_auth_signing_alg_values_supported":         []string{"EdDSA"},
-		"revocation_endpoint_auth_methods_supported":               []string{"client_secret_basic", "client_secret_post", "private_key_jwt", "none"},
-		"revocation_endpoint_auth_signing_alg_values_supported":    []string{"EdDSA"},
-		"introspection_endpoint_auth_methods_supported":            []string{"client_secret_basic", "client_secret_post", "private_key_jwt", "none"},
-		"introspection_endpoint_auth_signing_alg_values_supported": []string{"EdDSA"},
-		"response_modes_supported":                                 []string{"query"},
-		"code_challenge_methods_supported":                         []string{"S256"},
-		"id_token_signing_alg_values_supported":                    []string{"RS256"},
-		"subject_types_supported":                                  []string{"public"},
-		"claims_supported":                                         []string{"sub", "iss", "name", "email", "phone_number", "preferred_username"},
-	}, nil
+	return buildOIDCMetadata(settings.TokenIssuer), nil
 }
 
 func (s *OIDCService) JWKS(ctx context.Context, clientID, applicationID string) (map[string]any, error) {
@@ -400,4 +384,34 @@ func (s *OIDCService) resolveSettings(ctx context.Context, clientID, application
 		return settings, err
 	}
 	return coreservice.ResolveApplicationSettingsByID(ctx, s.db, s.cfg, applicationID)
+}
+
+func buildOIDCMetadata(issuer string) OIDCMetadata {
+	return OIDCMetadata{
+		Issuer:                                             issuer,
+		AuthorizationEndpoint:                              issuer + "/auth/authorize",
+		TokenEndpoint:                                      issuer + "/auth/token",
+		UserInfoEndpoint:                                   issuer + "/auth/userinfo",
+		JWKSURI:                                            issuer + "/auth/keys",
+		EndSessionEndpoint:                                 issuer + "/auth/end_session",
+		ScopesSupported:                                    []string{"openid", "profile", "email", "phone"},
+		ResponseTypesSupported:                             []string{"code"},
+		ResponseModesSupported:                             []string{"query"},
+		GrantTypesSupported:                                []string{"authorization_code", "client_credentials", "password", "refresh_token"},
+		SubjectTypesSupported:                              []string{"public"},
+		IDTokenSigningAlgValuesSupported:                   []string{"RS256"},
+		TokenEndpointAuthMethodsSupported:                  []string{"client_secret_basic", "client_secret_post", "private_key_jwt", "none"},
+		TokenEndpointAuthSigningAlgValuesSupported:         []string{"RS256"},
+		ClaimsSupported:                                    []string{"sub", "iss", "name", "email", "phone_number", "preferred_username"},
+		ClaimsParameterSupported:                           false,
+		RequestParameterSupported:                          false,
+		RequestURIParameterSupported:                       false,
+		CodeChallengeMethodsSupported:                      []string{"S256"},
+		RevocationEndpoint:                                 issuer + "/auth/revoke",
+		RevocationEndpointAuthMethodsSupported:             []string{"client_secret_basic", "client_secret_post", "private_key_jwt", "none"},
+		RevocationEndpointAuthSigningAlgValuesSupported:    []string{"RS256"},
+		IntrospectionEndpoint:                              issuer + "/auth/introspect",
+		IntrospectionEndpointAuthMethodsSupported:          []string{"client_secret_basic", "client_secret_post", "private_key_jwt", "none"},
+		IntrospectionEndpointAuthSigningAlgValuesSupported: []string{"RS256"},
+	}
 }

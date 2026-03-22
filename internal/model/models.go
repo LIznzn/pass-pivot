@@ -149,7 +149,7 @@ type Application struct {
 	TokenType                []string          `gorm:"serializer:json;type:json" json:"tokenType"`
 	Roles                    []string          `gorm:"serializer:json;type:json" json:"roles"`
 	ClientSecretHash         string            `gorm:"size:255" json:"-"`
-	PublicKey                string            `gorm:"size:64" json:"publicKey"`
+	PublicKey                string            `gorm:"type:text" json:"publicKey"`
 	AccessTokenTTLMinutes    int               `json:"accessTokenTTLMinutes"`
 	RefreshTokenTTLHours     int               `json:"refreshTokenTTLHours"`
 }
@@ -160,11 +160,11 @@ func (Application) TableName() string {
 
 type ApplicationKey struct {
 	BaseModel
-	ApplicationID string `gorm:"index;size:36" json:"applicationId"`
-	PublicKey     string `gorm:"size:64" json:"publicKey"`
-	PrivateSeed   string `gorm:"size:64" json:"-"`
-	KeyID         string `gorm:"size:16;index" json:"keyId"`
-	Status        string `gorm:"size:32;default:active;index" json:"status"`
+	ApplicationID    string `gorm:"index;size:36" json:"applicationId"`
+	PublicKeyBase64  string `gorm:"type:text" json:"publicKey"`
+	PrivateKeyBase64 string `gorm:"type:text" json:"-"`
+	KeyID            string `gorm:"size:16;index" json:"keyId"`
+	Status           string `gorm:"size:32;default:active;index" json:"status"`
 }
 
 func (ApplicationKey) TableName() string {
@@ -173,11 +173,11 @@ func (ApplicationKey) TableName() string {
 
 type OrganizationSigningKey struct {
 	BaseModel
-	OrganizationID string `gorm:"index;size:36" json:"organizationId"`
-	PrivateKeyPEM  string `gorm:"type:text" json:"-"`
-	PublicKeyPEM   string `gorm:"type:text" json:"publicKeyPem"`
-	KeyID          string `gorm:"size:16;index" json:"keyId"`
-	Status         string `gorm:"size:32;default:active;index" json:"status"`
+	OrganizationID   string `gorm:"index;size:36" json:"organizationId"`
+	PrivateKeyBase64 string `gorm:"type:text" json:"-"`
+	PublicKeyBase64  string `gorm:"type:text" json:"publicKeyBase64"`
+	KeyID            string `gorm:"size:16;index" json:"keyId"`
+	Status           string `gorm:"size:32;default:active;index" json:"status"`
 }
 
 func (OrganizationSigningKey) TableName() string {
