@@ -116,7 +116,7 @@ func (s *OIDCService) authorizeCaptchaPublicConfig(ctx context.Context, organiza
 		return nil, err
 	}
 	switch settings.Captcha.Provider {
-	case "", "disabled":
+	case "disabled":
 		return nil, nil
 	case "default":
 		return &AuthorizeCaptchaBootstrap{Provider: "default"}, nil

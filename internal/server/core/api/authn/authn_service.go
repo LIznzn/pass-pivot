@@ -287,7 +287,7 @@ func (s *AuthnService) LoginWithUserCredential(ctx context.Context, in sharedaut
 func (s *AuthnService) verifyLoginCaptcha(settings model.OrganizationCaptchaSettings, organizationID, providerName, token string) error {
 	settings = coreservice.NormalizeOrganizationConsoleSettings(&model.OrganizationSetting{Captcha: settings}).Captcha
 	switch settings.Provider {
-	case "", "disabled":
+	case "disabled":
 		return nil
 	case "default":
 		if strings.TrimSpace(providerName) != "default" {
@@ -302,8 +302,30 @@ func (s *AuthnService) verifyLoginCaptcha(settings model.OrganizationCaptchaSett
 			return errors.New("invalid captcha")
 		}
 		return nil
-	case "google", "cloudflare":
-		return errors.New("captcha provider is not yet supported on the authorize page")
+	case "google":
+		if strings.TrimSpace(providerName) != "google" {
+			return errors.New("captcha is required")
+		}
+		ok, err := captchaprovider.VerifyCaptchaByCaptchaType("Google reCAPTCHA", token, settings.ClientKey, settings.ClientSecret)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return errors.New("invalid captcha")
+		}
+		return nil
+	case "cloudflare":
+		if strings.TrimSpace(providerName) != "cloudflare" {
+			return errors.New("captcha is required")
+		}
+		ok, err := captchaprovider.VerifyCaptchaByCaptchaType("Cloudflare Turnstile", token, settings.ClientKey, settings.ClientSecret)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return errors.New("invalid captcha")
+		}
+		return nil
 	default:
 		return errors.New("invalid captcha provider")
 	}

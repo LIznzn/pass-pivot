@@ -1,7 +1,6 @@
 import { requestPost } from '../util/request'
 
 const authBaseUrl = import.meta.env.PPVT_CONSOLE_AUTH_BASE_URL ?? 'http://localhost:8091'
-const portalBaseUrl = import.meta.env.PPVT_CONSOLE_PORTAL_BASE_URL ?? 'http://localhost:8092'
 const consoleApplicationId = import.meta.env.PPVT_CONSOLE_APPLICATION_ID ?? ''
 
 const storageKeys = {
@@ -223,10 +222,8 @@ export async function startConsoleAuthorization(target?: string) {
 }
 
 export function startConsoleLogout() {
-  const url = new URL(`${portalBaseUrl}/portal/logout`)
-  url.searchParams.set('post_logout_redirect_uri', getCallbackUrl())
   clearConsoleAuthSession()
-  window.location.assign(url.toString())
+  window.location.assign('/console')
 }
 
 export async function finishConsoleAuthorization(code: string, state: string) {

@@ -66,6 +66,7 @@ func defaultOrganizationConsoleSettings() model.OrganizationSetting {
 
 func normalizeOrganizationConsoleSettings(input *model.OrganizationSetting) model.OrganizationSetting {
 	settings := defaultOrganizationConsoleSettings()
+	defaults := settings
 	if input != nil {
 		settings = *input
 		if settings.Domains == nil {
@@ -73,6 +74,9 @@ func normalizeOrganizationConsoleSettings(input *model.OrganizationSetting) mode
 		}
 		if settings.MFAPolicy.EmailChannel.Port == 0 {
 			settings.MFAPolicy.EmailChannel.Port = 587
+		}
+		if strings.TrimSpace(settings.Captcha.Provider) == "" {
+			settings.Captcha.Provider = defaults.Captcha.Provider
 		}
 	}
 	settings.Captcha = normalizeOrganizationCaptchaSettings(settings.Captcha)

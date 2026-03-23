@@ -14,6 +14,7 @@
           <form v-if="bootstrap.stage === 'login'" :action="bootstrap.loginAction" method="post" class="auth-form">
             <input type="hidden" name="interaction" value="login" />
             <input v-if="bootstrap.captcha?.provider" type="hidden" name="captcha_provider" :value="bootstrap.captcha.provider" />
+            <input v-if="bootstrap.captcha?.provider === 'cloudflare' || bootstrap.captcha?.provider === 'google'" type="hidden" name="captcha_token" :value="captchaToken" />
 
             <label class="auth-field">
               <span>{{ text.identifier }}</span>
@@ -53,6 +54,14 @@
                     @click="refreshCaptcha"
                   />
                 </div>
+              </div>
+            </label>
+
+            <label v-else-if="bootstrap.captcha?.provider === 'cloudflare' || bootstrap.captcha?.provider === 'google'" class="auth-field">
+              <span>{{ text.captcha }}</span>
+              <div class="auth-turnstile-shell">
+                <div v-if="bootstrap.captcha?.provider === 'cloudflare'" ref="turnstileContainer" class="auth-turnstile-widget"></div>
+                <div v-else ref="recaptchaContainer" class="auth-turnstile-widget"></div>
               </div>
             </label>
 
@@ -216,7 +225,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { normalizeRequestOptions, serializeCredential } from '@shared/api/webauthn'
 import ToastHost from '@shared/components/ToastHost.vue'
 import { useToast } from '@shared/composables/toast'
@@ -640,6 +649,13 @@ const locale = ref<LocaleKey>(resolveInitialLocale())
 const challengeFeedback = ref('')
 const captchaImageDataUrl = ref(bootstrap.captcha?.imageDataUrl || '')
 const captchaChallengeToken = ref(bootstrap.captcha?.challengeToken || '')
+const captchaToken = ref('')
+const turnstileContainer = ref<HTMLDivElement | null>(null)
+const recaptchaContainer = ref<HTMLDivElement | null>(null)
+const turnstileWidgetID = ref<string | null>(null)
+const recaptchaWidgetID = ref<number | null>(null)
+let turnstileScriptPromise: Promise<void> | null = null
+let recaptchaScriptPromise: Promise<void> | null = null
 const supportsWebAuthnLogin = Boolean(bootstrap.api.webauthnLoginBegin && bootstrap.api.webauthnLoginEnd)
 const supportsSessionU2F = Boolean(bootstrap.api.sessionU2fBegin && bootstrap.api.sessionU2fFinish)
 const supportsEmailChallenge = Boolean(bootstrap.api.mfaChallenge)
@@ -715,6 +731,7 @@ watch(
   (value) => {
     captchaImageDataUrl.value = value?.imageDataUrl || ''
     captchaChallengeToken.value = value?.challengeToken || ''
+    captchaToken.value = ''
   },
   { immediate: true }
 )
@@ -845,11 +862,208 @@ async function refreshCaptcha() {
   }
 }
 
+function hasTurnstileAPI(): boolean {
+  return typeof window !== 'undefined' &&
+    typeof window.turnstile?.render === 'function' &&
+    typeof window.turnstile?.reset === 'function'
+}
+
+function hasRecaptchaAPI(): boolean {
+  return typeof window !== 'undefined' &&
+    typeof window.grecaptcha?.render === 'function' &&
+    typeof window.grecaptcha?.reset === 'function'
+}
+
+function loadTurnstileScript() {
+  if (hasTurnstileAPI()) {
+    return Promise.resolve()
+  }
+  if (turnstileScriptPromise) {
+    return turnstileScriptPromise
+  }
+  turnstileScriptPromise = new Promise((resolve, reject) => {
+    const existingScript = document.querySelector<HTMLScriptElement>('script[data-ppvt-turnstile]')
+    if (existingScript) {
+      existingScript.addEventListener('load', () => resolve(), { once: true })
+      existingScript.addEventListener('error', () => reject(new Error('failed to load cloudflare captcha')), { once: true })
+      return
+    }
+    const script = document.createElement('script')
+    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
+    script.async = true
+    script.defer = true
+    script.dataset.ppvtTurnstile = 'true'
+    script.onload = () => resolve()
+    script.onerror = () => reject(new Error('failed to load cloudflare captcha'))
+    document.head.appendChild(script)
+  })
+  return turnstileScriptPromise
+}
+
+function loadRecaptchaScript() {
+  if (hasRecaptchaAPI()) {
+    return Promise.resolve()
+  }
+  if (recaptchaScriptPromise) {
+    return recaptchaScriptPromise
+  }
+  recaptchaScriptPromise = new Promise((resolve, reject) => {
+    window.__ppvtRecaptchaOnload = () => {
+      resolve()
+    }
+    const existingScript = document.querySelector<HTMLScriptElement>('script[data-ppvt-recaptcha]')
+    if (existingScript) {
+      if (hasRecaptchaAPI()) {
+        resolve()
+        return
+      }
+      existingScript.addEventListener('load', () => {
+        if (hasRecaptchaAPI()) {
+          resolve()
+        }
+      }, { once: true })
+      existingScript.addEventListener('error', () => reject(new Error('failed to load google captcha')), { once: true })
+      return
+    }
+    const script = document.createElement('script')
+    script.src = 'https://www.google.com/recaptcha/api.js?onload=__ppvtRecaptchaOnload&render=explicit'
+    script.async = true
+    script.defer = true
+    script.dataset.ppvtRecaptcha = 'true'
+    script.onerror = () => reject(new Error('failed to load google captcha'))
+    document.head.appendChild(script)
+  })
+  return recaptchaScriptPromise
+}
+
+async function renderCloudflareCaptcha() {
+  if (bootstrap.stage !== 'login' || bootstrap.captcha?.provider !== 'cloudflare') {
+    return
+  }
+  if (!bootstrap.captcha?.client_key) {
+    toast.error('missing cloudflare captcha client key')
+    return
+  }
+  await nextTick()
+  if (!turnstileContainer.value) {
+    return
+  }
+  await loadTurnstileScript()
+  if (!hasTurnstileAPI()) {
+    throw new Error('cloudflare captcha is unavailable')
+  }
+  const turnstile = window.turnstile
+  if (!turnstile) {
+    throw new Error('cloudflare captcha is unavailable')
+  }
+  captchaToken.value = ''
+  if (turnstileWidgetID.value) {
+    turnstile.reset(turnstileWidgetID.value)
+    return
+  }
+  turnstileContainer.value.innerHTML = ''
+  turnstileWidgetID.value = turnstile.render(turnstileContainer.value, {
+    sitekey: bootstrap.captcha.client_key,
+    theme: 'light',
+    callback: (token: string) => {
+      captchaToken.value = String(token || '').trim()
+    },
+    'expired-callback': () => {
+      captchaToken.value = ''
+    },
+    'error-callback': () => {
+      captchaToken.value = ''
+      toast.error('cloudflare captcha failed to load')
+    }
+  })
+}
+
+async function renderGoogleCaptcha() {
+  if (bootstrap.stage !== 'login' || bootstrap.captcha?.provider !== 'google') {
+    return
+  }
+  if (!bootstrap.captcha?.client_key) {
+    toast.error('missing google captcha client key')
+    return
+  }
+  await nextTick()
+  if (!recaptchaContainer.value) {
+    return
+  }
+  await loadRecaptchaScript()
+  if (!hasRecaptchaAPI()) {
+    throw new Error('google captcha is unavailable')
+  }
+  const recaptcha = window.grecaptcha
+  if (!recaptcha) {
+    throw new Error('google captcha is unavailable')
+  }
+  captchaToken.value = ''
+  if (recaptchaWidgetID.value !== null) {
+    recaptcha.reset(recaptchaWidgetID.value)
+    return
+  }
+  recaptchaContainer.value.innerHTML = ''
+  recaptchaWidgetID.value = recaptcha.render(recaptchaContainer.value, {
+    sitekey: bootstrap.captcha.client_key,
+    callback: (token: string) => {
+      captchaToken.value = String(token || '').trim()
+    },
+    'expired-callback': () => {
+      captchaToken.value = ''
+    },
+    'error-callback': () => {
+      captchaToken.value = ''
+      toast.error('google captcha failed to load')
+    }
+  })
+}
+
 onMounted(() => {
   if (bootstrap.stage === 'login' && bootstrap.captcha?.provider === 'default') {
     void refreshCaptcha()
+    return
+  }
+  if (bootstrap.stage === 'login' && bootstrap.captcha?.provider === 'cloudflare') {
+    void renderCloudflareCaptcha().catch((error) => {
+      toast.error(formatRequestError(error))
+    })
+    return
+  }
+  if (bootstrap.stage === 'login' && bootstrap.captcha?.provider === 'google') {
+    void renderGoogleCaptcha().catch((error) => {
+      toast.error(formatRequestError(error))
+    })
   }
 })
+
+watch(
+  () => [bootstrap.stage, bootstrap.captcha?.provider, bootstrap.captcha?.client_key] as const,
+  ([stage, provider], previousValue) => {
+    if (stage !== 'login' || (provider !== 'cloudflare' && provider !== 'google')) {
+      return
+    }
+    if (provider === 'cloudflare') {
+      if (previousValue && previousValue[1] === provider && turnstileWidgetID.value) {
+        window.turnstile?.reset?.(turnstileWidgetID.value)
+        captchaToken.value = ''
+        return
+      }
+      void renderCloudflareCaptcha().catch((error) => {
+        toast.error(formatRequestError(error))
+      })
+      return
+    }
+    if (previousValue && previousValue[1] === provider && recaptchaWidgetID.value !== null) {
+      window.grecaptcha?.reset?.(recaptchaWidgetID.value)
+      captchaToken.value = ''
+      return
+    }
+    void renderGoogleCaptcha().catch((error) => {
+      toast.error(formatRequestError(error))
+    })
+  }
+)
 
 function cancelLogin() {
   const form = document.createElement('form')
@@ -1320,6 +1534,22 @@ function cancelLogin() {
   border-radius: var(--auth-control-radius);
   background: #fff;
   cursor: pointer;
+}
+
+.auth-turnstile-shell {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  min-height: 65px;
+}
+
+.auth-turnstile-widget {
+  display: inline-block;
+  line-height: 0;
+  width: 300px;
+  max-width: 100%;
+  min-height: 65px;
 }
 
 @media (max-width: 940px) {
