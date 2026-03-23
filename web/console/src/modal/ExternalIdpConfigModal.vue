@@ -59,7 +59,7 @@ import { BButton, BForm, BFormInput, BModal } from 'bootstrap-vue-next'
 
 const props = defineProps<{
   visible: boolean
-  kind: 'google' | 'github' | 'apple' | 'qq' | 'weibo' | 'custom_oauth' | 'custom_oidc'
+  kind: 'google' | 'github' | 'apple'
   form: {
     id?: string
     name: string
@@ -78,15 +78,11 @@ const props = defineProps<{
 const currentTitle = computed(() => {
   if (props.kind === 'google') return '配置 Google 登录'
   if (props.kind === 'github') return '配置 GitHub 登录'
-  if (props.kind === 'apple') return '配置 Apple 登录'
-  if (props.kind === 'qq') return '配置 QQ 登录'
-  if (props.kind === 'weibo') return '配置 新浪微博 登录'
-  if (props.kind === 'custom_oauth') return '配置自定义 OAuth 提供商'
-  return '配置自定义 OIDC 提供商'
+  return '配置 Apple 登录'
 })
 
-const currentProtocol = computed(() => props.form.protocol || (props.kind === 'custom_oidc' ? 'oidc' : 'oauth'))
-const currentActionLabel = computed(() => props.form.id ? '保存配置' : (props.kind === 'custom_oauth' || props.kind === 'custom_oidc' ? '添加 Provider' : '启用 Provider'))
+const currentProtocol = computed(() => props.form.protocol || (props.kind === 'apple' ? 'oidc' : 'oauth'))
+const currentActionLabel = computed(() => props.form.id ? '保存配置' : '启用 Provider')
 
 const draftForm = reactive({
   id: '',
@@ -110,7 +106,7 @@ watch(
     }
     draftForm.id = props.form.id || ''
     draftForm.name = props.form.name || ''
-    draftForm.protocol = props.form.protocol || (props.kind === 'custom_oidc' ? 'oidc' : 'oauth')
+    draftForm.protocol = props.form.protocol || (props.kind === 'apple' ? 'oidc' : 'oauth')
     draftForm.issuer = props.form.issuer || ''
     draftForm.clientId = props.form.clientId || ''
     draftForm.clientSecret = ''

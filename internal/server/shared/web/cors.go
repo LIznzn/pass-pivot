@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -45,6 +46,9 @@ func (r *corsOriginResolver) isAllowedOrigin(ctx context.Context, origin string)
 	if !ok {
 		return false
 	}
+	if isLoopbackOrigin(normalized) {
+		return true
+	}
 	allowed := map[string]struct{}{}
 	appendOrigin := func(raw string) {
 		if value, valid := normalizeOrigin(raw); valid {
@@ -55,11 +59,15 @@ func (r *corsOriginResolver) isAllowedOrigin(ctx context.Context, origin string)
 	appendOrigin(r.cfg.AuthURL)
 	appendOrigin(r.cfg.CoreURL)
 
-	var applications []model.Application
-	if err := r.db.WithContext(ctx).Select("redirect_uris").Find(&applications).Error; err == nil {
-		for _, application := range applications {
-			for _, item := range splitRedirectURIs(application.RedirectURIs) {
-				appendOrigin(item)
+	var organizations []model.Organization
+	if err := r.db.WithContext(ctx).Select("domains").Find(&organizations).Error; err == nil {
+		for _, organization := range organizations {
+			for _, item := range organization.Domains {
+				if !item.Verified {
+					continue
+				}
+				appendOrigin("https://" + item.Host)
+				appendOrigin("http://" + item.Host)
 			}
 		}
 	}
@@ -76,16 +84,18 @@ func normalizeOrigin(raw string) (string, bool) {
 	return strings.ToLower(parsed.Scheme) + "://" + strings.ToLower(parsed.Host), true
 }
 
-func splitRedirectURIs(raw string) []string {
-	fields := strings.FieldsFunc(raw, func(r rune) bool {
-		return r == ',' || r == '\n' || r == '\r' || r == ' '
-	})
-	items := make([]string, 0, len(fields))
-	for _, item := range fields {
-		trimmed := strings.TrimSpace(item)
-		if trimmed != "" {
-			items = append(items, trimmed)
-		}
+func isLoopbackOrigin(origin string) bool {
+	parsed, err := url.Parse(origin)
+	if err != nil {
+		return false
 	}
-	return items
+	host := strings.TrimSpace(parsed.Hostname())
+	if host == "" {
+		return false
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }

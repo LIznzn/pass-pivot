@@ -16,7 +16,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { clearConsoleAuthSession, finishConsoleAuthorization, startConsoleAuthorization } from '../api/auth'
+import { clearConsoleAuthSession, clearConsoleOAuthHandshake, finishConsoleAuthorization, startConsoleAuthorization } from '../api/auth'
 
 const route = useRoute()
 const message = ref('正在交换授权码并建立控制台会话。')
@@ -36,6 +36,7 @@ onMounted(async () => {
   if (error) {
     message.value = errorDescription || error
     clearConsoleAuthSession()
+    clearConsoleOAuthHandshake()
     showRetry.value = true
     return
   }
@@ -46,6 +47,7 @@ onMounted(async () => {
   } catch (err) {
     message.value = String(err)
     clearConsoleAuthSession()
+    clearConsoleOAuthHandshake()
     showRetry.value = true
   }
 })

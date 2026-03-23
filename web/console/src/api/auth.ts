@@ -155,6 +155,9 @@ export function clearConsoleAuthSession() {
   sessionStorage.removeItem(storageKeys.loginIdentifier)
   sessionStorage.removeItem(storageKeys.loginName)
   sessionStorage.removeItem(storageKeys.loginEmail)
+}
+
+export function clearConsoleOAuthHandshake() {
   clearOAuthHandshake()
 }
 
@@ -223,6 +226,7 @@ export async function startConsoleAuthorization(target?: string) {
 
 export function startConsoleLogout() {
   clearConsoleAuthSession()
+  clearConsoleOAuthHandshake()
   window.location.assign('/console')
 }
 

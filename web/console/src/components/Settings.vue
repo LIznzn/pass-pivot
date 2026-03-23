@@ -6,22 +6,24 @@
     <div class="console-module-main">
       <div id="setting-domain" class="info-card">
         <div class="section-title">域名设置</div>
-        <div class="record-meta mb-3">绑定登录域名并记录当前验证状态。</div>
-        <div v-for="(item, index) in organizationDomainRows" :key="item.id" class="row g-2 align-items-center mb-2">
-          <div class="col-md-6">
-            <BFormInput v-model="item.host" placeholder="login.example.com" />
+        <div class="record-meta mb-3">点击“添加域名”后在弹窗中输入域名并保存。新增域名默认为未验证，可在列表中继续验证所有权或删除。</div>
+        <div v-for="(item, index) in organizationDomainRows" :key="item.id" class="detail-card mb-3">
+          <div class="row g-2 align-items-center">
+            <div class="col-md-7">
+              <div class="form-control bg-body-tertiary">{{ item.host }}</div>
+            </div>
+            <div class="col-md-2">
+              <span class="badge" :class="item.verified ? 'text-bg-success' : 'text-bg-secondary'">{{ item.verified ? '已验证' : '未验证' }}</span>
+            </div>
+            <div class="col-md-3 d-flex gap-2 justify-content-md-end">
+              <BButton type="button" size="sm" variant="outline-primary" :disabled="item.verified" @click="openDomainVerificationModal(index)">验证所有权</BButton>
+              <BButton type="button" size="sm" variant="outline-danger" @click="deleteOrganizationDomain(index)">删除</BButton>
+            </div>
           </div>
-          <div class="col-md-2">
-            <span class="badge" :class="item.verified ? 'text-bg-success' : 'text-bg-secondary'">{{ item.verified ? '已验证' : '未验证' }}</span>
-          </div>
-          <div class="col-md-4 d-flex gap-2">
-            <BButton type="button" size="sm" variant="outline-primary" @click="verifyOrganizationDomain(index)">验证域名</BButton>
-            <BButton type="button" size="sm" variant="outline-danger" @click="removeOrganizationDomainRow(index)">删除</BButton>
-          </div>
+          <div v-if="item.verifiedAt" class="record-meta mt-2">最近验证时间：{{ formatDateTime(item.verifiedAt) }}</div>
         </div>
-        <div class="d-flex justify-content-between align-items-center mt-3">
-          <BButton type="button" variant="outline-secondary" @click="addOrganizationDomainRow">添加域名</BButton>
-          <BButton type="button" variant="primary" @click="saveOrganizationDomainSettings">保存域名设置</BButton>
+        <div class="d-flex justify-content-start align-items-center mt-3">
+          <BButton type="button" variant="outline-secondary" @click="openCreateDomainModal">添加域名</BButton>
         </div>
       </div>
 
@@ -212,17 +214,7 @@
               <strong>{{ item.label }}</strong>
               <div class="record-meta">{{ item.summary }}</div>
             </div>
-            <BButton size="sm" variant="outline-primary" @click="openExternalIdpEditor(item.id)">{{ item.enabled ? '配置' : (item.id.startsWith('custom_') ? '添加' : '启用') }}</BButton>
-          </div>
-        </div>
-        <div v-if="customExternalIdps.length" class="detail-card mt-3">
-          <div class="record-meta mb-2">已添加的自定义 Provider</div>
-          <div v-for="item in customExternalIdps" :key="item.id" class="record-row">
-            <div>
-              <strong>{{ item.name }}</strong>
-              <div class="record-meta">{{ String(item.protocol || '').toUpperCase() }} · {{ item.issuer || '-' }}</div>
-            </div>
-            <BButton size="sm" variant="outline-primary" @click="openExistingExternalIdp(item)">配置</BButton>
+            <BButton size="sm" variant="outline-primary" @click="openExternalIdpEditor(item.id)">{{ item.enabled ? '配置' : '启用' }}</BButton>
           </div>
         </div>
       </div>
@@ -236,12 +228,35 @@
     @update:visible="externalIDPConfigModalVisible = $event"
     @submit="submitExternalIDPConfig"
   />
+  <DomainCreateModal
+    :visible="domainCreateModalVisible"
+    :form="domainCreateForm"
+    @update:visible="domainCreateModalVisible = $event"
+    @hidden="resetCreateDomainForm"
+    @submit="submitCreateDomain"
+  />
+  <DomainVerificationModal
+    :visible="domainVerificationModalVisible"
+    :host="currentDomainVerificationRow?.host || ''"
+    :method="currentDomainVerificationRow?.verificationMethod || 'http_file'"
+    :verified="Boolean(currentDomainVerificationRow?.verified)"
+    :challenge="currentDomainVerificationChallenge"
+    @update:visible="domainVerificationModalVisible = $event"
+    @prepare="prepareOrganizationDomainVerification"
+    @verify="verifyOrganizationDomain"
+  />
 </template>
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch, watchEffect } from 'vue'
 import { useToast } from '@shared/composables/toast'
+import DomainCreateModal from '../modal/DomainCreateModal.vue'
+import DomainVerificationModal from '../modal/DomainVerificationModal.vue'
 import ExternalIdpConfigModal from '../modal/ExternalIdpConfigModal.vue'
+import {
+  prepareOrganizationDomainVerification as apiPrepareOrganizationDomainVerification,
+  verifyOrganizationDomain as apiVerifyOrganizationDomain,
+} from '../api/manage/organization'
 import {
   createExternalIdp as apiCreateExternalIdp,
   queryExternalIdps as apiQueryExternalIdps,
@@ -254,6 +269,7 @@ import { BButton, BForm, BFormInput, BFormSelect } from 'bootstrap-vue-next'
 const toast = useToast()
 const console = useConsoleStore()
 const organizationStore = useOrganizationStore()
+const formatDateTime = console.formatDateTime
 
 watchEffect(() => {
   console.setPageHeader('设置', '配置外部 OAuth/OIDC 联邦与身份绑定。')
@@ -272,8 +288,18 @@ const captchaProviderOptions = [
 ]
 const externalIdps = ref<any[]>([])
 const externalIDPConfigModalVisible = ref(false)
-const currentExternalIDPKind = ref<'google' | 'github' | 'apple' | 'qq' | 'weibo' | 'custom_oauth' | 'custom_oidc'>('google')
+const currentExternalIDPKind = ref<'google' | 'github' | 'apple'>('google')
 const organizationDomainRows = ref<OrganizationDomainRow[]>([])
+const domainCreateModalVisible = ref(false)
+const domainVerificationModalVisible = ref(false)
+const currentDomainVerificationIndex = ref(-1)
+const currentDomainVerificationChallenge = ref<DomainVerificationChallenge>({
+  token: '',
+  fileUrl: '',
+  fileContent: '',
+  txtRecordName: '',
+  txtRecordValue: ''
+})
 
 const externalIDPForm = reactive({
   id: '',
@@ -288,6 +314,9 @@ const externalIDPForm = reactive({
   tokenUrl: '',
   userInfoUrl: '',
   jwksUrl: ''
+})
+const domainCreateForm = reactive({
+  host: ''
 })
 const organizationLoginPolicyForm = reactive({
   passwordLoginEnabled: true,
@@ -334,12 +363,26 @@ type OrganizationDomainRow = {
   id: string
   host: string
   verified: boolean
+  verificationMethod: 'http_file' | 'dns_txt'
+  verificationToken: string
+  verifiedAt: string
+}
+
+type DomainVerificationChallenge = {
+  token: string
+  fileUrl: string
+  fileContent: string
+  txtRecordName: string
+  txtRecordValue: string
 }
 
 type OrganizationConsoleSettings = {
-  domains: Array<{
-    host: string
-    verified: boolean
+    domains: Array<{
+      host: string
+      verified?: boolean
+      verificationMethod: 'http_file' | 'dns_txt'
+      verificationToken: string
+      verifiedAt?: string
   }>
   loginPolicy: {
     passwordLoginEnabled: boolean
@@ -411,7 +454,7 @@ const currentModulePanels = [
   { id: 'setting-external-idp', label: '外部 IdP 设置' }
 ]
 
-const providerKinds = ['google', 'github', 'apple', 'qq', 'weibo', 'custom_oauth', 'custom_oidc'] as const
+const providerKinds = ['google', 'github', 'apple'] as const
 
 const externalIdpProviderRows = computed(() => providerKinds.map((kind) => {
   const provider = findExistingExternalIdp(kind)
@@ -421,11 +464,6 @@ const externalIdpProviderRows = computed(() => providerKinds.map((kind) => {
     summary: provider ? `已配置 · ${provider.clientId || provider.issuer || provider.name}` : '未启用',
     enabled: Boolean(provider)
   }
-}))
-
-const customExternalIdps = computed(() => externalIdps.value.filter((item: any) => {
-  const kind = normalizeProviderKind(item)
-  return kind === 'custom_oauth' || kind === 'custom_oidc'
 }))
 
 watch(
@@ -467,7 +505,10 @@ watch(
     organizationDomainRows.value = settings.domains.map((item) => ({
       id: createLocalRowId(),
       host: item.host,
-      verified: item.verified
+      verified: Boolean(item.verified) || Boolean(item.verifiedAt),
+      verificationMethod: item.verificationMethod,
+      verificationToken: item.verificationToken,
+      verifiedAt: item.verifiedAt || ''
     }))
   },
   { immediate: true }
@@ -493,11 +534,7 @@ function createLocalRowId() {
 function providerLabel(kind: typeof providerKinds[number]) {
   if (kind === 'google') return 'Google'
   if (kind === 'github') return 'GitHub'
-  if (kind === 'apple') return 'Apple'
-  if (kind === 'qq') return 'QQ'
-  if (kind === 'weibo') return '新浪微博'
-  if (kind === 'custom_oauth') return '自定义 OAuth'
-  return '自定义 OIDC'
+  return 'Apple'
 }
 
 function normalizeProviderName(value?: string) {
@@ -520,9 +557,6 @@ function normalizeProviderKind(item: any) {
 }
 
 function findExistingExternalIdp(kind: typeof providerKinds[number]) {
-  if (kind === 'custom_oauth' || kind === 'custom_oidc') {
-    return null
-  }
   return externalIdps.value.find((item: any) => {
     const normalizedKind = normalizeProviderKind(item)
     const normalizedName = normalizeProviderName(item?.name)
@@ -567,51 +601,15 @@ function providerPreset(kind: ProviderKind) {
       jwksUrl: 'https://appleid.apple.com/auth/keys'
     }
   }
-  if (kind === 'qq') {
-    return {
-      protocol: 'oauth',
-      name: 'QQ',
-      issuer: 'https://graph.qq.com',
-      scopes: 'get_user_info',
-      authorizationUrl: 'https://graph.qq.com/oauth2.0/authorize',
-      tokenUrl: 'https://graph.qq.com/oauth2.0/token',
-      userInfoUrl: 'https://graph.qq.com/user/get_user_info',
-      jwksUrl: ''
-    }
-  }
-  if (kind === 'weibo') {
-    return {
-      protocol: 'oauth',
-      name: 'Weibo',
-      issuer: 'https://api.weibo.com',
-      scopes: 'email',
-      authorizationUrl: 'https://api.weibo.com/oauth2/authorize',
-      tokenUrl: 'https://api.weibo.com/oauth2/access_token',
-      userInfoUrl: 'https://api.weibo.com/2/users/show.json',
-      jwksUrl: ''
-    }
-  }
-  if (kind === 'custom_oauth') {
-    return {
-      protocol: 'oauth',
-      name: 'Custom OAuth',
-      issuer: '',
-      scopes: '',
-      authorizationUrl: '',
-      tokenUrl: '',
-      userInfoUrl: '',
-      jwksUrl: ''
-    }
-  }
   return {
     protocol: 'oidc',
-    name: 'Custom OIDC',
-    issuer: '',
-    scopes: 'openid profile email',
-    authorizationUrl: '',
-    tokenUrl: '',
+    name: 'Apple',
+    issuer: 'https://appleid.apple.com',
+    scopes: 'name email',
+    authorizationUrl: 'https://appleid.apple.com/auth/authorize',
+    tokenUrl: 'https://appleid.apple.com/auth/token',
     userInfoUrl: '',
-    jwksUrl: ''
+    jwksUrl: 'https://appleid.apple.com/auth/keys'
   }
 }
 
@@ -743,7 +741,9 @@ function parseOrganizationConsoleSettings(organization?: any): OrganizationConso
     domains: Array.isArray(parsed.domains)
       ? parsed.domains.map((item: any) => ({
           host: String(item.host || ''),
-          verified: Boolean(item.verified)
+          verificationMethod: String(item.verificationMethod || 'http_file') === 'dns_txt' ? 'dns_txt' : 'http_file',
+          verificationToken: String(item.verificationToken || ''),
+          verifiedAt: String(item.verifiedAt || '')
         })).filter((item: OrganizationConsoleSettings['domains'][number]) => item.host)
       : []
   }
@@ -754,7 +754,8 @@ function buildOrganizationConsoleSettings(): OrganizationConsoleSettings {
     domains: organizationDomainRows.value
       .map((item) => ({
         host: item.host.trim(),
-        verified: item.verified
+        verificationMethod: item.verificationMethod,
+        verificationToken: item.verificationToken
       }))
       .filter((item) => item.host),
     loginPolicy: {
@@ -801,12 +802,6 @@ function buildOrganizationConsoleSettings(): OrganizationConsoleSettings {
   }
 }
 
-async function saveOrganizationDomainSettings() {
-  await withFeedback(async () => {
-    await saveOrganizationConsoleSettings()
-  })
-}
-
 async function saveOrganizationLoginPolicy() {
   await withFeedback(async () => {
     await saveOrganizationConsoleSettings()
@@ -831,26 +826,157 @@ async function saveOrganizationCaptchaSettings() {
   })
 }
 
-function addOrganizationDomainRow() {
-  organizationDomainRows.value.push({
-    id: createLocalRowId(),
-    host: '',
-    verified: false
-  })
+const currentDomainVerificationRow = computed(() => {
+  if (currentDomainVerificationIndex.value < 0) {
+    return null
+  }
+  return organizationDomainRows.value[currentDomainVerificationIndex.value] || null
+})
+
+function openCreateDomainModal() {
+  resetCreateDomainForm()
+  domainCreateModalVisible.value = true
+}
+
+function resetCreateDomainForm() {
+  domainCreateForm.host = ''
+}
+
+async function submitCreateDomain() {
+  const host = domainCreateForm.host.trim()
+  if (!host) {
+    toast.error('请填写域名')
+    return
+  }
+  if (organizationDomainRows.value.some((item) => item.host === host)) {
+    toast.error('域名已存在')
+    return
+  }
+  const nextRows = [
+    ...organizationDomainRows.value,
+    {
+      id: createLocalRowId(),
+      host,
+      verified: false,
+      verificationMethod: 'http_file' as const,
+      verificationToken: '',
+      verifiedAt: ''
+    }
+  ]
+  await withFeedback(async () => {
+    organizationDomainRows.value = nextRows
+    await saveOrganizationConsoleSettings()
+    domainCreateModalVisible.value = false
+    resetCreateDomainForm()
+  }, '域名已添加')
 }
 
 function removeOrganizationDomainRow(index: number) {
+  if (currentDomainVerificationIndex.value === index) {
+    currentDomainVerificationIndex.value = -1
+    domainVerificationModalVisible.value = false
+    resetDomainVerificationChallenge()
+  } else if (currentDomainVerificationIndex.value > index) {
+    currentDomainVerificationIndex.value -= 1
+  }
   organizationDomainRows.value.splice(index, 1)
 }
 
-function verifyOrganizationDomain(index: number) {
+async function deleteOrganizationDomain(index: number) {
+  const snapshot = organizationDomainRows.value.map((item) => ({ ...item }))
+  removeOrganizationDomainRow(index)
+  try {
+    await saveOrganizationConsoleSettings()
+    toast.success('域名已删除')
+  } catch (error) {
+    organizationDomainRows.value = snapshot
+    toast.error(String(error))
+  }
+}
+
+function openDomainVerificationModal(index: number) {
   const item = organizationDomainRows.value[index]
   if (!item || !item.host.trim()) {
     toast.error('请先填写域名')
     return
   }
-  item.verified = true
-  toast.success('域名已标记为已验证')
+  currentDomainVerificationIndex.value = index
+  currentDomainVerificationChallenge.value = buildDomainVerificationChallenge(item)
+  domainVerificationModalVisible.value = true
+}
+
+async function prepareOrganizationDomainVerification(method: 'http_file' | 'dns_txt') {
+  const item = currentDomainVerificationRow.value
+  if (!item || !item.host.trim()) {
+    toast.error('请先填写域名')
+    return
+  }
+  await withFeedback(async () => {
+    const organizationId = console.currentOrganizationId || externalIDPForm.organizationId
+    const challenge = await apiPrepareOrganizationDomainVerification({
+      organizationId,
+      host: item.host.trim(),
+      method
+    })
+    item.host = challenge.host
+    item.verificationMethod = challenge.method === 'dns_txt' ? 'dns_txt' : 'http_file'
+    item.verificationToken = challenge.token
+    item.verified = false
+    item.verifiedAt = ''
+    currentDomainVerificationChallenge.value = {
+      token: challenge.token || '',
+      fileUrl: challenge.fileUrl || '',
+      fileContent: challenge.fileContent || '',
+      txtRecordName: challenge.txtRecordName || '',
+      txtRecordValue: challenge.txtRecordValue || ''
+    }
+  }, '已生成域名验证信息')
+}
+
+async function verifyOrganizationDomain() {
+  const item = currentDomainVerificationRow.value
+  if (!item || !item.host.trim()) {
+    toast.error('请先填写域名')
+    return
+  }
+  await withFeedback(async () => {
+    const organizationId = console.currentOrganizationId || externalIDPForm.organizationId
+    const verifiedDomain = await apiVerifyOrganizationDomain({
+      organizationId,
+      host: item.host.trim()
+    })
+    item.host = String(verifiedDomain.host || item.host).trim()
+    item.verified = Boolean(verifiedDomain.verified) || Boolean(verifiedDomain.verifiedAt)
+    item.verificationMethod = String(verifiedDomain.verificationMethod || item.verificationMethod || 'http_file') === 'dns_txt' ? 'dns_txt' : 'http_file'
+    item.verificationToken = String(verifiedDomain.verificationToken || item.verificationToken || '')
+    item.verifiedAt = String(verifiedDomain.verifiedAt || '')
+    currentDomainVerificationChallenge.value = buildDomainVerificationChallenge(item)
+    domainVerificationModalVisible.value = false
+    currentDomainVerificationIndex.value = -1
+    resetDomainVerificationChallenge()
+  }, '域名验证成功')
+}
+
+function resetDomainVerificationChallenge() {
+  currentDomainVerificationChallenge.value = {
+    token: '',
+    fileUrl: '',
+    fileContent: '',
+    txtRecordName: '',
+    txtRecordValue: ''
+  }
+}
+
+function buildDomainVerificationChallenge(item: OrganizationDomainRow): DomainVerificationChallenge {
+  const host = item.host.trim()
+  const token = item.verificationToken || ''
+  return {
+    token,
+    fileUrl: host ? `https://${host}/.well-known/ppvt-domain-verification.txt` : '',
+    fileContent: token,
+    txtRecordName: host && !host.includes(':') ? `_ppvt-domain-verification.${host}` : '',
+    txtRecordValue: token
+  }
 }
 
 async function createExternalIDP(form: {
@@ -944,7 +1070,7 @@ async function submitExternalIDPConfig(form: {
 }
 
 function openExternalIDPEditor(payload: {
-  kind: 'google' | 'github' | 'apple' | 'qq' | 'weibo' | 'custom_oauth' | 'custom_oidc'
+  kind: 'google' | 'github' | 'apple'
   form: {
     id: string
     organizationId: string
@@ -979,10 +1105,5 @@ function openExternalIDPEditor(payload: {
 function openExternalIdpEditor(kind: ProviderKind) {
   const provider = findExistingExternalIdp(kind)
   openExternalIDPEditor(buildExternalIdpForm(kind, provider))
-}
-
-function openExistingExternalIdp(item: any) {
-  const kind = normalizeProviderKind(item) as ProviderKind
-  openExternalIDPEditor(buildExternalIdpForm(kind, item))
 }
 </script>

@@ -8,6 +8,8 @@ func RegisterRoutes(mux *http.ServeMux, manage *Handler, authn authnHandler, aut
 	mux.HandleFunc("POST /api/manage/v1/organization/query", manage.ListOrganizations)
 	mux.HandleFunc("POST /api/manage/v1/organization/create", manage.CreateOrganization)
 	mux.HandleFunc("POST /api/manage/v1/organization/update", manage.UpdateOrganization)
+	mux.HandleFunc("POST /api/manage/v1/organization/domain/verification/prepare", manage.PrepareOrganizationDomainVerification)
+	mux.HandleFunc("POST /api/manage/v1/organization/domain/verification/verify", manage.VerifyOrganizationDomain)
 	mux.HandleFunc("POST /api/manage/v1/organization/disable", manage.DisableOrganization)
 	mux.HandleFunc("POST /api/manage/v1/organization/delete", manage.DeleteOrganization)
 	mux.HandleFunc("POST /api/manage/v1/project/query", manage.ListProjects)

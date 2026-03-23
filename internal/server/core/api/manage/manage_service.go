@@ -4,6 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
 	"regexp"
 	"sort"
 	"strings"
@@ -36,6 +40,16 @@ type fidoRegistrationService interface {
 	BeginRegistration(ctx context.Context, userID, purpose string) (string, any, error)
 	BeginRegistrationForSession(ctx context.Context, sessionID, purpose string) (string, any, error)
 	FinishRegistration(ctx context.Context, challengeID string, payload json.RawMessage) error
+}
+
+type OrganizationDomainVerificationChallenge struct {
+	Host           string `json:"host"`
+	Method         string `json:"method"`
+	Token          string `json:"token"`
+	FileURL        string `json:"fileUrl,omitempty"`
+	FileContent    string `json:"fileContent,omitempty"`
+	TXTRecordName  string `json:"txtRecordName,omitempty"`
+	TXTRecordValue string `json:"txtRecordValue,omitempty"`
 }
 
 func applicationIsDisabled(status string) bool {
@@ -86,6 +100,40 @@ var (
 		"application": true,
 	}
 )
+
+func normalizeExternalIDPProviderKind(provider model.ExternalIDP) string {
+	if value := strings.ToLower(strings.TrimSpace(provider.Metadata["providerKind"])); value != "" {
+		return value
+	}
+	name := strings.ToLower(strings.TrimSpace(provider.Name))
+	switch name {
+	case "google":
+		return "google"
+	case "github":
+		return "github"
+	case "apple":
+		return "apple"
+	case "qq":
+		return "qq"
+	case "weibo", "新浪微博":
+		return "weibo"
+	case "custom oauth":
+		return "custom_oauth"
+	case "custom oidc":
+		return "custom_oidc"
+	default:
+		return ""
+	}
+}
+
+func validateSupportedExternalIDPProvider(provider model.ExternalIDP) error {
+	switch normalizeExternalIDPProviderKind(provider) {
+	case "google", "github", "apple":
+		return nil
+	default:
+		return errors.New("unsupported external idp provider")
+	}
+}
 
 func validatePasswordAgainstPolicy(password string, policy model.OrganizationPasswordPolicy) error {
 	if strings.TrimSpace(password) == "" {
@@ -415,6 +463,9 @@ func (s *Service) CreateOrganization(ctx context.Context, org model.Organization
 			return nil
 		}
 		settings := coreservice.NormalizeOrganizationConsoleSettings(org.ConsoleSettings)
+		if err := coreservice.ValidateOrganizationDomains(settings.Domains); err != nil {
+			return err
+		}
 		if err := coreservice.ValidateOrganizationCaptchaSettings(settings.Captcha); err != nil {
 			return err
 		}
@@ -486,6 +537,14 @@ func (s *Service) UpdateOrganization(ctx context.Context, org model.Organization
 	}
 	if org.ConsoleSettings != nil {
 		settings := coreservice.NormalizeOrganizationConsoleSettings(org.ConsoleSettings)
+		_, existingSettings, err := coreservice.LoadOrganizationConsoleSettings(ctx, s.db, org.ID)
+		if err != nil {
+			return nil, err
+		}
+		settings.Domains = mergeOrganizationDomainVerificationState(existingSettings.Domains, settings.Domains)
+		if err := coreservice.ValidateOrganizationDomains(settings.Domains); err != nil {
+			return nil, err
+		}
 		if err := coreservice.ValidateOrganizationCaptchaSettings(settings.Captcha); err != nil {
 			return nil, err
 		}
@@ -523,6 +582,276 @@ func (s *Service) UpdateOrganization(ctx context.Context, org model.Organization
 	}
 	existing.ConsoleSettings = &settings
 	return &existing, nil
+}
+
+func mergeOrganizationDomainVerificationState(existing, incoming []model.OrganizationDomain) []model.OrganizationDomain {
+	existingByHost := make(map[string]model.OrganizationDomain, len(existing))
+	for _, item := range existing {
+		existingByHost[item.Host] = item
+	}
+	merged := make([]model.OrganizationDomain, 0, len(incoming))
+	for _, item := range incoming {
+		current := item
+		if persisted, ok := existingByHost[item.Host]; ok {
+			current.Verified = persisted.Verified
+			current.VerifiedAt = persisted.VerifiedAt
+			if strings.TrimSpace(current.VerificationToken) == "" {
+				current.VerificationToken = persisted.VerificationToken
+			}
+			if strings.TrimSpace(current.VerificationMethod) == "" {
+				current.VerificationMethod = persisted.VerificationMethod
+			}
+		}
+		merged = append(merged, current)
+	}
+	return merged
+}
+
+func (s *Service) PrepareOrganizationDomainVerification(ctx context.Context, organizationID, host, method string) (*OrganizationDomainVerificationChallenge, error) {
+	if strings.TrimSpace(organizationID) == "" {
+		return nil, errors.New("organizationId is required")
+	}
+	if err := s.ensureCanManageOrganization(ctx, organizationID); err != nil {
+		return nil, err
+	}
+	organization, settings, err := coreservice.LoadOrganizationConsoleSettings(ctx, s.db, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	normalized := coreservice.NormalizeOrganizationConsoleSettings(&model.OrganizationSetting{
+		Domains: []model.OrganizationDomain{{
+			Host:               host,
+			VerificationMethod: method,
+		}},
+	}).Domains
+	if len(normalized) == 0 {
+		return nil, errors.New("domain host is required")
+	}
+	domain := normalized[0]
+	if err := coreservice.ValidateOrganizationDomains([]model.OrganizationDomain{domain}); err != nil {
+		return nil, err
+	}
+	token, err := util.RandomToken(24)
+	if err != nil {
+		return nil, err
+	}
+	domain.Verified = false
+	domain.VerifiedAt = nil
+	domain.VerificationToken = token
+	updated := false
+	for i := range settings.Domains {
+		if settings.Domains[i].Host == domain.Host {
+			settings.Domains[i] = domain
+			updated = true
+			break
+		}
+	}
+	if !updated {
+		settings.Domains = append(settings.Domains, domain)
+	}
+	if err := s.db.WithContext(ctx).Model(&organization).Select("Domains").Updates(model.Organization{
+		Domains: settings.Domains,
+	}).Error; err != nil {
+		return nil, err
+	}
+	result := &OrganizationDomainVerificationChallenge{
+		Host:   domain.Host,
+		Method: domain.VerificationMethod,
+		Token:  domain.VerificationToken,
+	}
+	switch domain.VerificationMethod {
+	case coreservice.OrganizationDomainVerificationHTTPFile:
+		result.FileURL = coreservice.DomainVerificationFileURL(domain.Host, false)
+		result.FileContent = domain.VerificationToken
+	case coreservice.OrganizationDomainVerificationDNSTXT:
+		result.TXTRecordName = coreservice.DomainVerificationTXTRecordName(domain.Host)
+		result.TXTRecordValue = domain.VerificationToken
+	}
+	return result, nil
+}
+
+func (s *Service) VerifyOrganizationDomain(ctx context.Context, organizationID, host string) (*model.OrganizationDomain, error) {
+	if strings.TrimSpace(organizationID) == "" {
+		return nil, errors.New("organizationId is required")
+	}
+	if err := s.ensureCanManageOrganization(ctx, organizationID); err != nil {
+		return nil, err
+	}
+	organization, settings, err := coreservice.LoadOrganizationConsoleSettings(ctx, s.db, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	normalizedHost := coreservice.NormalizeOrganizationConsoleSettings(&model.OrganizationSetting{
+		Domains: []model.OrganizationDomain{{Host: host}},
+	}).Domains
+	if len(normalizedHost) == 0 {
+		return nil, errors.New("domain host is required")
+	}
+	var domain *model.OrganizationDomain
+	domainIndex := -1
+	for i := range settings.Domains {
+		if settings.Domains[i].Host == normalizedHost[0].Host {
+			domain = &settings.Domains[i]
+			domainIndex = i
+			break
+		}
+	}
+	if domain == nil {
+		return nil, errors.New("domain is not configured")
+	}
+	if strings.TrimSpace(domain.VerificationToken) == "" {
+		return nil, errors.New("domain verification challenge is not prepared")
+	}
+	if err := verifyOrganizationDomainChallenge(*domain); err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	settings.Domains[domainIndex].Verified = true
+	settings.Domains[domainIndex].VerifiedAt = &now
+	if err := s.db.WithContext(ctx).Model(&organization).Select("Domains").Updates(model.Organization{
+		Domains: settings.Domains,
+	}).Error; err != nil {
+		return nil, err
+	}
+	return &settings.Domains[domainIndex], nil
+}
+
+func verifyOrganizationDomainChallenge(domain model.OrganizationDomain) error {
+	switch domain.VerificationMethod {
+	case coreservice.OrganizationDomainVerificationHTTPFile:
+		return verifyOrganizationDomainHTTPFile(domain)
+	case coreservice.OrganizationDomainVerificationDNSTXT:
+		return verifyOrganizationDomainDNSTXT(domain)
+	default:
+		return errors.New("invalid domain verification method")
+	}
+}
+
+func verifyOrganizationDomainHTTPFile(domain model.OrganizationDomain) error {
+	client := &http.Client{Timeout: 5 * time.Second}
+	var lastErr error
+	for _, target := range []string{
+		coreservice.DomainVerificationFileURL(domain.Host, false),
+		coreservice.DomainVerificationFileURL(domain.Host, true),
+	} {
+		if strings.TrimSpace(target) == "" {
+			continue
+		}
+		resp, err := client.Get(target)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		body, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			lastErr = readErr
+			continue
+		}
+		if resp.StatusCode == http.StatusNotFound {
+			lastErr = fmt.Errorf("verification file not found at %s", target)
+			continue
+		}
+		if resp.StatusCode >= http.StatusBadRequest {
+			lastErr = fmt.Errorf("verification file request to %s returned status %d", target, resp.StatusCode)
+			continue
+		}
+		if strings.TrimSpace(string(body)) == strings.TrimSpace(domain.VerificationToken) {
+			return nil
+		}
+		lastErr = fmt.Errorf("verification file content does not match for %s", target)
+	}
+	if lastErr != nil {
+		return fmt.Errorf("domain http_file verification failed: %w", lastErr)
+	}
+	return errors.New("domain http_file verification failed")
+}
+
+func verifyOrganizationDomainDNSTXT(domain model.OrganizationDomain) error {
+	recordName := coreservice.DomainVerificationTXTRecordName(domain.Host)
+	if strings.TrimSpace(recordName) == "" {
+		return errors.New("domain dns_txt verification failed: invalid TXT record name")
+	}
+	records, err := lookupTXTRecords(recordName)
+	if err != nil {
+		return err
+	}
+	if len(records) == 0 {
+		return fmt.Errorf("domain dns_txt verification failed: TXT record %s not found", recordName)
+	}
+	for _, item := range records {
+		if strings.TrimSpace(item) == strings.TrimSpace(domain.VerificationToken) {
+			return nil
+		}
+	}
+	return fmt.Errorf("domain dns_txt verification failed: TXT record %s exists but value does not match", recordName)
+}
+
+func lookupTXTRecords(recordName string) ([]string, error) {
+	resolvers := []struct {
+		name     string
+		resolver *net.Resolver
+	}{
+		{
+			name:     "system resolver",
+			resolver: net.DefaultResolver,
+		},
+		{
+			name: "1.1.1.1",
+			resolver: &net.Resolver{
+				PreferGo: true,
+				Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+					var dialer net.Dialer
+					return dialer.DialContext(ctx, "udp", "1.1.1.1:53")
+				},
+			},
+		},
+		{
+			name: "8.8.8.8",
+			resolver: &net.Resolver{
+				PreferGo: true,
+				Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+					var dialer net.Dialer
+					return dialer.DialContext(ctx, "udp", "8.8.8.8:53")
+				},
+			},
+		},
+	}
+
+	combined := make([]string, 0)
+	notFoundCount := 0
+	failures := make([]string, 0)
+
+	for _, item := range resolvers {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		records, err := item.resolver.LookupTXT(ctx, recordName)
+		cancel()
+		if err != nil {
+			var dnsErr *net.DNSError
+			if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
+				notFoundCount += 1
+				continue
+			}
+			failures = append(failures, fmt.Sprintf("%s: %v", item.name, err))
+			continue
+		}
+		if len(records) == 0 {
+			notFoundCount += 1
+			continue
+		}
+		combined = append(combined, records...)
+	}
+
+	if len(combined) > 0 {
+		return combined, nil
+	}
+	if notFoundCount == len(resolvers) {
+		return nil, fmt.Errorf("domain dns_txt verification failed: TXT record %s not found", recordName)
+	}
+	if len(failures) > 0 {
+		return nil, fmt.Errorf("domain dns_txt verification failed: DNS lookup for %s failed: %s", recordName, strings.Join(failures, "; "))
+	}
+	return nil, fmt.Errorf("domain dns_txt verification failed: TXT record %s not found", recordName)
 }
 
 func (s *Service) DisableOrganization(ctx context.Context, organizationID string) error {
@@ -2683,6 +3012,9 @@ func (s *Service) CreateExternalIDP(ctx context.Context, provider model.External
 	if err := s.ensureCanManageOrganization(ctx, provider.OrganizationID); err != nil {
 		return nil, err
 	}
+	if err := validateSupportedExternalIDPProvider(provider); err != nil {
+		return nil, err
+	}
 	if provider.Protocol == "" {
 		provider.Protocol = "oidc"
 	}
@@ -2725,6 +3057,9 @@ func (s *Service) UpdateExternalIDP(ctx context.Context, provider model.External
 		JWKSURL:          coalesceString(provider.JWKSURL, existing.JWKSURL),
 		Scopes:           coalesceString(provider.Scopes, existing.Scopes),
 		Metadata:         normalizeMetadata(provider.Metadata, existing.Metadata),
+	}
+	if err := validateSupportedExternalIDPProvider(updateModel); err != nil {
+		return nil, err
 	}
 	selectedFields := []string{
 		"Protocol",

@@ -57,8 +57,11 @@ func (Organization) TableName() string {
 }
 
 type OrganizationDomain struct {
-	Host     string `json:"host"`
-	Verified bool   `json:"verified"`
+	Host               string     `json:"host"`
+	Verified           bool       `json:"verified"`
+	VerificationMethod string     `json:"verificationMethod,omitempty"`
+	VerificationToken  string     `json:"verificationToken,omitempty"`
+	VerifiedAt         *time.Time `json:"verifiedAt,omitempty"`
 }
 
 type OrganizationLoginPolicy struct {

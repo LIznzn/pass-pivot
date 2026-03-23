@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
+	"net/url"
 	"strings"
 
 	"gorm.io/gorm"
@@ -20,6 +22,10 @@ const (
 	OrganizationMetadataWebsiteURL        = "websiteUrl"
 	OrganizationMetadataTermsOfServiceURL = "termsOfServiceUrl"
 	OrganizationMetadataPrivacyPolicyURL  = "privacyPolicyUrl"
+	OrganizationDomainVerificationHTTPFile = "http_file"
+	OrganizationDomainVerificationDNSTXT   = "dns_txt"
+	OrganizationDomainVerificationTXTName  = "_ppvt-domain-verification"
+	OrganizationDomainVerificationFilePath = "/.well-known/ppvt-domain-verification.txt"
 )
 
 func defaultOrganizationConsoleSettings() model.OrganizationSetting {
@@ -69,9 +75,6 @@ func normalizeOrganizationConsoleSettings(input *model.OrganizationSetting) mode
 	defaults := settings
 	if input != nil {
 		settings = *input
-		if settings.Domains == nil {
-			settings.Domains = []model.OrganizationDomain{}
-		}
 		if settings.MFAPolicy.EmailChannel.Port == 0 {
 			settings.MFAPolicy.EmailChannel.Port = 587
 		}
@@ -79,8 +82,112 @@ func normalizeOrganizationConsoleSettings(input *model.OrganizationSetting) mode
 			settings.Captcha.Provider = defaults.Captcha.Provider
 		}
 	}
+	settings.Domains = normalizeOrganizationDomains(settings.Domains)
 	settings.Captcha = normalizeOrganizationCaptchaSettings(settings.Captcha)
 	return settings
+}
+
+func normalizeOrganizationDomains(input []model.OrganizationDomain) []model.OrganizationDomain {
+	if input == nil {
+		return []model.OrganizationDomain{}
+	}
+	result := make([]model.OrganizationDomain, 0, len(input))
+	for _, item := range input {
+		normalized, ok := normalizeOrganizationDomain(item)
+		if !ok {
+			continue
+		}
+		result = append(result, normalized)
+	}
+	return result
+}
+
+func normalizeOrganizationDomain(input model.OrganizationDomain) (model.OrganizationDomain, bool) {
+	host := normalizeOrganizationDomainHost(input.Host)
+	if host == "" {
+		return model.OrganizationDomain{}, false
+	}
+	method := strings.ToLower(strings.TrimSpace(input.VerificationMethod))
+	if method == "" {
+		method = OrganizationDomainVerificationHTTPFile
+	}
+	domain := model.OrganizationDomain{
+		Host:               host,
+		Verified:           input.Verified,
+		VerificationMethod: method,
+		VerificationToken:  strings.TrimSpace(input.VerificationToken),
+		VerifiedAt:         input.VerifiedAt,
+	}
+	if !domain.Verified {
+		domain.VerifiedAt = nil
+	}
+	if domain.VerifiedAt != nil {
+		domain.Verified = true
+	}
+	return domain, true
+}
+
+func normalizeOrganizationDomainHost(raw string) string {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	if value == "" {
+		return ""
+	}
+	if strings.Contains(value, "://") {
+		if parsed, err := url.Parse(value); err == nil {
+			value = strings.ToLower(strings.TrimSpace(parsed.Host))
+		}
+	}
+	value = strings.TrimSuffix(value, ".")
+	if strings.ContainsAny(value, "/?#") {
+		return ""
+	}
+	if host, port, err := net.SplitHostPort(value); err == nil {
+		if strings.TrimSpace(host) == "" || strings.TrimSpace(port) == "" {
+			return ""
+		}
+		return strings.ToLower(host) + ":" + strings.TrimSpace(port)
+	}
+	return value
+}
+
+func ValidateOrganizationDomains(input []model.OrganizationDomain) error {
+	seen := map[string]struct{}{}
+	for _, item := range normalizeOrganizationDomains(input) {
+		if _, exists := seen[item.Host]; exists {
+			return fmt.Errorf("duplicate domain: %s", item.Host)
+		}
+		seen[item.Host] = struct{}{}
+		switch item.VerificationMethod {
+		case OrganizationDomainVerificationHTTPFile:
+		case OrganizationDomainVerificationDNSTXT:
+			if strings.Contains(item.Host, ":") {
+				return fmt.Errorf("dns_txt verification does not support ports: %s", item.Host)
+			}
+		default:
+			return fmt.Errorf("invalid domain verification method: %s", item.VerificationMethod)
+		}
+	}
+	return nil
+}
+
+func DomainVerificationTXTRecordName(host string) string {
+	normalized := normalizeOrganizationDomainHost(host)
+	if normalized == "" || strings.Contains(normalized, ":") {
+		return ""
+	}
+	return OrganizationDomainVerificationTXTName + "." + normalized
+}
+
+func DomainVerificationFileURL(host string, insecure bool) string {
+	normalized := normalizeOrganizationDomainHost(host)
+	if normalized == "" {
+		return ""
+	}
+	scheme := "https"
+	if insecure {
+		scheme = "http"
+	}
+	return scheme + "://" + normalized + OrganizationDomainVerificationFilePath
 }
 
 func normalizeOrganizationCaptchaSettings(input model.OrganizationCaptchaSettings) model.OrganizationCaptchaSettings {

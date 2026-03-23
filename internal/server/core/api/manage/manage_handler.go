@@ -53,6 +53,41 @@ func (h *Handler) UpdateOrganization(w http.ResponseWriter, r *http.Request) {
 	sharedweb.JSON(w, http.StatusOK, item)
 }
 
+func (h *Handler) PrepareOrganizationDomainVerification(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		OrganizationID string `json:"organizationId"`
+		Host           string `json:"host"`
+		Method         string `json:"method"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	item, err := h.service.PrepareOrganizationDomainVerification(r.Context(), payload.OrganizationID, payload.Host, payload.Method)
+	if err != nil {
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	sharedweb.JSON(w, http.StatusOK, item)
+}
+
+func (h *Handler) VerifyOrganizationDomain(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		OrganizationID string `json:"organizationId"`
+		Host           string `json:"host"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		sharedweb.Error(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	item, err := h.service.VerifyOrganizationDomain(r.Context(), payload.OrganizationID, payload.Host)
+	if err != nil {
+		sharedweb.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	sharedweb.JSON(w, http.StatusOK, item)
+}
+
 func (h *Handler) DisableOrganization(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		OrganizationID string `json:"organizationId"`

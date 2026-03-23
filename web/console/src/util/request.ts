@@ -3,12 +3,6 @@ import type { AxiosError, AxiosInstance, AxiosRequestConfig, InternalAxiosReques
 import { clearConsoleAuthSession, getCurrentAccessToken } from '../api/auth'
 
 const baseURL = import.meta.env.PPVT_CONSOLE_API_BASE_URL ?? 'http://localhost:8090'
-const authSessionKeys = [
-  'ppvt-oauth-state',
-  'ppvt-oauth-code-verifier',
-  'ppvt-oauth-nonce',
-  'ppvt-oauth-target'
-] as const
 
 export type RequestConfig = AxiosRequestConfig & {
   skipAuthHeader?: boolean
@@ -17,9 +11,6 @@ export type RequestConfig = AxiosRequestConfig & {
 
 function redirectToPortalLogin() {
   clearConsoleAuthSession()
-  for (const key of authSessionKeys) {
-    sessionStorage.removeItem(key)
-  }
   const currentURL = new URL(window.location.href)
   const target = currentURL.pathname === '/console' && currentURL.searchParams.get('target')
     ? currentURL.searchParams.get('target') || `${window.location.origin}/console/dashboard`
