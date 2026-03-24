@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"sort"
 	"strings"
@@ -728,13 +729,41 @@ func verifyOrganizationDomainChallenge(domain model.OrganizationDomain) error {
 }
 
 func verifyOrganizationDomainHTTPFile(domain model.OrganizationDomain) error {
-	client := &http.Client{Timeout: 5 * time.Second}
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+				host, _, err := net.SplitHostPort(address)
+				if err != nil {
+					host = address
+				}
+				normalizedHost := strings.Trim(host, "[]")
+				if coreservice.IsPrivateOrganizationDomainHost(normalizedHost) {
+					return nil, fmt.Errorf("IP or local network addresses are not allowed: %s", normalizedHost)
+				}
+				var dialer net.Dialer
+				return dialer.DialContext(ctx, network, address)
+			},
+		},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return validateOrganizationDomainHTTPVerificationURL(req.URL)
+		},
+	}
 	var lastErr error
 	for _, target := range []string{
 		coreservice.DomainVerificationFileURL(domain.Host, false),
 		coreservice.DomainVerificationFileURL(domain.Host, true),
 	} {
 		if strings.TrimSpace(target) == "" {
+			continue
+		}
+		parsedTarget, err := url.Parse(target)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if err := validateOrganizationDomainHTTPVerificationURL(parsedTarget); err != nil {
+			lastErr = err
 			continue
 		}
 		resp, err := client.Get(target)
@@ -765,6 +794,20 @@ func verifyOrganizationDomainHTTPFile(domain model.OrganizationDomain) error {
 		return fmt.Errorf("domain http_file verification failed: %w", lastErr)
 	}
 	return errors.New("domain http_file verification failed")
+}
+
+func validateOrganizationDomainHTTPVerificationURL(target *url.URL) error {
+	if target == nil {
+		return errors.New("domain http_file verification failed: invalid target URL")
+	}
+	hostname := strings.TrimSpace(target.Hostname())
+	if hostname == "" {
+		return errors.New("domain http_file verification failed: missing target host")
+	}
+	if coreservice.IsPrivateOrganizationDomainHost(target.Host) || coreservice.IsPrivateOrganizationDomainHost(hostname) {
+		return fmt.Errorf("IP or local network addresses are not allowed: %s", target.Host)
+	}
+	return nil
 }
 
 func verifyOrganizationDomainDNSTXT(domain model.OrganizationDomain) error {

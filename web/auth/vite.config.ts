@@ -18,17 +18,15 @@ export default defineConfig({
   build: {
     outDir: path.resolve(__dirname, 'dist'),
     emptyOutDir: true,
-    cssCodeSplit: false,
+    cssCodeSplit: true,
     rollupOptions: {
+      input: {
+        auth: path.resolve(__dirname, 'index.html'),
+        device: path.resolve(__dirname, 'device.html')
+      },
       output: {
-        inlineDynamicImports: true,
-        entryFileNames: 'auth.js',
-        assetFileNames: (assetInfo) => {
-          if (assetInfo.name?.endsWith('.css')) {
-            return 'auth.css'
-          }
-          return '[name][extname]'
-        }
+        entryFileNames: '[name].js',
+        assetFileNames: '[name][extname]'
       }
     }
   }

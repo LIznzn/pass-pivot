@@ -12,6 +12,12 @@ func NewAuthRouter(oidc *authhandler.OIDCHandler, staticAssetHandler func(string
 	oauth := authhandler.NewOAuthHandler(oidc.Config(), oidc.Service())
 	mux.HandleFunc("GET /auth/authorize/app.js", staticAssetHandler("auth.js"))
 	mux.HandleFunc("GET /auth/authorize/app.css", staticAssetHandler("auth.css"))
+	mux.HandleFunc("GET /auth/authorize/shared.css", staticAssetHandler("_plugin-vue_export-helper.css"))
+	mux.HandleFunc("GET /auth/device/app.js", staticAssetHandler("device.js"))
+	mux.HandleFunc("GET /auth/device/app.css", staticAssetHandler("device.css"))
+	mux.HandleFunc("GET /auth/device/shared.css", staticAssetHandler("_plugin-vue_export-helper.css"))
+	mux.HandleFunc("GET /auth/authorize/assets/", authhandler.StaticAssetPrefixHandler("/auth/authorize/assets/", "assets"))
+	mux.HandleFunc("GET /auth/device/assets/", authhandler.StaticAssetPrefixHandler("/auth/device/assets/", "assets"))
 	mux.HandleFunc("GET /auth/authorize/", func(w http.ResponseWriter, r *http.Request) {
 		target := "/auth/authorize"
 		if rawQuery := strings.TrimSpace(r.URL.RawQuery); rawQuery != "" {

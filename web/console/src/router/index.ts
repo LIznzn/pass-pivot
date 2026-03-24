@@ -23,7 +23,7 @@ const router = createRouter({
       component: MainPage,
       meta: { requiresAuth: true },
       children: [
-        { path: '/console/dashboard', name: 'console-dashboard', component: Dashboard },
+        { path: '/console/organization/:organizationId/dashboard', name: 'console-dashboard', component: Dashboard },
         { path: '/console/organization/select', name: 'console-organization-manage', component: OrganizationSelect },
         { path: '/console/organization/:organizationId', name: 'console-organization', component: Organization },
         { path: '/console/organization/:organizationId/project', name: 'console-project-list', component: Project },

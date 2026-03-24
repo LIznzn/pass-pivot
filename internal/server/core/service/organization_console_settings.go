@@ -14,14 +14,14 @@ import (
 )
 
 const (
-	OrganizationMetadataDisplayName       = "displayName"
-	OrganizationMetadataDisplayNameEN     = "displayName.en"
-	OrganizationMetadataDisplayNameJA     = "displayName.ja"
-	OrganizationMetadataDisplayNameCHS    = "displayName.chs"
-	OrganizationMetadataDisplayNameCHT    = "displayName.cht"
-	OrganizationMetadataWebsiteURL        = "websiteUrl"
-	OrganizationMetadataTermsOfServiceURL = "termsOfServiceUrl"
-	OrganizationMetadataPrivacyPolicyURL  = "privacyPolicyUrl"
+	OrganizationMetadataDisplayName        = "displayName"
+	OrganizationMetadataDisplayNameEN      = "displayName.en"
+	OrganizationMetadataDisplayNameJA      = "displayName.ja"
+	OrganizationMetadataDisplayNameCHS     = "displayName.chs"
+	OrganizationMetadataDisplayNameCHT     = "displayName.cht"
+	OrganizationMetadataWebsiteURL         = "websiteUrl"
+	OrganizationMetadataTermsOfServiceURL  = "termsOfServiceUrl"
+	OrganizationMetadataPrivacyPolicyURL   = "privacyPolicyUrl"
 	OrganizationDomainVerificationHTTPFile = "http_file"
 	OrganizationDomainVerificationDNSTXT   = "dns_txt"
 	OrganizationDomainVerificationTXTName  = "_ppvt-domain-verification"
@@ -157,6 +157,9 @@ func ValidateOrganizationDomains(input []model.OrganizationDomain) error {
 			return fmt.Errorf("duplicate domain: %s", item.Host)
 		}
 		seen[item.Host] = struct{}{}
+		if IsPrivateOrganizationDomainHost(item.Host) {
+			return fmt.Errorf("IP or local network addresses are not allowed: %s", item.Host)
+		}
 		switch item.VerificationMethod {
 		case OrganizationDomainVerificationHTTPFile:
 		case OrganizationDomainVerificationDNSTXT:
@@ -168,6 +171,37 @@ func ValidateOrganizationDomains(input []model.OrganizationDomain) error {
 		}
 	}
 	return nil
+}
+
+func IsPrivateOrganizationDomainHost(host string) bool {
+	hostname := strings.TrimSpace(host)
+	if hostname == "" {
+		return false
+	}
+	if parsedHost, _, err := net.SplitHostPort(hostname); err == nil {
+		hostname = parsedHost
+	}
+	hostname = strings.Trim(strings.ToLower(strings.TrimSpace(hostname)), "[]")
+	if hostname == "" {
+		return false
+	}
+	if hostname == "localhost" || strings.HasSuffix(hostname, ".localhost") {
+		return true
+	}
+	ip := net.ParseIP(hostname)
+	if ip != nil {
+		return true
+	}
+	return false
+}
+
+func isPrivateOrLocalIPAddress(ip net.IP) bool {
+	return ip.IsPrivate() ||
+		ip.IsLoopback() ||
+		ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() ||
+		ip.IsMulticast() ||
+		ip.IsUnspecified()
 }
 
 func DomainVerificationTXTRecordName(host string) string {

@@ -133,7 +133,7 @@ function getCallbackUrl() {
 }
 
 function getDefaultTarget() {
-  return `${window.location.origin}/console/dashboard`
+  return `${window.location.origin}/console`
 }
 
 function clearLegacyOAuthHandshake() {

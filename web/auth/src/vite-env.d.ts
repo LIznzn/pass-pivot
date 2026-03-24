@@ -70,6 +70,27 @@ type OAuthBootstrapPayload = {
   api: OAuthBootstrapAPIConfig
 }
 
+type DeviceBootstrapCurrentUser = {
+  id: string
+  username: string
+  name: string
+  email: string
+  phoneNumber: string
+}
+
+type DeviceBootstrapPayload = {
+  title: string
+  status: 'pending' | 'done' | 'error'
+  error?: string
+  userCode: string
+  applicationName?: string
+  organizationName?: string
+  currentUser?: DeviceBootstrapCurrentUser
+  loginAction: string
+  confirmAction: string
+  denied?: boolean
+}
+
 declare global {
   interface Window {
     turnstile?: {
@@ -100,6 +121,9 @@ declare global {
   }
   interface Window {
     __PPVT_OAUTH_BOOTSTRAP__?: OAuthBootstrapPayload
+  }
+  interface Window {
+    __PPVT_DEVICE_BOOTSTRAP__?: DeviceBootstrapPayload
   }
 }
 

@@ -13,7 +13,7 @@ function redirectToPortalLogin() {
   clearConsoleAuthSession()
   const currentURL = new URL(window.location.href)
   const target = currentURL.pathname === '/console' && currentURL.searchParams.get('target')
-    ? currentURL.searchParams.get('target') || `${window.location.origin}/console/dashboard`
+    ? currentURL.searchParams.get('target') || `${window.location.origin}/console`
     : window.location.href
   window.location.assign(`/console?target=${encodeURIComponent(target)}`)
 }

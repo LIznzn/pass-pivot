@@ -44,8 +44,12 @@ export const useConsoleStore = defineStore('console', () => {
   async function setTab(nextTab: ConsoleTab) {
     tab.value = nextTab
     const organizationId = resolveOrganizationId()
-    if (nextTab !== 'dashboard' && !organizationId) {
+    if (!organizationId) {
       await router.push({ name: 'console-organization-manage' })
+      return
+    }
+    if (nextTab === 'dashboard') {
+      await router.push({ name: 'console-dashboard', params: { organizationId } })
       return
     }
     if (nextTab === 'organization') {
@@ -72,7 +76,6 @@ export const useConsoleStore = defineStore('console', () => {
       await router.push({ name: 'console-settings', params: { organizationId } })
       return
     }
-    await router.push({ name: 'console-dashboard' })
   }
 
   async function toggleManageOrganization() {

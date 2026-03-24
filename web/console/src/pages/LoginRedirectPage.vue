@@ -15,6 +15,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { queryOrganizations } from '../api/manage/organization'
 import { getCurrentAccessToken, startConsoleAuthorization } from '../api/auth'
 
 const route = useRoute()
@@ -30,25 +31,39 @@ function normalizeTarget(value: string) {
       }
       const nested = url.searchParams.get('target')
       if (!nested) {
-        return `${window.location.origin}/console/dashboard`
+        return `${window.location.origin}/console`
       }
       next = nested
     } catch {
-      return `${window.location.origin}/console/dashboard`
+      return `${window.location.origin}/console`
     }
   }
-  return `${window.location.origin}/console/dashboard`
+  return `${window.location.origin}/console`
+}
+
+async function redirectAuthenticatedEntry() {
+  try {
+    const response = await queryOrganizations()
+    const organizationId = response.items?.[0]?.id
+    if (organizationId) {
+      window.location.replace(`/console/organization/${organizationId}/dashboard`)
+      return
+    }
+  } catch {
+    // Fall through to organization selection if organization bootstrap fails.
+  }
+  window.location.replace('/console/organization/select')
 }
 
 onMounted(async () => {
   if (getCurrentAccessToken()) {
-    window.location.replace('/console/dashboard')
+    await redirectAuthenticatedEntry()
     return
   }
   try {
     const rawTarget = typeof route.query.target === 'string' && route.query.target
       ? route.query.target
-      : `${window.location.origin}/console/dashboard`
+      : `${window.location.origin}/console`
     const target = normalizeTarget(rawTarget)
     await startConsoleAuthorization(target)
   } catch (error) {

@@ -157,6 +157,9 @@ function buildOrganizationSwitchRoute(options: {
   projectId: string
   applicationId: string
 }) {
+  if (options.currentRouteName === 'console-dashboard') {
+    return { name: 'console-dashboard', params: { organizationId: options.organizationId } }
+  }
   if (options.currentRouteName === 'console-organization') return { name: 'console-organization', params: { organizationId: options.organizationId } }
   if (options.currentRouteName === 'console-organization-manage') return { name: 'console-organization-manage' }
   if (options.currentRouteName === 'console-project-list') return { name: options.currentRouteName, params: { organizationId: options.organizationId } }

@@ -255,5 +255,6 @@ npm run dev:console
 - 这类信息应以代码、数据库和根 README 为准，不再在 `docs/` 中长期维护副本
 - 总设计稿： [docs/PPVT_DESIGN_DRAFT.md](docs/PPVT_DESIGN_DRAFT.md)
 - PLNK 集成草案： [docs/PLNK_INTEGRATION_DRAFT.md](docs/PLNK_INTEGRATION_DRAFT.md)
+- `ppvt-exec` 拆分方案： [docs/PPVT_EXEC_SPLIT_PLAN.md](docs/PPVT_EXEC_SPLIT_PLAN.md)
 - 策略系统： [docs/PPVT_POLICY_SYSTEM.md](docs/PPVT_POLICY_SYSTEM.md)
 - `ppvt-auth` 拆分方案： [docs/PPVT_AUTH_SPLIT_PLAN.md](docs/PPVT_AUTH_SPLIT_PLAN.md)

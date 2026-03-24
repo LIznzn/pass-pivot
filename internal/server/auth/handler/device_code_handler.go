@@ -3,7 +3,6 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
-	"html"
 	"net/http"
 	"net/url"
 	"strings"
@@ -13,6 +12,19 @@ import (
 	sharedhandler "pass-pivot/internal/server/shared/handler"
 	sharedweb "pass-pivot/internal/server/shared/web"
 )
+
+type deviceVerificationBootstrap struct {
+	Title            string                `json:"title"`
+	Status           string                `json:"status"`
+	Error            string                `json:"error,omitempty"`
+	UserCode         string                `json:"userCode"`
+	ApplicationName  string                `json:"applicationName,omitempty"`
+	OrganizationName string                `json:"organizationName,omitempty"`
+	CurrentUser      *authorizeCurrentUser `json:"currentUser,omitempty"`
+	LoginAction      string                `json:"loginAction"`
+	ConfirmAction    string                `json:"confirmAction"`
+	Denied           bool                  `json:"denied,omitempty"`
+}
 
 func (h *OIDCHandler) DeviceAuthorization(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
@@ -45,13 +57,12 @@ func (h *OIDCHandler) DeviceAuthorization(w http.ResponseWriter, r *http.Request
 func (h *OIDCHandler) DeviceVerification(w http.ResponseWriter, r *http.Request) {
 	userCode := strings.TrimSpace(r.URL.Query().Get("user_code"))
 	view, currentUser, sessionID, errMessage := h.loadDeviceVerificationPage(r, userCode)
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if errMessage != "" {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte(buildDeviceVerificationPage(userCode, nil, nil, "", errMessage)))
+		h.writeDeviceVerificationPage(w, http.StatusBadRequest, buildDeviceVerificationBootstrap(userCode, nil, nil, false, errMessage))
 		return
 	}
-	_, _ = w.Write([]byte(buildDeviceVerificationPage(userCode, view, currentUser, sessionID, "")))
+	_ = sessionID
+	h.writeDeviceVerificationPage(w, http.StatusOK, buildDeviceVerificationBootstrap(userCode, view, currentUser, false, ""))
 }
 
 func (h *OIDCHandler) DeviceVerificationLogin(w http.ResponseWriter, r *http.Request) {
@@ -62,9 +73,7 @@ func (h *OIDCHandler) DeviceVerificationLogin(w http.ResponseWriter, r *http.Req
 	userCode := strings.TrimSpace(r.Form.Get("user_code"))
 	view, err := h.oidc.DeviceAuthorizationByUserCode(r.Context(), userCode)
 	if err != nil {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte(buildDeviceVerificationPage(userCode, nil, nil, "", err.Error())))
+		h.writeDeviceVerificationPage(w, http.StatusBadRequest, buildDeviceVerificationBootstrap(userCode, nil, nil, false, err.Error()))
 		return
 	}
 	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/session/create", map[string]any{
@@ -74,16 +83,12 @@ func (h *OIDCHandler) DeviceVerificationLogin(w http.ResponseWriter, r *http.Req
 		"secret":         r.Form.Get("secret"),
 	})
 	if err != nil {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte(buildDeviceVerificationPage(userCode, view, nil, "", err.Error())))
+		h.writeDeviceVerificationPage(w, http.StatusBadRequest, buildDeviceVerificationBootstrap(userCode, view, nil, false, err.Error()))
 		return
 	}
 	result, parseErr := parseLoginResult(body)
 	if parseErr != nil || result.NextStep != "done" {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte(buildDeviceVerificationPage(userCode, view, nil, "", "device verification currently requires a fully authenticated session without pending MFA or confirmation")))
+		h.writeDeviceVerificationPage(w, http.StatusBadRequest, buildDeviceVerificationBootstrap(userCode, view, nil, false, "device verification currently requires a fully authenticated session without pending MFA or confirmation"))
 		return
 	}
 	http.Redirect(w, r, "/auth/device?user_code="+url.QueryEscape(userCode), http.StatusFound)
@@ -107,14 +112,27 @@ func (h *OIDCHandler) DeviceVerificationConfirm(w http.ResponseWriter, r *http.R
 		_, err = h.oidc.ApproveDeviceAuthorization(r.Context(), userCode, sessionID)
 	}
 	if err != nil {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte(buildDeviceVerificationPage(userCode, nil, nil, "", err.Error())))
+		h.writeDeviceVerificationPage(w, http.StatusBadRequest, buildDeviceVerificationBootstrap(userCode, nil, nil, false, err.Error()))
 		return
 	}
-	_, currentUser, _, _ := h.loadDeviceVerificationPage(r, userCode)
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write([]byte(buildDeviceVerificationDonePage(currentUser, strings.EqualFold(strings.TrimSpace(r.Form.Get("deny")), "true"))))
+	view, viewErr := h.oidc.DeviceAuthorizationByUserCode(r.Context(), userCode)
+	if viewErr != nil {
+		h.writeDeviceVerificationPage(w, http.StatusBadRequest, buildDeviceVerificationBootstrap(userCode, nil, nil, false, viewErr.Error()))
+		return
+	}
+	user, _, sessionErr := h.oidc.GetSessionUser(r.Context(), sessionID)
+	if sessionErr != nil {
+		h.writeDeviceVerificationPage(w, http.StatusBadRequest, buildDeviceVerificationBootstrap(userCode, view, nil, false, sessionErr.Error()))
+		return
+	}
+	currentUser := &authorizeCurrentUser{
+		ID:          user.ID,
+		Username:    user.Username,
+		Name:        user.Name,
+		Email:       user.Email,
+		PhoneNumber: user.PhoneNumber,
+	}
+	h.writeDeviceVerificationPage(w, http.StatusOK, buildDeviceVerificationBootstrap(userCode, view, currentUser, strings.EqualFold(strings.TrimSpace(r.Form.Get("deny")), "true"), ""))
 }
 
 func writeOAuthTokenError(w http.ResponseWriter, status int, code, description string) {
@@ -179,68 +197,65 @@ func (h *OIDCHandler) loadDeviceVerificationPage(r *http.Request, userCode strin
 	}, sessionID, ""
 }
 
-func buildDeviceVerificationPage(userCode string, view *authservice.DeviceAuthorizationView, currentUser *authorizeCurrentUser, sessionID, errMessage string) string {
+func buildDeviceVerificationBootstrap(userCode string, view *authservice.DeviceAuthorizationView, currentUser *authorizeCurrentUser, denied bool, errMessage string) deviceVerificationBootstrap {
 	title := "Device Verification"
+	status := "pending"
 	if errMessage != "" {
 		title = "Device Verification Error"
+		status = "error"
 	}
-	var content strings.Builder
-	content.WriteString("<!DOCTYPE html><html><head><meta charset=\"utf-8\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" /><title>")
-	content.WriteString(title)
-	content.WriteString("</title><style>body{font-family:sans-serif;max-width:560px;margin:48px auto;padding:0 16px;line-height:1.5}form{display:flex;flex-direction:column;gap:12px}input{padding:10px;font-size:16px}button{padding:10px 14px;font-size:16px}code{font-size:18px} .error{color:#b00020}</style></head><body>")
-	content.WriteString("<h1>Device Verification</h1>")
-	if errMessage != "" {
-		content.WriteString("<p class=\"error\">")
-		content.WriteString(html.EscapeString(errMessage))
-		content.WriteString("</p>")
+	if errMessage == "" && view != nil && currentUser != nil && (view.Authorization.Status == "approved" || view.Authorization.Status == "denied") {
+		status = "done"
+	}
+	bootstrap := deviceVerificationBootstrap{
+		Title:         title,
+		Status:        status,
+		Error:         errMessage,
+		UserCode:      userCode,
+		CurrentUser:   currentUser,
+		LoginAction:   "/auth/device/login",
+		ConfirmAction: "/auth/device/confirm",
+		Denied:        denied,
 	}
 	if view != nil {
-		content.WriteString("<p>Application: <strong>")
-		content.WriteString(html.EscapeString(view.Application.Name))
-		content.WriteString("</strong></p><p>Organization: <strong>")
-		content.WriteString(html.EscapeString(view.Organization.Name))
-		content.WriteString("</strong></p>")
+		bootstrap.ApplicationName = view.Application.Name
+		bootstrap.OrganizationName = view.Organization.Name
 	}
-	content.WriteString("<p>User code: <code>")
-	content.WriteString(html.EscapeString(userCode))
-	content.WriteString("</code></p>")
-	if currentUser == nil {
-		content.WriteString("<form method=\"post\" action=\"/auth/device/login\">")
-		content.WriteString("<input type=\"hidden\" name=\"user_code\" value=\"")
-		content.WriteString(html.EscapeString(userCode))
-		content.WriteString("\" />")
-		content.WriteString("<label>Email or username<input name=\"identifier\" autocomplete=\"username\" required /></label>")
-		content.WriteString("<label>Password<input type=\"password\" name=\"secret\" autocomplete=\"current-password\" required /></label>")
-		content.WriteString("<button type=\"submit\">Sign in</button></form>")
-	} else {
-		content.WriteString("<p>Signed in as <strong>")
-		content.WriteString(html.EscapeString(currentUser.Email))
-		content.WriteString("</strong></p>")
-		content.WriteString("<form method=\"post\" action=\"/auth/device/confirm\">")
-		content.WriteString("<input type=\"hidden\" name=\"user_code\" value=\"")
-		content.WriteString(html.EscapeString(userCode))
-		content.WriteString("\" />")
-		content.WriteString("<button type=\"submit\">Approve</button></form>")
-		content.WriteString("<form method=\"post\" action=\"/auth/device/confirm\" style=\"margin-top:12px\">")
-		content.WriteString("<input type=\"hidden\" name=\"user_code\" value=\"")
-		content.WriteString(html.EscapeString(userCode))
-		content.WriteString("\" /><input type=\"hidden\" name=\"deny\" value=\"true\" />")
-		content.WriteString("<button type=\"submit\">Deny</button></form>")
-	}
-	content.WriteString("</body></html>")
-	return content.String()
+	return bootstrap
 }
 
-func buildDeviceVerificationDonePage(currentUser *authorizeCurrentUser, denied bool) string {
-	action := "approved"
-	if denied {
-		action = "denied"
+func (h *OIDCHandler) writeDeviceVerificationPage(w http.ResponseWriter, status int, bootstrap deviceVerificationBootstrap) {
+	body, err := buildDeviceVerificationAppShell(bootstrap)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("build device verification page: %v", err), http.StatusInternalServerError)
+		return
 	}
-	email := ""
-	if currentUser != nil {
-		email = currentUser.Email
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	_, _ = w.Write(body)
+}
+
+func buildDeviceVerificationAppShell(bootstrap deviceVerificationBootstrap) ([]byte, error) {
+	payload, err := json.Marshal(bootstrap)
+	if err != nil {
+		return nil, err
 	}
-	return fmt.Sprintf("<!DOCTYPE html><html><head><meta charset=\"utf-8\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" /><title>Device Verification</title></head><body style=\"font-family:sans-serif;max-width:560px;margin:48px auto;padding:0 16px\"><h1>Device Verification</h1><p>The request has been %s.</p><p>%s</p></body></html>", html.EscapeString(action), html.EscapeString(email))
+	html := `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PPVT ` + bootstrap.Title + `</title>
+  <link rel="stylesheet" href="/auth/device/shared.css" />
+  <link rel="stylesheet" href="/auth/device/app.css" />
+</head>
+<body>
+  <div id="app"></div>
+  <script>window.__PPVT_DEVICE_BOOTSTRAP__ = ` + string(payload) + `;</script>
+  <script type="module" src="/auth/device/app.js"></script>
+</body>
+</html>`
+	return []byte(html), nil
 }
 
 func nowTime() time.Time {

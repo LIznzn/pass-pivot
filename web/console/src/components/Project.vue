@@ -196,7 +196,7 @@ watchEffect(() => {
 })
 
 watch(
-  () => [consoleStore.currentOrganizationId, route.name, route.params.projectId, route.params.applicationId],
+  () => [consoleStore.currentOrganizationId, route.name, route.params.projectId, route.params.applicationId, route.query.create, route.query.projectId],
   async ([organizationId, routeName, routeProjectId, routeApplicationId]) => {
     const nextOrganizationId = typeof organizationId === 'string' ? organizationId : ''
     if (!nextOrganizationId) {
@@ -216,6 +216,7 @@ watch(
     if (typeof routeApplicationId === 'string' && routeApplicationId) {
       applicationStore.setSelectedApplicationId(routeApplicationId)
     }
+    await handleRouteCreateAction()
   },
   { immediate: true }
 )
@@ -327,6 +328,35 @@ function openApplicationCreateModal() {
   }
   applicationStore.resetApplicationCreateForm(projectStore.selectedProjectId || currentProject.value?.id || '')
   applicationCreateModalVisible.value = true
+}
+
+async function handleRouteCreateAction() {
+  const createAction = typeof route.query.create === 'string' ? route.query.create : ''
+  if (!createAction) {
+    return
+  }
+  if (createAction === 'project') {
+    openProjectCreateModal()
+    await clearRouteCreateAction()
+    return
+  }
+  if (createAction === 'application') {
+    const routeProjectId = typeof route.query.projectId === 'string' ? route.query.projectId : ''
+    if (routeProjectId && routeProjectId !== projectStore.selectedProjectId) {
+      projectStore.setSelectedProjectId(routeProjectId)
+      await applicationStore.loadApplications(routeProjectId)
+    }
+    openApplicationCreateModal()
+    await clearRouteCreateAction()
+  }
+}
+
+async function clearRouteCreateAction() {
+  await router.replace({
+    name: String(route.name ?? ''),
+    params: route.params,
+    query: {}
+  })
 }
 
 async function submitProjectCreate() {

@@ -642,6 +642,7 @@ func buildAuthorizeAppShell(bootstrap authorizeUIBootstrap) ([]byte, error) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>PPVT ` + bootstrap.Title + `</title>
+  <link rel="stylesheet" href="/auth/authorize/shared.css" />
   <link rel="stylesheet" href="/auth/authorize/app.css" />
 </head>
 <body>

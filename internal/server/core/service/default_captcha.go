@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"pass-pivot/util"
@@ -33,6 +34,13 @@ type defaultCaptchaPayload struct {
 	Answer    string `json:"answer"`
 	Nonce     string `json:"nonce"`
 	ExpiresAt int64  `json:"expiresAt"`
+}
+
+var defaultCaptchaNonceStore = struct {
+	mu   sync.Mutex
+	used map[string]int64
+}{
+	used: map[string]int64{},
 }
 
 func CreateDefaultCaptcha(secret string, now time.Time) (*DefaultCaptchaChallenge, error) {
@@ -95,7 +103,29 @@ func VerifyDefaultCaptcha(secret, token string, now time.Time) (bool, error) {
 	if !hmac.Equal([]byte(strings.ToUpper(strings.TrimSpace(payload.Answer))), []byte(normalizeDefaultCaptchaAnswer(answer))) {
 		return false, nil
 	}
+	if !consumeDefaultCaptchaNonce(payload.Nonce, payload.ExpiresAt, now.Unix()) {
+		return false, fmt.Errorf("default captcha has already been used")
+	}
 	return true, nil
+}
+
+func consumeDefaultCaptchaNonce(nonce string, expiresAtUnix, nowUnix int64) bool {
+	defaultCaptchaNonceStore.mu.Lock()
+	defer defaultCaptchaNonceStore.mu.Unlock()
+	for key, expiry := range defaultCaptchaNonceStore.used {
+		if expiry <= nowUnix {
+			delete(defaultCaptchaNonceStore.used, key)
+		}
+	}
+	nonce = strings.TrimSpace(nonce)
+	if nonce == "" {
+		return false
+	}
+	if existingExpiry, exists := defaultCaptchaNonceStore.used[nonce]; exists && existingExpiry > nowUnix {
+		return false
+	}
+	defaultCaptchaNonceStore.used[nonce] = expiresAtUnix
+	return true
 }
 
 func parseDefaultCaptchaResponseToken(token string) (string, string, error) {
