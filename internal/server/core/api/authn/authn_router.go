@@ -14,7 +14,7 @@ func RegisterRoutes(mux *http.ServeMux, system systemHandler, authn *Handler, oi
 	mux.HandleFunc("POST /api/authn/v1/token/introspect", system.IntrospectToken)
 	mux.HandleFunc("POST /api/authn/v1/token/exchange", oidc.ExchangeTokenAPI)
 	mux.HandleFunc("POST /api/authn/v1/token/revoke", oidc.RevokeTokenAPI)
-	mux.HandleFunc("POST /api/authn/v1/logout", oidc.LogoutAPI)
+	mux.HandleFunc("POST /api/authn/v1/revoke", oidc.RevokeSessionAPI)
 	mux.HandleFunc("POST /api/authn/v1/userinfo/query", oidc.QueryUserInfoAPI)
 	mux.HandleFunc("POST /api/authn/v1/session/create", authn.Login)
 	mux.HandleFunc("POST /api/authn/v1/session/confirm", authn.Confirm)

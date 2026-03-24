@@ -1,5 +1,5 @@
 <template>
-  <section v-if="userViewMode === 'list'" class="section-grid">
+  <section v-if="route.name === 'console-user-list'" class="section-grid">
     <div class="info-card">
       <div class="section-title">当前组织下可用的用户</div>
       <div class="d-flex align-items-center justify-content-between gap-3 mb-3 flex-wrap">
@@ -31,12 +31,7 @@
           <thead>
             <tr>
               <th class="console-list-check-col">
-                <input
-                  class="form-check-input console-list-checkbox"
-                  type="checkbox"
-                  :checked="userStore.users.length > 0 && selectedUserIds.length === userStore.users.length"
-                  @change="toggleAllUsers(($event.target as HTMLInputElement).checked)"
-                />
+                <input class="form-check-input console-list-checkbox" type="checkbox" :checked="userStore.users.length > 0 && selectedUserIds.length === userStore.users.length" @change="toggleAllUsers(($event.target as HTMLInputElement).checked)" />
               </th>
               <th>用户 ID</th>
               <th>用户名</th>
@@ -56,11 +51,7 @@
               <td>{{ user.username || '-' }}</td>
               <td>{{ user.name || '-' }}</td>
               <td>{{ user.email || user.phoneNumber || '-' }}</td>
-              <td>
-                <span class="badge rounded-pill" :class="user.status === 'disabled' ? 'text-bg-secondary' : 'text-bg-success'">
-                  {{ user.status === 'disabled' ? '停用' : '启用' }}
-                </span>
-              </td>
+              <td><span class="badge rounded-pill" :class="user.status === 'disabled' ? 'text-bg-secondary' : 'text-bg-success'">{{ user.status === 'disabled' ? '停用' : '启用' }}</span></td>
               <td>{{ formatRoleLabels(user.roles) }}</td>
               <td class="text-end">
                 <div class="d-inline-flex gap-2">
@@ -69,91 +60,110 @@
                 </div>
               </td>
             </tr>
-            <tr v-if="userStore.users.length === 0">
-              <td colspan="8" class="text-center text-secondary py-4">当前组织下还没有用户。</td>
-            </tr>
           </tbody>
         </table>
       </div>
     </div>
   </section>
 
-  <template v-else>
-    <UserDetail
-      :user-update-form="userStore.userUpdateForm"
-      :user-update-phone-input="userUpdatePhoneInput"
-      :phone-country-options="phoneCountryOptions"
-      :current-user-record="currentUserRecord"
-      :user-detail="userStore.userDetail"
-      :user-admin-form="userAdminForm"
-      :external-binding-form="userStore.externalBindingForm"
-      :user-assignable-roles="userAssignableRoles"
-      :user-role-assignments="userStore.userRoleAssignments"
-      :user-admin-result="userAdminResult"
-      :selected-user-id="userStore.selectedUserId"
-      @back="backToUserList"
-      @run-module-action="runModuleAction"
-      @update-user="updateUser"
-      @reset-user-password="resetUserPassword"
-      @toggle-webauthn-login="toggleWebAuthnLogin"
-      @toggle-mfa-enabled="toggleMFAEnabled"
-      @register-secure-key="registerSecureKey"
-      @delete-secure-key="deleteSecureKey"
-      @update-secure-key="updateSecureKey"
-      @delete-external-binding="deleteExternalBinding"
-      @create-external-binding="createExternalBinding"
-      @handle-inline-mfa-method-action="handleInlineMFAMethodAction"
-      @open-mfa-modal="openMFAModal"
-      @revoke-all-user-sessions="revokeAllUserSessions"
-      @untrust-managed-device="untrustManagedDevice"
-      @toggle-user-role="toggleUserRole"
-      @disable-user="disableUser"
-      @enable-user="enableUser"
-      @reset-user-ukid="resetUserUkid"
-      @rotate-user-token="rotateUserToken"
-      @delete-single-user="deleteSingleUser"
-    />
+  <RouterView v-else />
 
-    <MfaConfigModal
-      :visible="mfaConfigModalVisible"
-      :method="currentMFAMethod"
-      :active-totp-enrollments="activeTOTPEnrollments"
-      :totp-setup="totpSetup"
-      :totp-qr-code-data-url="totpQRCodeDataURL"
-      :pending-totp-enrollment-id="pendingTotpEnrollmentId"
-      :pending-totp-manual-entry-key="pendingTotpManualEntryKey"
-      :totp-verify-form="totpVerifyForm"
-      :current-user-record="currentUserRecord"
-      :mfa-setting-form="mfaSettingForm"
-      :u2f-secure-keys="u2fSecureKeys"
-      :user-detail="userStore.userDetail"
-      :recovery-code-list="generatedRecoveryCodeList"
-      @update:visible="mfaConfigModalVisible = $event"
-      @delete-totp-enrollments="deleteTotpEnrollments"
-      @delete-secure-key="deleteSecureKey"
-      @submit="submitCurrentMFAModal"
-    />
-  </template>
+  <MfaConfigModal
+    :visible="mfaConfigModalVisible"
+    :method="currentMFAMethod"
+    :active-totp-enrollments="activeTOTPEnrollments"
+    :totp-setup="totpSetup"
+    :totp-qr-code-data-url="totpQRCodeDataURL"
+    :pending-totp-enrollment-id="pendingTotpEnrollmentId"
+    :pending-totp-manual-entry-key="pendingTotpManualEntryKey"
+    :totp-verify-form="totpVerifyForm"
+    :current-user-record="currentUserRecord"
+    :mfa-setting-form="mfaSettingForm"
+    :u2f-secure-keys="u2fSecureKeys"
+    :user-detail="userStore.userDetail"
+    :recovery-code-list="generatedRecoveryCodeList"
+    @update:visible="mfaConfigModalVisible = $event"
+    @delete-totp-enrollments="deleteTotpEnrollments"
+    @delete-secure-key="deleteSecureKey"
+    @submit="submitCurrentMFAModal"
+  />
 </template>
 
-<script setup lang="ts">
-import { computed, reactive, ref, watch, watchEffect } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import QRCode from 'qrcode'
-import { BButton, BForm, BFormInput, BFormSelect, useToast } from 'bootstrap-vue-next'
-import { normalizeCreationOptions, serializeCredential } from '@shared/utils/webauthn'
-import { notifyToast } from '@shared/utils/notify'
-import UserDetail from '@/components/UserDetail.vue'
-import MfaConfigModal from '@/modal/MfaConfigModal.vue'
-import { useConsoleStore } from '@/stores/console'
-import { useOrganizationStore } from '@/stores/organization'
-import { useUserStore } from '@/stores/user'
+<script lang="ts">
+import type { ComputedRef, InjectionKey, Ref } from 'vue'
+import { useConsoleStore as useConsoleStoreForType } from '@/stores/console'
+import { useUserStore as useUserStoreForType } from '@/stores/user'
 
 type MFAMethod = 'totp' | 'email_code' | 'sms_code' | 'u2f' | 'recovery_code'
 type PhoneInputState = {
   countryCode: string
   localNumber: string
 }
+
+export type UserConsoleContext = {
+  userStore: ReturnType<typeof useUserStoreForType>
+  console: ReturnType<typeof useConsoleStoreForType>
+  phoneCountryOptions: Array<{ value: string; text: string }>
+  selectedUserIds: Ref<string[]>
+  showCreateUserForm: Ref<boolean>
+  userAdminResult: Ref<unknown>
+  recoveryCodes: Ref<{ codes?: string[] } | null>
+  userAdminForm: { password: string }
+  userPhoneInput: PhoneInputState
+  userUpdatePhoneInput: PhoneInputState
+  mfaSettingForm: { emailEnabled: string; smsEnabled: string }
+  totpVerifyForm: { enrollmentId: string; code: string }
+  currentMFAMethod: Ref<MFAMethod>
+  currentUserRecord: ComputedRef<any>
+  userAssignableRoles: ComputedRef<any[]>
+  pendingTotpEnrollmentId: ComputedRef<string>
+  pendingTotpManualEntryKey: ComputedRef<string>
+  generatedRecoveryCodeList: ComputedRef<string[]>
+  activeTOTPEnrollments: ComputedRef<any[]>
+  u2fSecureKeys: ComputedRef<any[]>
+  selectUser: (user: any) => void
+  toggleAllUsers: (checked: boolean) => void
+  toggleUserSelection: (userId: string, checked: boolean) => void
+  deleteSelectedUsers: (userIds: string[]) => Promise<void>
+  submitUserCreateFromList: () => Promise<void>
+  runModuleAction: () => Promise<void>
+  updateUser: () => Promise<void>
+  resetUserPassword: () => Promise<void>
+  toggleWebAuthnLogin: (enabled: boolean) => Promise<void>
+  toggleMFAEnabled: (enabled: boolean) => Promise<void>
+  registerSecureKey: (purpose: 'webauthn' | 'u2f') => Promise<void>
+  deleteSecureKey: (credentialId: string) => Promise<void>
+  updateSecureKey: (payload: { credentialId: string; identifier: string }) => Promise<void>
+  deleteExternalBinding: (bindingId: string) => Promise<void>
+  createExternalBinding: () => Promise<void>
+  handleInlineMFAMethodAction: (item: { id: MFAMethod; enabled: boolean; disabled?: boolean }) => Promise<void>
+  openMFAModal: (method: MFAMethod) => Promise<void>
+  revokeAllUserSessions: () => Promise<void>
+  untrustManagedDevice: (deviceId: string) => Promise<void>
+  toggleUserRole: (roleName: string, checked: boolean) => void
+  disableUser: () => Promise<void>
+  enableUser: () => Promise<void>
+  resetUserUkid: () => Promise<void>
+  rotateUserToken: () => Promise<void>
+  deleteSingleUser: (userId: string) => Promise<void>
+  backToUserList: () => void
+  formatRoleLabels: (value?: string[]) => string
+}
+
+export const userConsoleContextKey: InjectionKey<UserConsoleContext> = Symbol('userConsoleContext')
+</script>
+
+<script setup lang="ts">
+import { computed, provide, reactive, ref, watch, watchEffect } from 'vue'
+import { RouterView, useRoute, useRouter } from 'vue-router'
+import QRCode from 'qrcode'
+import { BButton, BForm, BFormInput, BFormSelect, useToast } from 'bootstrap-vue-next'
+import { normalizeCreationOptions, serializeCredential } from '@shared/utils/webauthn'
+import { notifyToast } from '@shared/utils/notify'
+import MfaConfigModal from '@/modal/MfaConfigModal.vue'
+import { useConsoleStore } from '@/stores/console'
+import { useOrganizationStore } from '@/stores/organization'
+import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
 const route = useRoute()
@@ -186,7 +196,6 @@ function showToast(
   })
 }
 
-const userViewMode = ref<'list' | 'detail'>('list')
 const mfaConfigModalVisible = ref(false)
 const currentMFAMethod = ref<MFAMethod>('totp')
 const totpSetup = ref<unknown>(null)
@@ -235,11 +244,11 @@ const smsCodeEnrollment = computed(() => (userStore.userDetail?.mfaEnrollments |
 const u2fSecureKeys = computed(() => (userStore.userDetail?.secureKeys || []).filter((item: any) => item.u2fEnable))
 
 watchEffect(() => {
-  if (userViewMode.value === 'detail') {
-    console.setPageHeader('', '')
+  if (route.name === 'console-user-list') {
+    console.setPageHeader('用户', '管理用户、通行密钥、身份验证器、备用验证码与管理员动作。')
     return
   }
-  console.setPageHeader('用户', '管理用户、通行密钥、身份验证器、备用验证码与管理员动作。')
+  console.setPageHeader('', '')
 })
 
 watch(
@@ -271,19 +280,17 @@ watch(
 )
 
 watch(
-  () => [console.currentOrganizationId, route.name, route.params.userId],
-  async ([organizationId, routeName, routeUserId]) => {
+  () => [console.currentOrganizationId, route.params.userId],
+  async ([organizationId, routeUserId]) => {
     const nextOrganizationId = typeof organizationId === 'string' ? organizationId : ''
     if (!nextOrganizationId) {
       userStore.clearUserState()
       userAdminResult.value = null
       recoveryCodes.value = null
-      userViewMode.value = 'list'
       return
     }
     userStore.userForm.organizationId = nextOrganizationId
     userStore.externalBindingForm.organizationId = nextOrganizationId
-    userViewMode.value = routeName === 'console-user-detail' ? 'detail' : 'list'
     await Promise.all([loadUsers(), userStore.loadRoles()])
     if (typeof routeUserId === 'string' && routeUserId) {
       userStore.setSelectedUserId(routeUserId)
@@ -292,9 +299,6 @@ watch(
     }
     if (!userStore.selectedUserId && userStore.users.length) {
       userStore.setSelectedUserId(userStore.users[0].id)
-    }
-    if (userViewMode.value === 'detail') {
-      await loadUserDetail(userStore.selectedUserId)
     }
   },
   { immediate: true }
@@ -373,7 +377,6 @@ async function withFeedback(fn: () => Promise<void>, successMessage = '操作成
 }
 
 function selectUser(user: any) {
-  userViewMode.value = 'detail'
   userStore.setSelectedUserId(user.id)
   void loadUserDetail(user.id)
   void router.push({
@@ -386,7 +389,6 @@ function selectUser(user: any) {
 }
 
 function backToUserList() {
-  userViewMode.value = 'list'
   void router.push({
     name: 'console-user-list',
     params: {
@@ -784,4 +786,54 @@ function formatRoleLabels(value?: string[]) {
   }
   return value.join(', ')
 }
+
+provide(userConsoleContextKey, {
+  userStore,
+  console,
+  phoneCountryOptions,
+  selectedUserIds,
+  showCreateUserForm,
+  userAdminResult,
+  recoveryCodes,
+  userAdminForm,
+  userPhoneInput,
+  userUpdatePhoneInput,
+  mfaSettingForm,
+  totpVerifyForm,
+  currentMFAMethod,
+  userAssignableRoles,
+  currentUserRecord,
+  pendingTotpEnrollmentId,
+  pendingTotpManualEntryKey,
+  generatedRecoveryCodeList,
+  activeTOTPEnrollments,
+  u2fSecureKeys,
+  selectUser,
+  backToUserList,
+  toggleAllUsers,
+  toggleUserSelection,
+  deleteSelectedUsers,
+  deleteSingleUser,
+  submitUserCreateFromList,
+  updateUser,
+  resetUserPassword,
+  toggleWebAuthnLogin,
+  toggleMFAEnabled,
+  registerSecureKey,
+  deleteSecureKey,
+  updateSecureKey,
+  deleteExternalBinding,
+  createExternalBinding,
+  handleInlineMFAMethodAction,
+  openMFAModal,
+  revokeAllUserSessions,
+  untrustManagedDevice,
+  toggleUserRole,
+  disableUser,
+  enableUser,
+  resetUserUkid,
+  rotateUserToken,
+  runModuleAction,
+  formatRoleLabels
+})
 </script>

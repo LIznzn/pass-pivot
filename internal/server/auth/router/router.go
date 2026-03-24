@@ -28,7 +28,6 @@ func NewAuthRouter(oidc *authhandler.OIDCHandler, staticAssetHandler func(string
 	mux.HandleFunc("POST /auth/api/context/query", oidc.QueryAuthorizeContextAPI)
 	mux.HandleFunc("POST /auth/api/session/create", oidc.CreateAuthorizeSessionAPI)
 	mux.HandleFunc("POST /auth/api/device/complete", oidc.CompleteDeviceAuthorizationAPI)
-	mux.HandleFunc("POST /auth/api/session/account/switch", oidc.SwitchAuthorizeAccountAPI)
 	mux.HandleFunc("POST /auth/api/session/confirm", oidc.ConfirmAuthorizeSessionAPI)
 	mux.HandleFunc("POST /auth/api/session/verify_mfa", oidc.VerifyAuthorizeMFAAPI)
 	mux.HandleFunc("POST /auth/api/session/mfa_challenge/create", oidc.AuthorizeChallenge)

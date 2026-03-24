@@ -12,10 +12,6 @@ export function completeDeviceAuthorization(payload: any) {
   return requestPost<any>('/auth/api/device/complete', payload)
 }
 
-export function switchAuthorizeAccount() {
-  return requestPost<any>('/auth/api/session/account/switch', {})
-}
-
 export function confirmAuthorizeSession(payload: any) {
   return requestPost<any>('/auth/api/session/confirm', payload)
 }

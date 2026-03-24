@@ -51,6 +51,6 @@ func (h *ExternalIDPHandler) CompleteLogin(w http.ResponseWriter, r *http.Reques
 		authnapi.WriteKnown(w, err)
 		return
 	}
-	sharedhandler.WritePortalSessionCookie(w, r, result.Session.ID)
+	sharedhandler.WriteAuthSessionCookie(w, r, result.Session.OrganizationID, result.Session.ID)
 	sharedweb.JSON(w, http.StatusOK, result)
 }

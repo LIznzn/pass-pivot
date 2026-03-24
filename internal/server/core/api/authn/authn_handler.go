@@ -22,7 +22,7 @@ func (h *Handler) resolveSessionReference(r *http.Request, explicit string) stri
 	if value := strings.TrimSpace(sharedhandler.ReadPendingLoginChallengeCookie(r)); value != "" {
 		return value
 	}
-	return sharedhandler.ReadPortalSessionCookie(r)
+	return sharedhandler.ReadAnyAuthSessionCookie(r)
 }
 
 func NewHandler(service *AuthnService) *Handler {
@@ -66,9 +66,9 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	sharedhandler.WriteFingerprintCookie(w, r, result.Fingerprint)
 	if result.NextStep == "done" {
 		sharedhandler.ClearPendingLoginChallengeCookie(w, r)
-		sharedhandler.WritePortalSessionCookie(w, r, result.Session.ID)
+		sharedhandler.WriteAuthSessionCookie(w, r, result.Session.OrganizationID, result.Session.ID)
 	} else {
-		sharedhandler.ClearPortalSessionCookie(w, r)
+		sharedhandler.ClearAuthSessionCookie(w, r, result.Session.OrganizationID)
 		sharedhandler.WritePendingLoginChallengeCookie(w, r, result.Session.LoginChallenge)
 	}
 	sharedweb.JSON(w, http.StatusOK, result)
@@ -76,9 +76,9 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) Confirm(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
-		SessionID string `json:"sessionId"`
-		Accept    bool   `json:"accept"`
-		TrustDevice bool `json:"trustDevice"`
+		SessionID   string `json:"sessionId"`
+		Accept      bool   `json:"accept"`
+		TrustDevice bool   `json:"trustDevice"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
@@ -92,12 +92,12 @@ func (h *Handler) Confirm(w http.ResponseWriter, r *http.Request) {
 	}
 	if !payload.Accept {
 		sharedhandler.ClearPendingLoginChallengeCookie(w, r)
-		sharedhandler.ClearPortalSessionCookie(w, r)
+		sharedhandler.ClearAuthSessionCookie(w, r, result.Session.OrganizationID)
 	} else if result.NextStep == "done" {
 		sharedhandler.ClearPendingLoginChallengeCookie(w, r)
-		sharedhandler.WritePortalSessionCookie(w, r, result.Session.ID)
+		sharedhandler.WriteAuthSessionCookie(w, r, result.Session.OrganizationID, result.Session.ID)
 	} else {
-		sharedhandler.ClearPortalSessionCookie(w, r)
+		sharedhandler.ClearAuthSessionCookie(w, r, result.Session.OrganizationID)
 		sharedhandler.WritePendingLoginChallengeCookie(w, r, result.Session.LoginChallenge)
 	}
 	sharedweb.JSON(w, http.StatusOK, result)
@@ -122,9 +122,9 @@ func (h *Handler) VerifyMFA(w http.ResponseWriter, r *http.Request) {
 	}
 	if result.NextStep == "done" {
 		sharedhandler.ClearPendingLoginChallengeCookie(w, r)
-		sharedhandler.WritePortalSessionCookie(w, r, result.Session.ID)
+		sharedhandler.WriteAuthSessionCookie(w, r, result.Session.OrganizationID, result.Session.ID)
 	} else {
-		sharedhandler.ClearPortalSessionCookie(w, r)
+		sharedhandler.ClearAuthSessionCookie(w, r, result.Session.OrganizationID)
 		sharedhandler.WritePendingLoginChallengeCookie(w, r, result.Session.LoginChallenge)
 	}
 	sharedweb.JSON(w, http.StatusOK, result)
@@ -200,7 +200,7 @@ func (h *Handler) EnrollPortalTOTP(w http.ResponseWriter, r *http.Request) {
 		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
 		return
 	}
-	result, err := h.service.EnrollCurrentUserTOTP(r.Context(), sharedhandler.ReadPortalSessionCookie(r), payload.ApplicationID)
+	result, err := h.service.EnrollCurrentUserTOTP(r.Context(), sharedhandler.ReadAnyAuthSessionCookie(r), payload.ApplicationID)
 	if err != nil {
 		authnapi.WriteKnown(w, err)
 		return
@@ -256,7 +256,7 @@ func (h *Handler) VerifyPortalTOTPEnrollment(w http.ResponseWriter, r *http.Requ
 		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
 		return
 	}
-	if err := h.service.VerifyCurrentUserTOTPEnrollment(r.Context(), sharedhandler.ReadPortalSessionCookie(r), payload.EnrollmentID, payload.Code); err != nil {
+	if err := h.service.VerifyCurrentUserTOTPEnrollment(r.Context(), sharedhandler.ReadAnyAuthSessionCookie(r), payload.EnrollmentID, payload.Code); err != nil {
 		authnapi.WriteKnown(w, err)
 		return
 	}
@@ -304,7 +304,7 @@ func (h *Handler) GenerateRecoveryCodes(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *Handler) GeneratePortalRecoveryCodes(w http.ResponseWriter, r *http.Request) {
-	codes, err := h.service.GenerateCurrentUserRecoveryCodes(r.Context(), sharedhandler.ReadPortalSessionCookie(r))
+	codes, err := h.service.GenerateCurrentUserRecoveryCodes(r.Context(), sharedhandler.ReadAnyAuthSessionCookie(r))
 	if err != nil {
 		authnapi.WriteKnown(w, err)
 		return
@@ -353,7 +353,7 @@ func (h *Handler) QueryRecoveryCodes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) QueryPortalRecoveryCodes(w http.ResponseWriter, r *http.Request) {
-	codes, err := h.service.QueryCurrentUserRecoveryCodes(r.Context(), sharedhandler.ReadPortalSessionCookie(r))
+	codes, err := h.service.QueryCurrentUserRecoveryCodes(r.Context(), sharedhandler.ReadAnyAuthSessionCookie(r))
 	if err != nil {
 		authnapi.WriteKnown(w, err)
 		return

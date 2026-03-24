@@ -3,7 +3,7 @@
     <div class="console-module-summary-card">
       <div class="console-module-hero">
         <div class="console-module-hero-copy">
-          <button type="button" class="console-back-button" @click="emit('back')" aria-label="返回角色列表">
+          <button type="button" class="console-back-button" @click="roleConsole.backToRoleList()" aria-label="返回角色列表">
             <i class="bi bi-arrow-left console-back-button-icon" aria-hidden="true"></i>
           </button>
           <div>
@@ -12,7 +12,7 @@
             <p class="console-module-subtitle">{{ selectedRole?.name ? '从角色列表选择条目后，在详情区维护角色元信息、策略列表与 Policy Check。' : '维护角色标签、策略规则与 Policy Check。' }}</p>
           </div>
         </div>
-        <BButton variant="primary" @click="emit('run-module-action')">刷新角色</BButton>
+        <BButton variant="primary" @click="roleConsole.runModuleAction()">刷新角色</BButton>
       </div>
       <div class="console-module-metrics">
         <div v-for="item in currentModuleMetrics" :key="item.label" class="console-module-metric">
@@ -50,7 +50,7 @@
               <div class="record-meta">Role ID: {{ role.id }}</div>
               <div class="record-meta">策略数：{{ policies.filter((item) => item.roleId === role.id).length }}</div>
               <div class="record-actions">
-                <BButton size="sm" variant="outline-primary" @click="emit('select-role', role)">查看详情</BButton>
+                <BButton size="sm" variant="outline-primary" @click="roleConsole.selectRole(role)">查看详情</BButton>
               </div>
             </div>
           </div>
@@ -67,7 +67,7 @@
             <div class="record-meta">创建时间：{{ formatDateTime(selectedRole.createdAt) }}</div>
             <div class="record-meta">更新时间：{{ formatDateTime(selectedRole.updatedAt) }}</div>
           </div>
-          <BForm v-if="selectedRole" @submit.prevent="emit('update-role')">
+          <BForm v-if="selectedRole" @submit.prevent="updateRole()">
             <BFormInput v-model="roleForm.name" placeholder="role label" class="mb-2" />
             <BFormSelect v-model="roleForm.type" :options="roleTypeOptions" class="mb-2" />
             <BFormInput v-model="roleForm.description" placeholder="description" class="mb-2" />
@@ -85,8 +85,8 @@
               <div class="record-meta">Policy ID：{{ policy.id }}</div>
               <div class="record-meta">API Rules：{{ formatPolicyRules(policy.apiRules) }}</div>
               <div class="record-actions">
-                <BButton size="sm" variant="outline-primary" @click="emit('edit-policy', policy)">编辑</BButton>
-                <BButton size="sm" variant="outline-danger" @click="emit('delete-policy', policy.id)">删除</BButton>
+                <BButton size="sm" variant="outline-primary" @click="roleStore.editPolicy(policy)">编辑</BButton>
+                <BButton size="sm" variant="outline-danger" @click="deletePolicy(policy.id)">删除</BButton>
               </div>
             </div>
             <div v-if="selectedRolePolicies.length === 0" class="detail-card">
@@ -97,7 +97,7 @@
         <div id="policy-editor" class="info-card">
           <div class="section-title">策略编辑</div>
           <div class="record-meta mb-3">策略直接挂在角色下，`apiRules.path` 支持 `keyMatch2`。</div>
-          <BForm @submit.prevent="emit('save-policy')">
+          <BForm @submit.prevent="savePolicy()">
             <BFormInput v-model="policyForm.name" placeholder="policy name" class="mb-2" />
             <div class="row g-2 mb-2">
               <div class="col-md-4">
@@ -110,13 +110,13 @@
             <textarea v-model="policyForm.apiRulesText" class="form-control mb-2" rows="8" />
             <div class="d-flex gap-2">
               <BButton type="submit" variant="primary">{{ policyForm.id ? '保存策略' : '创建策略' }}</BButton>
-              <BButton type="button" variant="outline-secondary" @click="emit('reset-policy-form')">重置</BButton>
+              <BButton type="button" variant="outline-secondary" @click="roleStore.resetPolicyForm()">重置</BButton>
             </div>
           </BForm>
         </div>
         <div id="role-decision" class="info-card">
           <div class="section-title">Policy Check</div>
-          <BForm @submit.prevent="emit('evaluate-policy-check')">
+          <BForm @submit.prevent="roleConsole.evaluatePolicyCheck()">
             <BFormSelect v-model="policyCheckForm.subjectType" :options="subjectTypeOptions" class="mb-2" />
             <BFormInput v-model="policyCheckForm.subjectId" placeholder="subjectId" class="mb-2" />
             <BFormInput v-model="policyCheckForm.method" placeholder="POST" class="mb-2" />
@@ -132,11 +132,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, inject } from 'vue'
 import { BButton, BForm, BFormInput, BFormSelect } from 'bootstrap-vue-next'
 import RightSide from '@/layout/RightSide.vue'
 import { useAuditStore } from '@/stores/audit'
 import { useConsoleStore } from '@/stores/console'
+import { roleConsoleContextKey } from '@/components/Role.vue'
 
 const effectOptions = [
   { value: 'allow', text: 'allow' },
@@ -148,23 +149,26 @@ const subjectTypeOptions = [
   { value: 'user', text: 'user' }
 ]
 
-const props = defineProps<{
-  roles: any[]
-  selectedRoleId: string
-  policies: any[]
-  selectedRole: any
-  selectedRolePolicies: any[]
-  roleForm: { name: string; type: string; description: string }
-  roleTypeOptions: Array<{ value: string; text: string }>
-  policyForm: { id: string; name: string; effect: string; priority: number; apiRulesText: string }
-  policyCheckForm: { subjectType: string; subjectId: string; method: string; path: string }
-  decisionResult: unknown
-}>()
+const roleConsole = inject(roleConsoleContextKey)
+if (!roleConsole) {
+  throw new Error('missing role console context')
+}
 
 const auditStore = useAuditStore()
 const consoleStore = useConsoleStore()
+const roleStore = roleConsole.roleStore
 const moduleRecentChanges = computed(() => auditStore.moduleRecentChanges)
 const formatDateTime = consoleStore.formatDateTime
+const roles = computed(() => roleConsole.roles.value)
+const selectedRoleId = computed(() => roleStore.selectedRoleId)
+const policies = computed(() => roleConsole.policies.value)
+const selectedRole = computed(() => roleConsole.selectedRole.value)
+const selectedRolePolicies = computed(() => roleConsole.selectedRolePolicies.value)
+const roleForm = roleStore.roleForm
+const roleTypeOptions = roleConsole.roleTypeOptions
+const policyForm = roleStore.policyForm
+const policyCheckForm = roleStore.policyCheckForm
+const decisionResult = computed(() => roleConsole.decisionResult.value)
 
 const currentModulePanels = [
   { id: 'role-list', label: '角色列表' },
@@ -175,12 +179,12 @@ const currentModulePanels = [
 ]
 
 const currentModuleMetrics = computed<Array<{ label: string; value: string; copyable?: boolean; copyValue?: string }>>(() => [
-  { label: '角色 ID', value: props.selectedRole?.id || '-' },
-  { label: '角色类型', value: props.selectedRole?.type || '-' },
-  { label: '角色数', value: String(props.roles.length) },
-  { label: '关联策略', value: String(props.selectedRolePolicies.length) },
-  { label: '策略总数', value: String(props.policies.length) },
-  { label: '最近变更', value: formatDateTime(props.selectedRole?.updatedAt) }
+  { label: '角色 ID', value: selectedRole.value?.id || '-' },
+  { label: '角色类型', value: selectedRole.value?.type || '-' },
+  { label: '角色数', value: String(roles.value.length) },
+  { label: '关联策略', value: String(selectedRolePolicies.value.length) },
+  { label: '策略总数', value: String(policies.value.length) },
+  { label: '最近变更', value: formatDateTime(selectedRole.value?.updatedAt) }
 ])
 
 function formatPolicyRules(rules?: Array<{ method?: string; path?: string }>) {
@@ -190,15 +194,15 @@ function formatPolicyRules(rules?: Array<{ method?: string; path?: string }>) {
   return rules.map((rule) => `${rule.method || '*'} ${rule.path || '*'}`).join(', ')
 }
 
-const emit = defineEmits<{
-  back: []
-  'run-module-action': []
-  'select-role': [role: any]
-  'update-role': []
-  'save-policy': []
-  'evaluate-policy-check': []
-  'edit-policy': [policy: any]
-  'delete-policy': [policyId: string]
-  'reset-policy-form': []
-}>()
+function updateRole() {
+  void roleConsole!.runWithFeedback(() => roleStore.updateRole())
+}
+
+function savePolicy() {
+  void roleConsole!.runWithFeedback(() => roleStore.savePolicy())
+}
+
+function deletePolicy(policyId: string) {
+  void roleConsole!.runWithFeedback(() => roleStore.deletePolicy(policyId))
+}
 </script>

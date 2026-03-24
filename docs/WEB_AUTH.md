@@ -181,7 +181,7 @@ core 对认证域暴露稳定版本接口：
 - `POST /auth/api/context/query`
 - `POST /auth/api/device/complete`
 - `POST /auth/api/session/create`
-- `POST /auth/api/session/account/switch`
+- `GET /auth/end_session`
 - `POST /auth/api/session/confirm`
 - `POST /auth/api/session/verify_mfa`
 - `POST /auth/api/session/mfa_challenge/create`
@@ -221,7 +221,7 @@ device code 网页验证相关接口：
 - `POST /auth/api/context/query`
 - `POST /auth/api/device/complete`
 - `POST /auth/api/session/create`
-- `POST /auth/api/session/account/switch`
+- `GET /auth/end_session`
 - `POST /auth/api/session/confirm`
 - `POST /auth/api/session/verify_mfa`
 - `POST /auth/api/session/mfa_challenge/create`
@@ -255,7 +255,7 @@ device code 网页验证相关接口：
   -> `/api/authn/v1/session/u2f/finish`
 - `/auth/api/captcha/refresh`
   -> auth 本地生成 captcha challenge，不经过 core
-- `/auth/api/session/account/switch`
+- `/auth/end_session`
   -> auth 本地清理 pending login / portal session cookie，不经过 core
 
 ## Current Decisions

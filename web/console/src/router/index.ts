@@ -4,8 +4,12 @@ import Dashboard from '@/components/Dashboard.vue'
 import OrganizationSelect from '@/components/OrganizationSelect.vue'
 import Organization from '@/components/Organization.vue'
 import Project from '@/components/Project.vue'
+import ProjectDetail from '@/components/ProjectDetail.vue'
+import Application from '@/components/Application.vue'
 import User from '@/components/User.vue'
+import UserDetail from '@/components/UserDetail.vue'
 import Role from '@/components/Role.vue'
+import RoleDetail from '@/components/RoleDetail.vue'
 import Audit from '@/components/Audit.vue'
 import Settings from '@/components/Settings.vue'
 import LoginCallbackPage from '@/pages/LoginCallbackPage.vue'
@@ -26,13 +30,28 @@ const router = createRouter({
         { path: '/console/organization/:organizationId/dashboard', name: 'console-dashboard', component: Dashboard },
         { path: '/console/organization/select', name: 'console-organization-manage', component: OrganizationSelect },
         { path: '/console/organization/:organizationId', name: 'console-organization', component: Organization },
-        { path: '/console/organization/:organizationId/project', name: 'console-project-list', component: Project },
-        { path: '/console/organization/:organizationId/project/:projectId', name: 'console-project-detail', component: Project },
-        { path: '/console/organization/:organizationId/project/:projectId/application/:applicationId', name: 'console-application-detail', component: Project },
-        { path: '/console/organization/:organizationId/user', name: 'console-user-list', component: User },
-        { path: '/console/organization/:organizationId/user/:userId', name: 'console-user-detail', component: User },
-        { path: '/console/organization/:organizationId/role', name: 'console-role-list', component: Role },
-        { path: '/console/organization/:organizationId/role/:roleId', name: 'console-role-detail', component: Role },
+        {
+          path: '/console/organization/:organizationId/project',
+          component: Project,
+          children: [
+            { path: ':projectId', name: 'console-project-detail', component: ProjectDetail },
+            { path: ':projectId/application/:applicationId', name: 'console-application-detail', component: Application }
+          ]
+        },
+        {
+          path: '/console/organization/:organizationId/user',
+          component: User,
+          children: [
+            { path: ':userId', name: 'console-user-detail', component: UserDetail }
+          ]
+        },
+        {
+          path: '/console/organization/:organizationId/role',
+          component: Role,
+          children: [
+            { path: ':roleId', name: 'console-role-detail', component: RoleDetail }
+          ]
+        },
         { path: '/console/organization/:organizationId/audit', name: 'console-audit', component: Audit },
         { path: '/console/organization/:organizationId/settings', name: 'console-settings', component: Settings }
       ]

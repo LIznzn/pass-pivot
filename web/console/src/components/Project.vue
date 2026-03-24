@@ -1,27 +1,5 @@
 <template>
-  <Application
-    v-if="currentView === 'application-detail'"
-    :current-application="currentApplication"
-    :application-update-form="applicationStore.applicationUpdateForm"
-    :application-type-options="applicationTypeOptions"
-    :grant-type-options="grantTypeOptions"
-    :token-type-options="tokenTypeOptions"
-    :client-authentication-type-options="clientAuthenticationTypeOptions"
-    :application-assignable-roles="applicationAssignableRoles"
-    :format-application-type="formatApplicationType"
-    :format-application-token-type="formatApplicationTokenType"
-    :format-application-grant-type="formatApplicationGrantType"
-    :format-application-client-authentication-type="formatApplicationClientAuthenticationType"
-    :format-role-labels="formatRoleLabels"
-    @back="backToProjectDetail"
-    @disable="showApplicationDisableNotice"
-    @delete="showApplicationDeleteNotice"
-    @update-application="updateApplication"
-    @save-application-metadata="saveApplicationMetadata"
-    @reset-application-key="resetApplicationKey"
-  />
-
-  <section v-else-if="projectViewMode === 'list'" class="section-grid">
+  <section v-if="currentRouteName === 'console-project-list'" class="section-grid">
     <div class="info-card">
       <div class="section-title">当前组织下可用的项目</div>
       <div class="record-list project-list-records">
@@ -56,24 +34,7 @@
     </div>
   </section>
 
-  <ProjectDetail
-    v-else
-    :current-project="currentProject"
-    :applications="applicationStore.applications"
-    :project-update-form="projectStore.projectUpdateForm"
-    :project-assigned-user-ids="projectStore.projectAssignedUserIds"
-    :format-application-token-type="formatApplicationTokenType"
-    :format-application-grant-type="formatApplicationGrantType"
-    :format-role-labels="formatRoleLabels"
-    :format-application-client-authentication-type="formatApplicationClientAuthenticationType"
-    @back="backToProjectList"
-    @disable="showProjectDisableNotice"
-    @delete="showProjectDeleteNotice"
-    @go-application-detail="goApplicationDetail"
-    @go-application-create="openApplicationCreateModal"
-    @save-project-user-assignments="saveProjectUserAssignments"
-    @update-project="updateProject"
-  />
+  <RouterView v-else />
 
   <ApplicationKeyModal
     :visible="applicationKeyModalVisible"
@@ -107,15 +68,55 @@
   />
 </template>
 
+<script lang="ts">
+import type { ComputedRef, InjectionKey } from 'vue'
+import { useApplicationStore as useApplicationStoreForType } from '@/stores/application'
+import { useConsoleStore as useConsoleStoreForType } from '@/stores/console'
+import { useProjectStore as useProjectStoreForType } from '@/stores/project'
+
+export type ProjectConsoleContext = {
+  projectStore: ReturnType<typeof useProjectStoreForType>
+  applicationStore: ReturnType<typeof useApplicationStoreForType>
+  consoleStore: ReturnType<typeof useConsoleStoreForType>
+  applicationTypeOptions: Array<{ value: string; text: string }>
+  grantTypeOptions: Array<{ value: string; text: string }>
+  tokenTypeOptions: Array<{ value: string; text: string }>
+  clientAuthenticationTypeOptions: Array<{ value: string; text: string }>
+  applicationAssignableRoles: ComputedRef<any[]>
+  currentProject: ComputedRef<any>
+  currentApplication: ComputedRef<any>
+  formatRoleLabels: (value?: string[]) => string
+  formatApplicationType: (value?: string) => string
+  formatApplicationTokenType: (value?: string | string[]) => string
+  formatApplicationGrantType: (value?: string | string[]) => string
+  formatApplicationClientAuthenticationType: (value?: string) => string
+  selectProject: (project: any) => Promise<void>
+  goApplicationDetail: (application: any) => Promise<void>
+  backToProjectList: () => void
+  backToProjectDetail: () => Promise<void>
+  openProjectCreateModal: () => void
+  openApplicationCreateModal: () => void
+  updateProject: () => Promise<void>
+  updateApplication: () => Promise<void>
+  saveApplicationMetadata: (rows: Array<{ key: string; value: string }>) => Promise<void>
+  resetApplicationKey: () => Promise<void>
+  saveProjectUserAssignments: (userIds: string[]) => Promise<void>
+  showProjectDisableNotice: () => Promise<void>
+  showProjectDeleteNotice: () => Promise<void>
+  showApplicationDisableNotice: () => Promise<void>
+  showApplicationDeleteNotice: () => Promise<void>
+}
+
+export const projectConsoleContextKey: InjectionKey<ProjectConsoleContext> = Symbol('projectConsoleContext')
+</script>
+
 <script setup lang="ts">
-import { computed, ref, watch, watchEffect } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, provide, ref, watch, watchEffect } from 'vue'
+import { RouterView, useRoute, useRouter } from 'vue-router'
 import { useToast } from 'bootstrap-vue-next'
-import ProjectDetail from '@/components/ProjectDetail.vue'
-import Application from '@/components/Application.vue'
+import ApplicationCreateModal from '@/modal/ApplicationCreateModal.vue'
 import ApplicationKeyModal from '@/modal/ApplicationKeyModal.vue'
 import ProjectCreateModal from '@/modal/ProjectCreateModal.vue'
-import ApplicationCreateModal from '@/modal/ApplicationCreateModal.vue'
 import { useApplicationStore } from '@/stores/application'
 import { useConsoleStore } from '@/stores/console'
 import { useOrganizationStore } from '@/stores/organization'
@@ -156,7 +157,6 @@ function showToast(
 }
 
 const consoleApplicationId = import.meta.env.PPVT_CONSOLE_APPLICATION_ID ?? ''
-const projectViewMode = ref<'list' | 'detail'>('list')
 const projectCreateModalVisible = ref(false)
 const applicationCreateModalVisible = ref(false)
 const applicationKeyModalVisible = ref(false)
@@ -199,35 +199,26 @@ const applicationProtocolTemplates: Record<string, { text: string; allowedTypes:
 }
 
 const currentRouteName = computed(() => String(route.name ?? 'console-dashboard'))
-const currentView = computed(() => {
-  if (currentRouteName.value === 'console-application-detail') return 'application-detail'
-  return 'main'
-})
 const currentProject = computed(() => projectStore.projects.find((item: any) => item.id === projectStore.selectedProjectId) || projectStore.projects[0])
 const currentApplication = computed(() => applicationStore.applications.find((item: any) => item.id === applicationStore.selectedApplicationId) || applicationStore.applications[0])
 const applicationAssignableRoles = computed(() => roleStore.roles.filter((item: any) => item.type === 'application'))
 
 watchEffect(() => {
-  if (currentView.value === 'application-detail') {
-    consoleStore.setPageHeader('', '')
+  if (currentRouteName.value === 'console-project-list') {
+    consoleStore.setPageHeader('项目', '管理项目与应用的结构、协议模式与接入配置。')
     return
   }
-  if (projectViewMode.value === 'detail') {
-    consoleStore.setPageHeader('', '')
-    return
-  }
-  consoleStore.setPageHeader('项目', '管理项目与应用的结构、协议模式与接入配置。')
+  consoleStore.setPageHeader('', '')
 })
 
 watch(
-  () => [consoleStore.currentOrganizationId, route.name, route.params.projectId, route.params.applicationId, route.query.create, route.query.projectId],
-  async ([organizationId, routeName, routeProjectId, routeApplicationId]) => {
+  () => [consoleStore.currentOrganizationId, route.params.projectId, route.params.applicationId, route.query.create, route.query.projectId],
+  async ([organizationId, routeProjectId, routeApplicationId]) => {
     const nextOrganizationId = typeof organizationId === 'string' ? organizationId : ''
     if (!nextOrganizationId) {
       clearProjectAndApplicationState()
       return
     }
-    projectViewMode.value = routeName === 'console-project-list' ? 'list' : 'detail'
     await projectStore.loadProjects(nextOrganizationId)
     if (typeof routeProjectId === 'string' && routeProjectId) {
       projectStore.setSelectedProjectId(routeProjectId)
@@ -322,8 +313,13 @@ function selectApplication(application: any) {
 async function selectProject(project: any) {
   projectStore.setSelectedProjectId(project?.id ?? '')
   await applicationStore.loadApplications(project?.id ?? '')
-  projectViewMode.value = 'detail'
-  await router.push({ name: 'console-project-detail', params: { organizationId: consoleStore.currentOrganizationId || organizationStore.currentOrganization?.id || '', projectId: project.id ?? '' } })
+  await router.push({
+    name: 'console-project-detail',
+    params: {
+      organizationId: consoleStore.currentOrganizationId || organizationStore.currentOrganization?.id || '',
+      projectId: project.id ?? ''
+    }
+  })
 }
 
 async function goApplicationDetail(application: any) {
@@ -339,7 +335,6 @@ async function goApplicationDetail(application: any) {
 }
 
 function backToProjectList() {
-  projectViewMode.value = 'list'
   void router.push({ name: 'console-project-list', params: { organizationId: consoleStore.currentOrganizationId || organizationStore.currentOrganization?.id || '' } })
 }
 
@@ -504,4 +499,37 @@ function showApplicationPrivateKey(privateKey?: string, title = '应用私钥') 
   applicationKeyModalTitle.value = title
   applicationKeyModalVisible.value = true
 }
+
+provide(projectConsoleContextKey, {
+  projectStore,
+  applicationStore,
+  consoleStore,
+  applicationTypeOptions,
+  grantTypeOptions,
+  tokenTypeOptions,
+  clientAuthenticationTypeOptions,
+  applicationAssignableRoles,
+  currentProject,
+  currentApplication,
+  formatRoleLabels,
+  formatApplicationType,
+  formatApplicationTokenType,
+  formatApplicationGrantType,
+  formatApplicationClientAuthenticationType,
+  selectProject,
+  backToProjectList,
+  backToProjectDetail,
+  goApplicationDetail,
+  openProjectCreateModal,
+  openApplicationCreateModal,
+  updateProject,
+  updateApplication,
+  saveApplicationMetadata,
+  resetApplicationKey,
+  saveProjectUserAssignments,
+  showProjectDisableNotice,
+  showProjectDeleteNotice,
+  showApplicationDisableNotice,
+  showApplicationDeleteNotice
+})
 </script>

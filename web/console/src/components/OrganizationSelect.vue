@@ -40,6 +40,7 @@
 
 <script setup lang="ts">
 import { watchEffect } from 'vue'
+import { storeToRefs } from 'pinia'
 import { BButton } from 'bootstrap-vue-next'
 import { useConsoleStore } from '@/stores/console'
 import { useOrganizationStore } from '@/stores/organization'
@@ -55,7 +56,7 @@ function applicationCount(organization: any) {
   return (organization.projects ?? []).reduce((count: number, project: any) => count + (project.applications?.length ?? 0), 0)
 }
 
-const organizations = organizationStore.organizations
-const currentOrganizationId = consoleStore.currentOrganizationId
+const { organizations } = storeToRefs(organizationStore)
+const { currentOrganizationId } = storeToRefs(consoleStore)
 const formatDateTime = consoleStore.formatDateTime
 </script>

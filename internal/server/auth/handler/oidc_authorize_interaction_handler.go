@@ -274,7 +274,12 @@ func (h *OIDCHandler) queryAuthorizeInteraction(w http.ResponseWriter, r *http.R
 	in := standardAuthorizeRequestFromHTTP(r)
 	in.SessionID = strings.TrimSpace(r.URL.Query().Get("ppvt_session_id"))
 	if in.SessionID == "" {
-		in.SessionID = resolveLoginSessionRef(r)
+		if target, err := h.platform.GetLoginTarget(r.Context(), in.ClientID); err == nil {
+			in.SessionID = strings.TrimSpace(sharedhandler.ReadAuthSessionCookie(r, target.OrganizationID))
+		}
+		if in.SessionID == "" {
+			in.SessionID = resolveLoginSessionRef(r)
+		}
 	}
 	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/authorize/interaction/query", map[string]any{
 		"sessionId":            in.SessionID,
@@ -358,7 +363,7 @@ func resolveLoginSessionRef(r *http.Request) string {
 	if value := strings.TrimSpace(r.URL.Query().Get(loginChallengeQueryKey)); value != "" {
 		return value
 	}
-	if value := strings.TrimSpace(sharedhandler.ReadPortalSessionCookie(r)); value != "" {
+	if value := strings.TrimSpace(sharedhandler.ReadAnyAuthSessionCookie(r)); value != "" {
 		return value
 	}
 	return ""
@@ -471,7 +476,7 @@ func deviceCodeLoginTarget(view *authservice.DeviceAuthorizationView) *coreservi
 		ProjectName:              view.Project.Name,
 		ApplicationID:            view.Application.ID,
 		ApplicationName:          view.Application.Name,
-		ApplicationDisplayNames: map[string]string{},
+		ApplicationDisplayNames:  map[string]string{},
 		ExternalIDPs:             nil,
 	}
 }
@@ -532,15 +537,15 @@ func (h *OIDCHandler) queryDeviceCodeInteraction(w http.ResponseWriter, r *http.
 			Target:        target,
 		}, nil
 	}
-	sessionID := strings.TrimSpace(sharedhandler.ReadPortalSessionCookie(r))
+	sessionID := strings.TrimSpace(sharedhandler.ReadAuthSessionCookie(r, target.OrganizationID))
 	if sessionID == "" {
 		sessionID = strings.TrimSpace(sharedhandler.ReadPendingLoginChallengeCookie(r))
 	}
 	if sessionID != "" {
-		if session, err := h.oidc.GetSession(r.Context(), sessionID); err == nil {
+		if _, session, err := h.oidc.ValidateSessionForApplication(r.Context(), sessionID, target.ApplicationID); err == nil {
 			switch session.State {
 			case "authenticated":
-				user, _, userErr := h.oidc.GetSessionUser(r.Context(), sessionID)
+				user, _, userErr := h.oidc.ValidateSessionForApplication(r.Context(), sessionID, target.ApplicationID)
 				if userErr != nil {
 					return authorizeInteractionResponse{}, userErr
 				}

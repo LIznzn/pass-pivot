@@ -106,6 +106,31 @@ func (s *OIDCService) GetSessionUser(ctx context.Context, sessionID string) (*mo
 	return &user, session, nil
 }
 
+func (s *OIDCService) ValidateSessionForApplication(ctx context.Context, sessionID, applicationID string) (*model.User, *model.Session, error) {
+	user, session, err := s.GetSessionUser(ctx, sessionID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if strings.TrimSpace(applicationID) == "" {
+		return nil, nil, errors.New("application is required")
+	}
+	organizationID, err := s.applicationOrganizationID(ctx, applicationID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if strings.TrimSpace(user.OrganizationID) != organizationID || strings.TrimSpace(session.OrganizationID) != organizationID {
+		return nil, nil, errors.New("session organization mismatch")
+	}
+	allowed, err := userAssignedToApplicationProject(ctx, s.db, applicationID, user.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !allowed {
+		return nil, nil, errors.New("user is not assigned to the target project")
+	}
+	return user, session, nil
+}
+
 func (s *OIDCService) BuildAuthorizationRedirect(ctx context.Context, in StandardAuthorizeRequest) (string, error) {
 	app, redirectError, err := s.ValidateAuthorizationRequest(ctx, in)
 	if err != nil {
@@ -128,19 +153,19 @@ func (s *OIDCService) BuildAuthorizationRedirect(ctx context.Context, in Standar
 	if session.State != "authenticated" {
 		return s.redirectWithOAuthErrorForResponseType(in.RedirectURI, in.ResponseType, "login_required", in.State, "session is not authenticated"), nil
 	}
+	user, _, err := s.ValidateSessionForApplication(ctx, session.ID, app.ID)
+	if err != nil {
+		return s.redirectWithOAuthErrorForResponseType(in.RedirectURI, in.ResponseType, "login_required", in.State, err.Error()), nil
+	}
 	if response.UsesImplicit {
-		var user model.User
-		if err := s.db.WithContext(ctx).First(&user, "id = ?", session.UserID).Error; err != nil {
-			return "", err
-		}
-		tokens, err := s.auth.IssueTokensForApplication(ctx, user, *session, app.ID, strings.TrimSpace(in.Scope))
+		tokens, err := s.auth.IssueTokensForApplication(ctx, *user, *session, app.ID, strings.TrimSpace(in.Scope))
 		if err != nil {
 			return "", err
 		}
 		idToken := ""
 		if response.NeedsIDToken {
 			authTime := session.CreatedAt
-			idToken, err = s.signIDToken(ctx, app.ID, user, app.ID, strings.TrimSpace(in.Scope), strings.TrimSpace(in.Nonce), &authTime, session.ID)
+			idToken, err = s.signIDToken(ctx, app.ID, *user, app.ID, strings.TrimSpace(in.Scope), strings.TrimSpace(in.Nonce), &authTime, session.ID)
 			if err != nil {
 				return "", err
 			}
@@ -175,6 +200,18 @@ func (s *OIDCService) BuildAuthorizationRedirect(ctx context.Context, in Standar
 	}
 	redirect.RawQuery = query.Encode()
 	return redirect.String(), nil
+}
+
+func (s *OIDCService) applicationOrganizationID(ctx context.Context, applicationID string) (string, error) {
+	var app model.Application
+	if err := s.db.WithContext(ctx).Select("id", "project_id").First(&app, "id = ?", applicationID).Error; err != nil {
+		return "", err
+	}
+	var project model.Project
+	if err := s.db.WithContext(ctx).Select("id", "organization_id").First(&project, "id = ?", app.ProjectID).Error; err != nil {
+		return "", err
+	}
+	return project.OrganizationID, nil
 }
 
 type authorizeResponseType struct {
@@ -297,14 +334,17 @@ func (s *OIDCService) IntrospectToken(ctx context.Context, audience, clientID, c
 	return result, nil
 }
 
-func (s *OIDCService) EndSession(ctx context.Context, sessionID, postLogoutRedirectURI, state string) (string, error) {
+func (s *OIDCService) EndSession(ctx context.Context, sessionID, postLogoutRedirectURI, state, reason string) (string, error) {
+	if strings.TrimSpace(reason) == "" {
+		reason = "oidc_end_session"
+	}
 	if sessionID != "" {
 		var session model.Session
 		if err := s.db.WithContext(ctx).First(&session, "id = ?", sessionID).Error; err == nil {
 			now := time.Now()
 			_ = s.db.WithContext(ctx).Model(&model.Token{}).
 				Where("session_id = ? AND revoked_at IS NULL", session.ID).
-				Updates(map[string]any{"revoked_at": &now, "revocation_note": "oidc_end_session"}).Error
+				Updates(map[string]any{"revoked_at": &now, "revocation_note": reason}).Error
 			_ = s.db.WithContext(ctx).Where("id = ?", session.ID).Delete(&model.Session{}).Error
 		}
 	}

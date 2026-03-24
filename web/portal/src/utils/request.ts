@@ -1,8 +1,13 @@
 import axios from 'axios'
-import type { AxiosError, AxiosInstance, AxiosRequestConfig } from 'axios'
-import { clearPortalAuthSession, getCurrentAccessToken, startPortalAuthorization } from '@/auth'
+import type { AxiosError, AxiosInstance, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios'
+import { clearPortalAuthSession, getCurrentAccessToken, startPortalAuthorization } from '@/stores/auth'
 
 const baseURL = import.meta.env.PPVT_PORTAL_API_BASE_URL ?? 'http://localhost:8090'
+
+export type RequestConfig = AxiosRequestConfig & {
+  skipAuthHeader?: boolean
+  skipUnauthorizedRedirect?: boolean
+}
 
 function redirectToPortalLogin() {
   clearPortalAuthSession()
@@ -14,9 +19,9 @@ const request: AxiosInstance = axios.create({
   withCredentials: true
 })
 
-request.interceptors.request.use((config) => {
+request.interceptors.request.use((config: InternalAxiosRequestConfig & RequestConfig) => {
   const accessToken = getCurrentAccessToken()
-  if (accessToken) {
+  if (accessToken && !config.skipAuthHeader) {
     config.headers.Authorization = `Bearer ${accessToken}`
   }
   return config
@@ -25,7 +30,8 @@ request.interceptors.request.use((config) => {
 request.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
-    if (error.response?.status === 401) {
+    const config = (error.config || {}) as RequestConfig
+    if (error.response?.status === 401 && !config.skipUnauthorizedRedirect) {
       redirectToPortalLogin()
     }
     const responseData = error.response?.data as { message?: string; code?: string } | string | undefined
@@ -36,12 +42,12 @@ request.interceptors.response.use(
   }
 )
 
-export async function requestGet<T>(url: string, config?: AxiosRequestConfig) {
+export async function requestGet<T>(url: string, config?: RequestConfig) {
   const response = await request.get<T>(url, config)
   return response.data
 }
 
-export async function requestPost<T>(url: string, data?: unknown, config?: AxiosRequestConfig) {
+export async function requestPost<T>(url: string, data?: unknown, config?: RequestConfig) {
   const response = await request.post<T>(url, data, config)
   return response.data
 }

@@ -1,5 +1,5 @@
 <template>
-  <section v-if="roleViewMode === 'list'" class="card-stack">
+  <section v-if="route.name === 'console-role-list'" class="card-stack">
     <div class="info-card">
       <div class="section-title">当前组织下可用的用户角色</div>
       <div class="d-flex align-items-center justify-content-between gap-3 mb-3 flex-wrap">
@@ -21,28 +21,8 @@
       </div>
       <div class="table-responsive">
         <table class="table align-middle console-list-table mb-0">
-          <thead>
-            <tr>
-              <th class="console-list-check-col">
-                <input
-                  class="form-check-input console-list-checkbox"
-                  type="checkbox"
-                  :checked="userAssignableRoles.length > 0 && userAssignableRoles.every((role) => selectedRoleIds.includes(role.id))"
-                  @change="toggleRolesByType('user', ($event.target as HTMLInputElement).checked)"
-                />
-              </th>
-              <th>角色 ID</th>
-              <th>角色标签</th>
-              <th>描述</th>
-              <th>策略数</th>
-              <th class="text-end">操作</th>
-            </tr>
-          </thead>
           <tbody>
             <tr v-for="role in userAssignableRoles" :key="role.id">
-              <td class="console-list-check-col">
-                <input class="form-check-input console-list-checkbox" type="checkbox" :checked="selectedRoleIds.includes(role.id)" @change="toggleRoleSelection(role.id, ($event.target as HTMLInputElement).checked)" />
-              </td>
               <td class="console-list-id">{{ role.id }}</td>
               <td>{{ role.name || '-' }}</td>
               <td>{{ role.description || '-' }}</td>
@@ -53,9 +33,6 @@
                   <BButton size="sm" variant="outline-danger" @click="deleteSingleRole(role.id)">删除</BButton>
                 </div>
               </td>
-            </tr>
-            <tr v-if="userAssignableRoles.length === 0">
-              <td colspan="6" class="text-center text-secondary py-4">当前组织下还没有用户角色。</td>
             </tr>
           </tbody>
         </table>
@@ -82,28 +59,8 @@
       </div>
       <div class="table-responsive">
         <table class="table align-middle console-list-table mb-0">
-          <thead>
-            <tr>
-              <th class="console-list-check-col">
-                <input
-                  class="form-check-input console-list-checkbox"
-                  type="checkbox"
-                  :checked="applicationAssignableRoles.length > 0 && applicationAssignableRoles.every((role) => selectedRoleIds.includes(role.id))"
-                  @change="toggleRolesByType('application', ($event.target as HTMLInputElement).checked)"
-                />
-              </th>
-              <th>角色 ID</th>
-              <th>角色标签</th>
-              <th>描述</th>
-              <th>策略数</th>
-              <th class="text-end">操作</th>
-            </tr>
-          </thead>
           <tbody>
             <tr v-for="role in applicationAssignableRoles" :key="role.id">
-              <td class="console-list-check-col">
-                <input class="form-check-input console-list-checkbox" type="checkbox" :checked="selectedRoleIds.includes(role.id)" @change="toggleRoleSelection(role.id, ($event.target as HTMLInputElement).checked)" />
-              </td>
               <td class="console-list-id">{{ role.id }}</td>
               <td>{{ role.name || '-' }}</td>
               <td>{{ role.description || '-' }}</td>
@@ -115,44 +72,56 @@
                 </div>
               </td>
             </tr>
-            <tr v-if="applicationAssignableRoles.length === 0">
-              <td colspan="6" class="text-center text-secondary py-4">当前组织下还没有应用角色。</td>
-            </tr>
           </tbody>
         </table>
       </div>
     </div>
   </section>
 
-  <RoleDetail
-    v-else
-    :roles="roleStore.roles"
-    :selected-role-id="roleStore.selectedRoleId"
-    :policies="roleStore.policies"
-    :selected-role="selectedRole"
-    :selected-role-policies="selectedRolePolicies"
-    :role-form="roleStore.roleForm"
-    :role-type-options="roleTypeOptions"
-    :policy-form="roleStore.policyForm"
-    :policy-check-form="roleStore.policyCheckForm"
-    :decision-result="decisionResult"
-    @back="backToRoleList"
-    @run-module-action="runModuleAction"
-    @select-role="selectRole"
-    @update-role="runWithFeedback(() => roleStore.updateRole())"
-    @save-policy="runWithFeedback(() => roleStore.savePolicy())"
-    @evaluate-policy-check="evaluatePolicyCheck"
-    @edit-policy="roleStore.editPolicy"
-    @delete-policy="runWithFeedback(() => roleStore.deletePolicy($event))"
-    @reset-policy-form="roleStore.resetPolicyForm"
-  />
+  <RouterView v-else />
 </template>
 
+<script lang="ts">
+import type { ComputedRef, InjectionKey, Ref } from 'vue'
+import { useRoleStore as useRoleStoreForType } from '@/stores/role'
+
+export type RoleConsoleContext = {
+  roleStore: ReturnType<typeof useRoleStoreForType>
+  roleTypeOptions: Array<{ value: string; text: string }>
+  selectedRoleIds: Ref<string[]>
+  selectedUserRoleIds: ComputedRef<string[]>
+  selectedApplicationRoleIds: ComputedRef<string[]>
+  showCreateRoleForm: Ref<boolean>
+  showCreateUserRoleForm: ComputedRef<boolean>
+  showCreateApplicationRoleForm: ComputedRef<boolean>
+  userAssignableRoles: ComputedRef<any[]>
+  applicationAssignableRoles: ComputedRef<any[]>
+  roles: ComputedRef<any[]>
+  policies: ComputedRef<any[]>
+  selectedRole: ComputedRef<any>
+  selectedRolePolicies: ComputedRef<any[]>
+  roleForm: { name: string; type: string; description: string }
+  decisionResult: Ref<unknown>
+  toggleCreateRoleForm: (type: 'user' | 'application') => void
+  toggleRolesByType: (type: 'user' | 'application', checked: boolean) => void
+  toggleRoleSelection: (roleId: string, checked: boolean) => void
+  selectRole: (role: any) => void
+  backToRoleList: () => void
+  submitRoleCreateFromList: () => Promise<void>
+  deleteSelectedRolesByType: (_type: 'user' | 'application', roleIds: string[]) => Promise<void>
+  deleteSingleRole: (roleId: string) => Promise<void>
+  runModuleAction: () => Promise<void>
+  evaluatePolicyCheck: () => Promise<void>
+  runWithFeedback: (fn: () => Promise<unknown>, successMessage?: string) => Promise<void>
+}
+
+export const roleConsoleContextKey: InjectionKey<RoleConsoleContext> = Symbol('roleConsoleContext')
+</script>
+
 <script setup lang="ts">
-import { computed, ref, watch, watchEffect } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, provide, ref, watch, watchEffect } from 'vue'
+import { RouterView, useRoute, useRouter } from 'vue-router'
 import { BButton, BForm, BFormInput, BFormSelect, useToast } from 'bootstrap-vue-next'
-import RoleDetail from '@/components/RoleDetail.vue'
 import { useConsoleStore } from '@/stores/console'
 import { useOrganizationStore } from '@/stores/organization'
 import { useRoleStore } from '@/stores/role'
@@ -193,7 +162,6 @@ const roleTypeOptions = [
   { value: 'application', text: '应用角色' }
 ]
 
-const roleViewMode = ref<'list' | 'detail'>('list')
 const selectedRoleIds = ref<string[]>([])
 const showCreateRoleForm = ref(false)
 const createRoleFormType = ref<'user' | 'application'>('user')
@@ -212,26 +180,24 @@ const selectedRolePolicies = computed(() => roleStore.policies.filter((item: any
 const roleForm = roleStore.roleForm
 
 watchEffect(() => {
-  if (roleViewMode.value === 'detail') {
-    console.setPageHeader('', '')
+  if (route.name === 'console-role-list') {
+    console.setPageHeader('角色', '维护角色标签、策略规则与 Policy Check。')
     return
   }
-  console.setPageHeader('角色', '维护角色标签、策略规则与 Policy Check。')
+  console.setPageHeader('', '')
 })
 
 watch(
-  () => [console.currentOrganizationId, route.name, route.params.roleId],
-  async ([organizationId, routeName, routeRoleId]) => {
+  () => [console.currentOrganizationId, route.params.roleId],
+  async ([organizationId, routeRoleId]) => {
     const nextOrganizationId = typeof organizationId === 'string' ? organizationId : ''
     if (!nextOrganizationId) {
       roleStore.clearRoleState()
       decisionResult.value = null
-      roleViewMode.value = 'list'
       return
     }
     roleStore.roleForm.organizationId = nextOrganizationId
     roleStore.policyForm.organizationId = nextOrganizationId
-    roleViewMode.value = routeName === 'console-role-detail' ? 'detail' : 'list'
     await Promise.all([roleStore.loadRoles(), roleStore.loadPolicies()])
     if (typeof routeRoleId === 'string' && routeRoleId) {
       roleStore.setSelectedRoleId(routeRoleId)
@@ -301,7 +267,6 @@ async function runWithFeedback(fn: () => Promise<unknown>, successMessage = '操
 }
 
 function selectRole(role: any) {
-  roleViewMode.value = 'detail'
   roleStore.setSelectedRoleId(role.id ?? '')
   void router.push({
     name: 'console-role-detail',
@@ -313,7 +278,6 @@ function selectRole(role: any) {
 }
 
 function backToRoleList() {
-  roleViewMode.value = 'list'
   void router.push({
     name: 'console-role-list',
     params: {
@@ -357,4 +321,34 @@ async function evaluatePolicyCheck() {
     })
   }
 }
+
+provide(roleConsoleContextKey, {
+  roleStore,
+  roleTypeOptions,
+  selectedRoleIds,
+  selectedUserRoleIds,
+  selectedApplicationRoleIds,
+  showCreateRoleForm,
+  showCreateUserRoleForm,
+  showCreateApplicationRoleForm,
+  userAssignableRoles,
+  applicationAssignableRoles,
+  roles,
+  policies,
+  selectedRole,
+  selectedRolePolicies,
+  roleForm,
+  decisionResult,
+  toggleCreateRoleForm,
+  toggleRolesByType,
+  toggleRoleSelection,
+  selectRole,
+  backToRoleList,
+  submitRoleCreateFromList,
+  deleteSelectedRolesByType,
+  deleteSingleRole,
+  runModuleAction,
+  evaluatePolicyCheck,
+  runWithFeedback
+})
 </script>

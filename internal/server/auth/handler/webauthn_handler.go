@@ -59,6 +59,6 @@ func (h *WebAuthnHandler) FinishLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sharedhandler.WriteFingerprintCookie(w, r, result.Fingerprint)
-	sharedhandler.WritePortalSessionCookie(w, r, result.Session.ID)
+	sharedhandler.WriteAuthSessionCookie(w, r, result.Session.OrganizationID, result.Session.ID)
 	sharedweb.JSON(w, http.StatusOK, result)
 }

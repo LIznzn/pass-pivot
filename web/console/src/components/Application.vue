@@ -3,7 +3,7 @@
     <div class="console-module-summary-card">
       <div class="console-module-hero">
         <div class="console-module-hero-copy">
-          <button type="button" class="console-back-button" @click="emit('back')" aria-label="返回项目详情">
+          <button type="button" class="console-back-button" @click="projectConsole.backToProjectDetail()" aria-label="返回项目详情">
             <i class="bi bi-arrow-left console-back-button-icon" aria-hidden="true"></i>
           </button>
           <div>
@@ -18,8 +18,8 @@
             <i class="bi bi-chevron-down" aria-hidden="true"></i>
           </button>
           <div class="console-action-menu-list">
-            <button type="button" class="console-action-menu-item" @click="emit('disable')">停用</button>
-            <button type="button" class="console-action-menu-item console-action-menu-item-danger" @click="emit('delete')">删除</button>
+            <button type="button" class="console-action-menu-item" @click="projectConsole.showApplicationDisableNotice()">停用</button>
+            <button type="button" class="console-action-menu-item console-action-menu-item-danger" @click="projectConsole.showApplicationDeleteNotice()">删除</button>
           </div>
         </div>
       </div>
@@ -62,7 +62,7 @@
             <div class="record-meta">4. 其他 Grant Type 不能使用 `client_authentication_type=none`。</div>
             <div class="record-meta mt-2">{{ currentApplicationProtocolHint }}</div>
           </div>
-          <BForm @submit.prevent="emit('update-application')">
+          <BForm @submit.prevent="projectConsole.updateApplication()">
             <div class="mb-3">
               <label class="form-label">应用名称</label>
               <BFormInput v-model="applicationUpdateForm.name" placeholder="请输入应用名称" />
@@ -147,14 +147,14 @@
             </div>
             <div class="d-flex gap-2 mt-3">
               <BButton variant="outline-secondary" @click="addApplicationMetadataRow">新增条目</BButton>
-              <BButton variant="primary" @click="emit('save-application-metadata', applicationMetadataRows)">保存元信息</BButton>
+              <BButton variant="primary" @click="projectConsole.saveApplicationMetadata(applicationMetadataRows)">保存元信息</BButton>
             </div>
           </div>
         </div>
         <div id="application-role-assignment" class="info-card">
           <div class="section-title">角色分配</div>
           <div class="record-meta mb-3">维护当前应用可授予或可使用的应用角色标签。</div>
-          <BForm @submit.prevent="emit('update-application')">
+          <BForm @submit.prevent="projectConsole.updateApplication()">
             <div class="detail-card mb-3">
               <div class="form-label mb-2">应用角色</div>
               <div class="d-flex flex-wrap gap-3">
@@ -175,7 +175,7 @@
         <div id="application-token" class="info-card">
           <div class="section-title">令牌设置</div>
           <div class="record-meta mb-3">Issuer 为实例级统一配置。`private_key_jwt` 应用的公钥以 Ed25519 裸公钥形式保存在系统中；普通应用的私钥只在创建或重置时显示一次，系统内置 API 应用的私钥固化在代码中。</div>
-          <BForm @submit.prevent="emit('update-application')">
+          <BForm @submit.prevent="projectConsole.updateApplication()">
             <div v-if="applicationUpdateForm.clientAuthenticationType === 'private_key_jwt'" class="mb-3">
               <label class="form-label">应用公钥</label>
               <textarea
@@ -199,7 +199,7 @@
                 v-if="applicationUpdateForm.clientAuthenticationType === 'private_key_jwt' && applicationUpdateForm.id"
                 type="button"
                 variant="outline-danger"
-                @click="emit('reset-application-key')"
+                @click="projectConsole.resetApplicationKey()"
               >
                 重置密钥
               </BButton>
@@ -213,50 +213,29 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, inject, ref, watch } from 'vue'
 import { BButton, BForm, BFormCheckbox, BFormInput, BFormSelect } from 'bootstrap-vue-next'
 import RightSide from '@/layout/RightSide.vue'
 import { useAuditStore } from '@/stores/audit'
 import { useConsoleStore } from '@/stores/console'
+import { projectConsoleContextKey } from '@/components/Project.vue'
 
-const props = defineProps<{
-  currentApplication: any
-  applicationUpdateForm: {
-    id: string
-    name: string
-    metadata: Record<string, string>
-    displayName: string
-    displayNameEn: string
-    displayNameJa: string
-    displayNameChs: string
-    displayNameCht: string
-    redirectUris: string
-    applicationType: string
-    grantType: string[]
-    clientAuthenticationType: string
-    tokenType: string[]
-    enableRefreshToken: boolean
-    roles: string[]
-    publicKey: string
-    accessTokenTTLMinutes: number
-    refreshTokenTTLHours: number
-  }
-  applicationTypeOptions: Array<{ value: string; text: string }>
-  grantTypeOptions: Array<{ value: string; text: string }>
-  tokenTypeOptions: Array<{ value: string; text: string }>
-  clientAuthenticationTypeOptions: Array<{ value: string; text: string }>
-  applicationAssignableRoles: any[]
-  formatApplicationType: (value?: string) => string
-  formatApplicationTokenType: (value?: string | string[]) => string
-  formatApplicationGrantType: (value?: string | string[]) => string
-  formatApplicationClientAuthenticationType: (value?: string) => string
-  formatRoleLabels: (roles?: string[]) => string
-}>()
+const projectConsole = inject(projectConsoleContextKey)
+if (!projectConsole) {
+  throw new Error('missing project console context')
+}
 
 const auditStore = useAuditStore()
 const consoleStore = useConsoleStore()
 const moduleRecentChanges = computed(() => auditStore.moduleRecentChanges)
 const formatDateTime = consoleStore.formatDateTime
+const currentApplication = computed(() => projectConsole.currentApplication.value)
+const applicationUpdateForm = projectConsole.applicationStore.applicationUpdateForm
+const applicationTypeOptions = projectConsole.applicationTypeOptions
+const grantTypeOptions = projectConsole.grantTypeOptions
+const tokenTypeOptions = projectConsole.tokenTypeOptions
+const clientAuthenticationTypeOptions = projectConsole.clientAuthenticationTypeOptions
+const applicationAssignableRoles = computed(() => projectConsole.applicationAssignableRoles.value)
 
 const tokenTypeOptionsByGrantType: Record<string, string[]> = {
   authorization_code: ['access_token', 'id_token'],
@@ -289,19 +268,19 @@ const applicationDetailPanels = computed(() => {
 })
 
 const applicationDetailMetrics = computed(() => [
-  { label: '应用 ID', value: props.currentApplication?.id || '-', copyable: Boolean(props.currentApplication?.id), copyValue: props.currentApplication?.id || '' },
-  { label: '应用类型', value: props.formatApplicationType(props.currentApplication?.applicationType) },
-  { label: '令牌类型', value: props.formatApplicationTokenType(props.currentApplication?.tokenType) },
-  { label: '刷新令牌', value: props.currentApplication?.enableRefreshToken ? '已启用' : '未启用' },
-  { label: '授权流程', value: props.formatApplicationGrantType(props.currentApplication?.grantType) },
-  { label: '客户端认证', value: props.formatApplicationClientAuthenticationType(props.currentApplication?.clientAuthenticationType) },
-  { label: '应用角色', value: props.formatRoleLabels(props.currentApplication?.roles) },
-  { label: '创建时间', value: formatDateTime(props.currentApplication?.createdAt) },
-  { label: '最近变更', value: formatDateTime(props.currentApplication?.updatedAt) }
+  { label: '应用 ID', value: currentApplication.value?.id || '-', copyable: Boolean(currentApplication.value?.id), copyValue: currentApplication.value?.id || '' },
+  { label: '应用类型', value: projectConsole.formatApplicationType(currentApplication.value?.applicationType) },
+  { label: '令牌类型', value: projectConsole.formatApplicationTokenType(currentApplication.value?.tokenType) },
+  { label: '刷新令牌', value: currentApplication.value?.enableRefreshToken ? '已启用' : '未启用' },
+  { label: '授权流程', value: projectConsole.formatApplicationGrantType(currentApplication.value?.grantType) },
+  { label: '客户端认证', value: projectConsole.formatApplicationClientAuthenticationType(currentApplication.value?.clientAuthenticationType) },
+  { label: '应用角色', value: projectConsole.formatRoleLabels(currentApplication.value?.roles) },
+  { label: '创建时间', value: formatDateTime(currentApplication.value?.createdAt) },
+  { label: '最近变更', value: formatDateTime(currentApplication.value?.updatedAt) }
 ])
 
 const currentApplicationProtocolHint = computed(() => {
-  const applicationType = props.applicationUpdateForm.applicationType || props.currentApplication?.applicationType
+  const applicationType = applicationUpdateForm.applicationType || currentApplication.value?.applicationType
   if (applicationType === 'api') {
     return '推荐 API 类型默认使用 `client_credentials + access_token + private_key_jwt`，并关闭 Refresh Token。'
   }
@@ -311,13 +290,20 @@ const currentApplicationProtocolHint = computed(() => {
   return '推荐 Web 类型优先使用 `authorization_code_pkce + access_token + none`。如需 OIDC 前端消费身份声明，可改为 `access_token_id_token`。'
 })
 
-const applicationUpdateTokenTypeOptions = computed(() => filterApplicationTokenTypeOptions(props.applicationUpdateForm.grantType))
-const applicationUpdateClientAuthenticationTypeOptions = computed(() => filterApplicationClientAuthenticationTypeOptions(props.applicationUpdateForm.grantType))
+const applicationUpdateTokenTypeOptions = computed(() => filterApplicationTokenTypeOptions(applicationUpdateForm.grantType))
+const applicationUpdateClientAuthenticationTypeOptions = computed(() => filterApplicationClientAuthenticationTypeOptions(applicationUpdateForm.grantType))
 const applicationMetadataRows = ref<Array<{ id: string; key: string; value: string }>>([])
-const supportsLoginPresentation = computed(() => props.applicationUpdateForm.applicationType === 'web' || props.applicationUpdateForm.applicationType === 'native')
+const supportsLoginPresentation = computed(() => applicationUpdateForm.applicationType === 'web' || applicationUpdateForm.applicationType === 'native')
+
+function syncStringArray(target: string[], next: string[]) {
+  if (target.length === next.length && target.every((item, index) => item === next[index])) {
+    return
+  }
+  target.splice(0, target.length, ...next)
+}
 
 function applyRecommendedApplicationProtocol() {
-  const target = props.applicationUpdateForm
+  const target = applicationUpdateForm
   if (target.applicationType === 'api') {
     target.redirectUris = ''
     target.metadata = {}
@@ -326,22 +312,22 @@ function applyRecommendedApplicationProtocol() {
     target.displayNameJa = ''
     target.displayNameChs = ''
     target.displayNameCht = ''
-    target.tokenType = ['access_token']
+    syncStringArray(target.tokenType, ['access_token'])
     target.enableRefreshToken = false
-    target.grantType = ['client_credentials']
+    syncStringArray(target.grantType, ['client_credentials'])
     target.clientAuthenticationType = 'private_key_jwt'
     return
   }
   if (target.applicationType === 'native') {
-    target.tokenType = ['access_token']
+    syncStringArray(target.tokenType, ['access_token'])
     target.enableRefreshToken = false
-    target.grantType = ['authorization_code_pkce']
+    syncStringArray(target.grantType, ['authorization_code_pkce'])
     target.clientAuthenticationType = 'none'
     return
   }
-  target.tokenType = ['access_token']
+  syncStringArray(target.tokenType, ['access_token'])
   target.enableRefreshToken = false
-  target.grantType = ['authorization_code_pkce']
+  syncStringArray(target.grantType, ['authorization_code_pkce'])
   target.clientAuthenticationType = 'none'
 }
 
@@ -354,30 +340,31 @@ function intersectOptionValues(groups: string[][], fallback: string[]) {
 
 function filterApplicationTokenTypeOptions(grantTypes: string[]) {
   const allowed = intersectOptionValues(
-    grantTypes.map((grantType) => tokenTypeOptionsByGrantType[grantType] ?? props.tokenTypeOptions.map((item) => item.value)),
-    props.tokenTypeOptions.map((item) => item.value)
+    grantTypes.map((grantType) => tokenTypeOptionsByGrantType[grantType] ?? tokenTypeOptions.map((item) => item.value)),
+    tokenTypeOptions.map((item) => item.value)
   )
-  return props.tokenTypeOptions.filter((item) => allowed.includes(item.value))
+  return tokenTypeOptions.filter((item) => allowed.includes(item.value))
 }
 
 function filterApplicationClientAuthenticationTypeOptions(grantTypes: string[]) {
   const allowed = intersectOptionValues(
-    grantTypes.map((grantType) => clientAuthenticationTypeOptionsByGrantType[grantType] ?? props.clientAuthenticationTypeOptions.map((item) => item.value)),
-    props.clientAuthenticationTypeOptions.map((item) => item.value)
+    grantTypes.map((grantType) => clientAuthenticationTypeOptionsByGrantType[grantType] ?? clientAuthenticationTypeOptions.map((item) => item.value)),
+    clientAuthenticationTypeOptions.map((item) => item.value)
   )
-  return props.clientAuthenticationTypeOptions.filter((item) => allowed.includes(item.value))
+  return clientAuthenticationTypeOptions.filter((item) => allowed.includes(item.value))
 }
 
 function normalizeApplicationProtocolSelection() {
-  const target = props.applicationUpdateForm
+  const target = applicationUpdateForm
   if (!target.grantType.length) {
-    target.grantType = ['authorization_code_pkce']
+    syncStringArray(target.grantType, ['authorization_code_pkce'])
   }
   const allowedTokenTypes = filterApplicationTokenTypeOptions(target.grantType).map((item) => item.value)
-  target.tokenType = target.tokenType.filter((item) => allowedTokenTypes.includes(item))
-  if (!target.tokenType.length) {
-    target.tokenType = allowedTokenTypes.length ? [allowedTokenTypes[0]] : ['access_token']
+  const nextTokenTypes = target.tokenType.filter((item) => allowedTokenTypes.includes(item))
+  if (!nextTokenTypes.length) {
+    nextTokenTypes.push(allowedTokenTypes[0] ?? 'access_token')
   }
+  syncStringArray(target.tokenType, nextTokenTypes)
 
   const allowedClientAuthenticationTypes = filterApplicationClientAuthenticationTypeOptions(target.grantType).map((item) => item.value)
   if (!allowedClientAuthenticationTypes.includes(target.clientAuthenticationType)) {
@@ -385,7 +372,7 @@ function normalizeApplicationProtocolSelection() {
   }
 
   if (target.grantType.includes('client_credentials')) {
-    target.tokenType = ['access_token']
+    syncStringArray(target.tokenType, ['access_token'])
     target.enableRefreshToken = false
   }
   if (target.grantType.includes('implicit')) {
@@ -436,11 +423,11 @@ function removeApplicationMetadataRow(index: number) {
   applicationMetadataRows.value.splice(index, 1)
 }
 
-watch(() => props.applicationUpdateForm.applicationType, () => applyRecommendedApplicationProtocol())
-watch(() => [...props.applicationUpdateForm.grantType], () => normalizeApplicationProtocolSelection())
-watch(() => [...props.applicationUpdateForm.tokenType], () => normalizeApplicationProtocolSelection())
+watch(() => applicationUpdateForm.applicationType, () => applyRecommendedApplicationProtocol())
+watch(() => applicationUpdateForm.grantType, () => normalizeApplicationProtocolSelection(), { deep: true })
+watch(() => applicationUpdateForm.tokenType, () => normalizeApplicationProtocolSelection(), { deep: true })
 watch(
-  () => props.applicationUpdateForm.metadata,
+  () => applicationUpdateForm.metadata,
   (metadata) => {
     const normalized = (!metadata || typeof metadata !== 'object' || Array.isArray(metadata))
       ? {}
@@ -454,12 +441,4 @@ watch(
   { immediate: true, deep: true }
 )
 
-const emit = defineEmits<{
-  back: []
-  disable: []
-  delete: []
-  'update-application': []
-  'save-application-metadata': [rows: Array<{ id?: string; key: string; value: string }>]
-  'reset-application-key': []
-}>()
 </script>

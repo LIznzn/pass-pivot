@@ -10,7 +10,7 @@
     <div class="console-module-summary-card">
       <div class="console-module-hero">
         <div class="console-module-hero-copy">
-          <button type="button" class="console-back-button" @click="emit('back')" aria-label="返回项目列表">
+          <button type="button" class="console-back-button" @click="projectConsole.backToProjectList()" aria-label="返回项目列表">
             <i class="bi bi-arrow-left console-back-button-icon" aria-hidden="true"></i>
           </button>
           <div>
@@ -25,8 +25,8 @@
             <i class="bi bi-chevron-down" aria-hidden="true"></i>
           </button>
           <div class="console-action-menu-list">
-            <button type="button" class="console-action-menu-item" @click="emit('disable')">停用</button>
-            <button type="button" class="console-action-menu-item console-action-menu-item-danger" @click="emit('delete')">删除</button>
+            <button type="button" class="console-action-menu-item" @click="projectConsole.showProjectDisableNotice()">停用</button>
+            <button type="button" class="console-action-menu-item console-action-menu-item-danger" @click="projectConsole.showProjectDeleteNotice()">删除</button>
           </div>
         </div>
       </div>
@@ -62,7 +62,7 @@
               :key="application.id"
               type="button"
               class="record-card record-card-button"
-              @click="emit('go-application-detail', application)"
+              @click="projectConsole.goApplicationDetail(application)"
             >
               <div class="project-card-id mb-1">{{ application.id }}</div>
               <div class="record-head align-items-center mb-2">
@@ -72,16 +72,16 @@
                 </span>
               </div>
               <div class="record-meta">Token Type</div>
-              <div class="project-card-value mb-1">{{ formatApplicationTokenType(application.tokenType) }}</div>
+              <div class="project-card-value mb-1">{{ projectConsole.formatApplicationTokenType(application.tokenType) }}</div>
               <div class="record-meta">Grant Type</div>
-              <div class="project-card-value mb-1">{{ formatApplicationGrantType(application.grantType) }}</div>
+              <div class="project-card-value mb-1">{{ projectConsole.formatApplicationGrantType(application.grantType) }}</div>
               <div class="record-meta">应用角色</div>
-              <div class="project-card-value mb-1">{{ formatRoleLabels(application.roles) }}</div>
+              <div class="project-card-value mb-1">{{ projectConsole.formatRoleLabels(application.roles) }}</div>
               <div class="record-meta">Client Authentication Type</div>
-              <div class="project-card-value">{{ formatApplicationClientAuthenticationType(application.clientAuthenticationType) }}</div>
+              <div class="project-card-value">{{ projectConsole.formatApplicationClientAuthenticationType(application.clientAuthenticationType) }}</div>
             </button>
             <div class="record-card project-create-card application-create-card">
-              <button type="button" class="project-create-trigger" @click="emit('go-application-create')">
+              <button type="button" class="project-create-trigger" @click="projectConsole.openApplicationCreateModal()">
                 <div class="project-create-plus text-secondary lh-1 mb-2">+</div>
                 <div class="project-create-title">创建新应用</div>
               </button>
@@ -123,7 +123,7 @@
                       {{ user.status === 'disabled' ? '停用' : '启用' }}
                     </span>
                   </td>
-                  <td>{{ formatRoleLabels(user.roles) }}</td>
+                  <td>{{ projectConsole.formatRoleLabels(user.roles) }}</td>
                   <td class="text-end">
                     <BButton size="sm" variant="outline-danger" @click="removeProjectAssignedUser(user.id)">移出</BButton>
                   </td>
@@ -134,12 +134,12 @@
               </tbody>
             </table>
           </div>
-          <BButton variant="primary" size="sm" @click="emit('save-project-user-assignments', localAssignedUserIds)">保存用户分配</BButton>
+          <BButton variant="primary" size="sm" @click="projectConsole.saveProjectUserAssignments(localAssignedUserIds)">保存用户分配</BButton>
         </div>
         <div id="project-setting" class="info-card">
           <div class="section-title">项目设置</div>
           <div class="record-meta mb-3">维护当前项目的基础名称和描述。</div>
-          <BForm @submit.prevent="emit('update-project')">
+          <BForm @submit.prevent="projectConsole.updateProject()">
             <div class="mb-3">
               <label class="form-label">项目名称</label>
               <BFormInput v-model="projectUpdateForm.name" placeholder="请输入项目名称" />
@@ -164,24 +164,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, inject, ref, watch } from 'vue'
 import { BButton, BForm, BFormCheckbox, BFormInput } from 'bootstrap-vue-next'
 import RightSide from '@/layout/RightSide.vue'
 import ProjectUserAssignmentModal from '@/modal/ProjectUserAssignmentModal.vue'
 import { useAuditStore } from '@/stores/audit'
 import { useConsoleStore } from '@/stores/console'
 import { useUserStore } from '@/stores/user'
+import { projectConsoleContextKey } from '@/components/Project.vue'
 
-const props = defineProps<{
-  currentProject: any
-  applications: any[]
-  projectUpdateForm: { name: string; description: string; userAclEnabled: boolean }
-  projectAssignedUserIds: string[]
-  formatApplicationTokenType: (value?: string | string[]) => string
-  formatApplicationGrantType: (value?: string | string[]) => string
-  formatRoleLabels: (roles?: string[]) => string
-  formatApplicationClientAuthenticationType: (value?: string) => string
-}>()
+const projectConsole = inject(projectConsoleContextKey)
+if (!projectConsole) {
+  throw new Error('missing project console context')
+}
 
 const auditStore = useAuditStore()
 const consoleStore = useConsoleStore()
@@ -189,6 +184,11 @@ const userStore = useUserStore()
 const users = computed(() => userStore.users)
 const moduleRecentChanges = computed(() => auditStore.moduleRecentChanges)
 const formatDateTime = consoleStore.formatDateTime
+const currentProject = computed(() => projectConsole.currentProject.value)
+const applications = computed(() => projectConsole.applicationStore.applications)
+const projectUpdateForm = projectConsole.projectStore.projectUpdateForm
+const projectAssignedUserIds = computed(() => projectConsole.projectStore.projectAssignedUserIds)
+const formatRoleLabels = projectConsole.formatRoleLabels
 
 const currentModulePanels = [
   { id: 'project-application', label: '应用列表' },
@@ -197,19 +197,19 @@ const currentModulePanels = [
 ]
 
 const currentModuleMetrics = computed(() => [
-  { label: '项目 ID', value: props.currentProject?.id || '-', copyable: Boolean(props.currentProject?.id), copyValue: props.currentProject?.id || '' },
-  { label: '应用数', value: String(props.currentProject?.applications?.length ?? props.applications.length) },
-  { label: '创建时间', value: formatDateTime(props.currentProject?.createdAt) },
-  { label: '最近变更', value: formatDateTime(props.currentProject?.updatedAt) }
+  { label: '项目 ID', value: currentProject.value?.id || '-', copyable: Boolean(currentProject.value?.id), copyValue: currentProject.value?.id || '' },
+  { label: '应用数', value: String(currentProject.value?.applications?.length ?? applications.value.length) },
+  { label: '创建时间', value: formatDateTime(currentProject.value?.createdAt) },
+  { label: '最近变更', value: formatDateTime(currentProject.value?.updatedAt) }
 ])
 
 const localAssignedUserIds = ref<string[]>([])
 const projectUserAssignmentModalVisible = ref(false)
 
 watch(
-  () => [props.projectAssignedUserIds, props.currentProject?.id],
+  () => [projectAssignedUserIds.value, currentProject.value?.id],
   () => {
-    localAssignedUserIds.value = [...props.projectAssignedUserIds]
+    localAssignedUserIds.value = [...projectAssignedUserIds.value]
   },
   { immediate: true, deep: true }
 )
@@ -225,13 +225,4 @@ function confirmProjectUserAssignmentModal(userIds: string[]) {
   projectUserAssignmentModalVisible.value = false
 }
 
-const emit = defineEmits<{
-  back: []
-  disable: []
-  delete: []
-  'go-application-detail': [application: any]
-  'go-application-create': []
-  'save-project-user-assignments': [userIds: string[]]
-  'update-project': []
-}>()
 </script>

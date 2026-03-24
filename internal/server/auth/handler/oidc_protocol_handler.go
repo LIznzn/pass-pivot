@@ -10,6 +10,7 @@ import (
 	"pass-pivot/internal/model"
 	authservice "pass-pivot/internal/server/auth/service"
 	coreservice "pass-pivot/internal/server/core/service"
+	sharedhandler "pass-pivot/internal/server/shared/handler"
 	sharedweb "pass-pivot/internal/server/shared/web"
 )
 
@@ -170,7 +171,7 @@ func (h *OIDCHandler) EndSession(w http.ResponseWriter, r *http.Request) {
 	if accessToken == "" {
 		accessToken = strings.TrimSpace(r.Form.Get("access_token"))
 	}
-	if _, err := h.callAuthnAPI(w, r, "/api/authn/v1/logout", map[string]any{
+	if _, err := h.callAuthnAPI(w, r, "/api/authn/v1/revoke", map[string]any{
 		"accessToken":  accessToken,
 		"refreshToken": strings.TrimSpace(r.Form.Get("refresh_token")),
 		"reason":       "oidc_end_session",
@@ -178,6 +179,7 @@ func (h *OIDCHandler) EndSession(w http.ResponseWriter, r *http.Request) {
 		sharedweb.Error(w, http.StatusBadGateway, err.Error())
 		return
 	}
+	sharedhandler.ClearAllAuthSessionCookies(w, r)
 	if postLogoutRedirectURI != "" {
 		http.Redirect(w, r, postLogoutRedirectURI, http.StatusFound)
 		return

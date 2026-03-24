@@ -13,7 +13,6 @@ import {
   queryAuthContext,
   refreshCaptcha as requestRefreshCaptcha,
   sendMFAChallenge,
-  switchAuthorizeAccount,
   verifyAuthorizeMFA
 } from '@/api/auth'
 import { buildLocaleText } from '@/i18n/auth'
@@ -286,9 +285,10 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function switchAccount() {
     try {
-      await switchAuthorizeAccount()
       setChallengeFeedback('')
-      await reloadContext()
+      const url = new URL('/auth/end_session', window.location.origin)
+      url.searchParams.set('post_logout_redirect_uri', window.location.href)
+      window.location.assign(url.toString())
     } catch (error) {
       setMessage(formatError(error), 'danger', {
         source: 'auth/store.switchAccount',

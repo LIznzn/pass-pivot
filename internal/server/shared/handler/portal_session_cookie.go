@@ -1,24 +1,36 @@
 package handler
 
-import "net/http"
+import (
+	"net/http"
+	"strings"
+)
 
-const portalSessionCookieName = "ppvt_portal_session"
+const authSessionCookiePrefix = "ppvt_session_"
+const legacyAuthSessionCookieName = "ppvt_auth_session"
 const pendingLoginChallengeCookieName = "ppvt_login_challenge"
 
-func readPortalSessionCookie(r *http.Request) string {
-	cookie, err := r.Cookie(portalSessionCookieName)
+func authSessionCookieName(organizationID string) string {
+	normalized := strings.TrimSpace(organizationID)
+	if normalized == "" {
+		return legacyAuthSessionCookieName
+	}
+	return authSessionCookiePrefix + normalized
+}
+
+func readAuthSessionCookie(r *http.Request, organizationID string) string {
+	cookie, err := r.Cookie(authSessionCookieName(organizationID))
 	if err != nil {
 		return ""
 	}
 	return cookie.Value
 }
 
-func writePortalSessionCookie(w http.ResponseWriter, r *http.Request, sessionID string) {
+func writeAuthSessionCookie(w http.ResponseWriter, r *http.Request, organizationID, sessionID string) {
 	if sessionID == "" {
 		return
 	}
 	http.SetCookie(w, &http.Cookie{
-		Name:     portalSessionCookieName,
+		Name:     authSessionCookieName(organizationID),
 		Value:    sessionID,
 		Path:     "/",
 		HttpOnly: true,
@@ -26,11 +38,12 @@ func writePortalSessionCookie(w http.ResponseWriter, r *http.Request, sessionID 
 		Secure:   requestUsesSecureTransport(r),
 		MaxAge:   86400,
 	})
+	clearAuthSessionCookieByName(w, r, legacyAuthSessionCookieName)
 }
 
-func clearPortalSessionCookie(w http.ResponseWriter, r *http.Request) {
+func clearAuthSessionCookieByName(w http.ResponseWriter, r *http.Request, name string) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     portalSessionCookieName,
+		Name:     name,
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
@@ -38,6 +51,33 @@ func clearPortalSessionCookie(w http.ResponseWriter, r *http.Request) {
 		Secure:   requestUsesSecureTransport(r),
 		MaxAge:   -1,
 	})
+}
+
+func clearAuthSessionCookie(w http.ResponseWriter, r *http.Request, organizationID string) {
+	clearAuthSessionCookieByName(w, r, authSessionCookieName(organizationID))
+	clearAuthSessionCookieByName(w, r, legacyAuthSessionCookieName)
+}
+
+func readAnyAuthSessionCookie(r *http.Request) string {
+	for _, cookie := range r.Cookies() {
+		if strings.HasPrefix(cookie.Name, authSessionCookiePrefix) && strings.TrimSpace(cookie.Value) != "" {
+			return cookie.Value
+		}
+	}
+	cookie, err := r.Cookie(legacyAuthSessionCookieName)
+	if err != nil {
+		return ""
+	}
+	return cookie.Value
+}
+
+func clearAllAuthSessionCookies(w http.ResponseWriter, r *http.Request) {
+	clearAuthSessionCookieByName(w, r, legacyAuthSessionCookieName)
+	for _, cookie := range r.Cookies() {
+		if strings.HasPrefix(cookie.Name, authSessionCookiePrefix) {
+			clearAuthSessionCookieByName(w, r, cookie.Name)
+		}
+	}
 }
 
 func readPendingLoginChallengeCookie(r *http.Request) string {
@@ -75,16 +115,24 @@ func clearPendingLoginChallengeCookie(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func ReadPortalSessionCookie(r *http.Request) string {
-	return readPortalSessionCookie(r)
+func ReadAuthSessionCookie(r *http.Request, organizationID string) string {
+	return readAuthSessionCookie(r, organizationID)
 }
 
-func WritePortalSessionCookie(w http.ResponseWriter, r *http.Request, sessionID string) {
-	writePortalSessionCookie(w, r, sessionID)
+func ReadAnyAuthSessionCookie(r *http.Request) string {
+	return readAnyAuthSessionCookie(r)
 }
 
-func ClearPortalSessionCookie(w http.ResponseWriter, r *http.Request) {
-	clearPortalSessionCookie(w, r)
+func WriteAuthSessionCookie(w http.ResponseWriter, r *http.Request, organizationID, sessionID string) {
+	writeAuthSessionCookie(w, r, organizationID, sessionID)
+}
+
+func ClearAuthSessionCookie(w http.ResponseWriter, r *http.Request, organizationID string) {
+	clearAuthSessionCookie(w, r, organizationID)
+}
+
+func ClearAllAuthSessionCookies(w http.ResponseWriter, r *http.Request) {
+	clearAllAuthSessionCookies(w, r)
 }
 
 func ReadPendingLoginChallengeCookie(r *http.Request) string {

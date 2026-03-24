@@ -48,20 +48,20 @@ type authorizeInteractionRequest struct {
 }
 
 type authorizeContextResponse struct {
-	Action             string                                   `json:"action"`
-	RedirectTarget     string                                   `json:"redirectTarget,omitempty"`
-	Stage              string                                   `json:"stage,omitempty"`
-	FlowType           string                                   `json:"flowType,omitempty"`
-	ResultStatus       string                                   `json:"resultStatus,omitempty"`
-	ResultMessage      string                                   `json:"resultMessage,omitempty"`
-	Error              string                                   `json:"error,omitempty"`
-	AuthorizeReturnURL string                                   `json:"authorizeReturnUrl,omitempty"`
-	Target             *coreservice.LoginTarget                 `json:"target,omitempty"`
-	CurrentUser        *authorizeCurrentUser                    `json:"currentUser,omitempty"`
-	ApplicationID      string                                   `json:"applicationId,omitempty"`
-	SecondFactorMethod string                                   `json:"secondFactorMethod,omitempty"`
-	MFAOptions         []authorizeUIMethodOption                `json:"mfaOptions,omitempty"`
-	Captcha            *authservice.AuthorizeCaptchaBootstrap   `json:"captcha,omitempty"`
+	Action             string                                 `json:"action"`
+	RedirectTarget     string                                 `json:"redirectTarget,omitempty"`
+	Stage              string                                 `json:"stage,omitempty"`
+	FlowType           string                                 `json:"flowType,omitempty"`
+	ResultStatus       string                                 `json:"resultStatus,omitempty"`
+	ResultMessage      string                                 `json:"resultMessage,omitempty"`
+	Error              string                                 `json:"error,omitempty"`
+	AuthorizeReturnURL string                                 `json:"authorizeReturnUrl,omitempty"`
+	Target             *coreservice.LoginTarget               `json:"target,omitempty"`
+	CurrentUser        *authorizeCurrentUser                  `json:"currentUser,omitempty"`
+	ApplicationID      string                                 `json:"applicationId,omitempty"`
+	SecondFactorMethod string                                 `json:"secondFactorMethod,omitempty"`
+	MFAOptions         []authorizeUIMethodOption              `json:"mfaOptions,omitempty"`
+	Captcha            *authservice.AuthorizeCaptchaBootstrap `json:"captcha,omitempty"`
 }
 
 type authorizeCurrentUser struct {
@@ -264,7 +264,7 @@ func (h *OIDCHandler) CompleteDeviceAuthorizationAPI(w http.ResponseWriter, r *h
 		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
 		return
 	}
-	sessionID := strings.TrimSpace(sharedhandler.ReadPortalSessionCookie(r))
+	sessionID := strings.TrimSpace(sharedhandler.ReadAnyAuthSessionCookie(r))
 	if sessionID == "" {
 		authnapi.Write(w, http.StatusUnauthorized, "", "session is not authenticated")
 		return
@@ -288,12 +288,6 @@ func (h *OIDCHandler) CompleteDeviceAuthorizationAPI(w http.ResponseWriter, r *h
 			PhoneNumber: user.PhoneNumber,
 		},
 	})
-}
-
-func (h *OIDCHandler) SwitchAuthorizeAccountAPI(w http.ResponseWriter, r *http.Request) {
-	sharedhandler.ClearPendingLoginChallengeCookie(w, r)
-	sharedhandler.ClearPortalSessionCookie(w, r)
-	sharedweb.JSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (h *OIDCHandler) ConfirmAuthorizeSessionAPI(w http.ResponseWriter, r *http.Request) {
@@ -374,7 +368,7 @@ func (h *OIDCHandler) queryAuthorizeInteractionFromPayload(w http.ResponseWriter
 	}
 	sessionID := in.SessionID
 	if sessionID == "" {
-		sessionID = sharedhandler.ReadPortalSessionCookie(r)
+		sessionID = sharedhandler.ReadAuthSessionCookie(r, target.OrganizationID)
 	}
 	pendingChallenge := ""
 	if sessionID == "" {
@@ -386,7 +380,7 @@ func (h *OIDCHandler) queryAuthorizeInteractionFromPayload(w http.ResponseWriter
 		}
 	}
 	if sessionID != "" {
-		if session, err := h.oidc.GetSession(r.Context(), sessionID); err == nil {
+		if _, session, err := h.oidc.ValidateSessionForApplication(r.Context(), sessionID, target.ApplicationID); err == nil {
 			if pendingChallenge != "" {
 				sharedhandler.ClearPendingLoginChallengeCookie(w, r)
 			}
@@ -403,7 +397,7 @@ func (h *OIDCHandler) queryAuthorizeInteractionFromPayload(w http.ResponseWriter
 						RedirectTarget: redirectTarget,
 					}, nil
 				}
-				user, _, userErr := h.oidc.GetSessionUser(r.Context(), sessionID)
+				user, _, userErr := h.oidc.ValidateSessionForApplication(r.Context(), sessionID, target.ApplicationID)
 				if userErr != nil {
 					return authorizeInteractionResponse{}, userErr
 				}
@@ -455,9 +449,9 @@ func (h *OIDCHandler) queryAuthorizeInteractionFromPayload(w http.ResponseWriter
 		}, nil
 	}
 	return authorizeInteractionResponse{
-		Action: "render",
-		Stage:  "login",
-		Target: target,
+		Action:  "render",
+		Stage:   "login",
+		Target:  target,
 		Captcha: h.mustBuildAuthorizeCaptcha(r.Context(), target.OrganizationID),
 	}, nil
 }
@@ -666,7 +660,7 @@ func (h *OIDCHandler) RevokeTokenAPI(w http.ResponseWriter, r *http.Request) {
 	sharedweb.JSON(w, http.StatusOK, map[string]any{})
 }
 
-func (h *OIDCHandler) LogoutAPI(w http.ResponseWriter, r *http.Request) {
+func (h *OIDCHandler) RevokeSessionAPI(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		AccessToken  string `json:"accessToken"`
 		RefreshToken string `json:"refreshToken"`
@@ -678,20 +672,29 @@ func (h *OIDCHandler) LogoutAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	reason := strings.TrimSpace(payload.Reason)
 	if reason == "" {
-		reason = "oidc_end_session"
+		reason = "auth_session_revoked"
 	}
-	if token := strings.TrimSpace(payload.AccessToken); token != "" {
-		if err := h.auth.RevokeToken(r.Context(), token, reason); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+
+	sessionID := strings.TrimSpace(sharedhandler.ReadAnyAuthSessionCookie(r))
+	if sessionID != "" {
+		if _, err := h.oidc.EndSession(r.Context(), sessionID, "", "", reason); err != nil {
 			authnapi.WriteKnown(w, err)
 			return
 		}
-	}
-	if token := strings.TrimSpace(payload.RefreshToken); token != "" {
-		if err := h.auth.RevokeToken(r.Context(), token, reason); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			authnapi.WriteKnown(w, err)
-			return
+	} else {
+		if token := strings.TrimSpace(payload.AccessToken); token != "" {
+			if err := h.auth.RevokeToken(r.Context(), token, reason); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				authnapi.WriteKnown(w, err)
+				return
+			}
+		}
+		if token := strings.TrimSpace(payload.RefreshToken); token != "" {
+			if err := h.auth.RevokeToken(r.Context(), token, reason); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				authnapi.WriteKnown(w, err)
+				return
+			}
 		}
 	}
-	sharedhandler.ClearPortalSessionCookie(w, r)
-	sharedweb.JSON(w, http.StatusOK, map[string]any{"logout": true})
+	sharedhandler.ClearAllAuthSessionCookies(w, r)
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"revoked": true})
 }

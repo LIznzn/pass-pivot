@@ -23,7 +23,7 @@ func resolveSessionReference(r *http.Request, explicit string) string {
 	if value := strings.TrimSpace(sharedhandler.ReadPendingLoginChallengeCookie(r)); value != "" {
 		return value
 	}
-	return sharedhandler.ReadPortalSessionCookie(r)
+	return sharedhandler.ReadAnyAuthSessionCookie(r)
 }
 
 type u2fAssertionService interface {
@@ -69,9 +69,9 @@ func (h *MFAU2FHandler) FinishAssertion(w http.ResponseWriter, r *http.Request) 
 	}
 	if result.NextStep == "done" {
 		sharedhandler.ClearPendingLoginChallengeCookie(w, r)
-		sharedhandler.WritePortalSessionCookie(w, r, result.Session.ID)
+		sharedhandler.WriteAuthSessionCookie(w, r, result.Session.OrganizationID, result.Session.ID)
 	} else {
-		sharedhandler.ClearPortalSessionCookie(w, r)
+		sharedhandler.ClearAuthSessionCookie(w, r, result.Session.OrganizationID)
 		sharedhandler.WritePendingLoginChallengeCookie(w, r, result.Session.LoginChallenge)
 	}
 	sharedweb.JSON(w, http.StatusOK, result)
