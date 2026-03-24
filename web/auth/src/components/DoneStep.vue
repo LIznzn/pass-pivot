@@ -1,10 +1,11 @@
 <template>
   <div v-if="auth.context" class="auth-form">
-    <div class="auth-result" :class="auth.resultStatus === 'success' ? 'auth-result-success' : 'auth-result-error'">
-      <strong>{{ auth.applicationName }}</strong>
-      <p>{{ auth.resultMessage || auth.stageHint }}</p>
-      <p v-if="auth.currentAccountLabel">{{ auth.currentAccountLabel }}</p>
-    </div>
+    <strong class="auth-result-title">{{ auth.applicationName }}</strong>
+    <p class="auth-result-text">{{ auth.localizedResultMessage }}</p>
+    <p v-if="auth.currentAccountLabel" class="auth-result-text">{{ auth.currentAccountLabel }}</p>
+    <button type="button" class="auth-button auth-button-secondary auth-button-block" @click="closePage">
+      {{ auth.text.closePage }}
+    </button>
   </div>
 </template>
 
@@ -12,4 +13,9 @@
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
+
+function closePage() {
+  window.close()
+  window.location.assign('/')
+}
 </script>

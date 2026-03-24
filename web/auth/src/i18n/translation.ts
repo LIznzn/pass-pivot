@@ -2,10 +2,24 @@ export const text = {
   productTagline: { en: 'Secure authorization workspace', ja: 'セキュア認可ワークスペース', chs: '安全授权工作台', cht: '安全授權工作台' },
   language: { en: 'Language', ja: '言語', chs: '语言', cht: '語言' },
   securityLabel: { en: 'Authorization', ja: '認可フロー', chs: '授权流程', cht: '授權流程' },
+  stageTitleUserCode: { en: 'Enter your device code', ja: 'デバイスコードを入力', chs: '输入设备码', cht: '輸入裝置碼' },
+  stageTitleDeviceReview: { en: 'Review device authorization', ja: 'デバイス認可を確認', chs: '确认设备授权', cht: '確認裝置授權' },
   stageTitleLogin: { en: 'Sign in to {appName}', ja: '{appName} にサインイン', chs: '登录到 {appName}', cht: '登入到 {appName}' },
   stageTitleAccount: { en: 'Choose an account', ja: 'アカウントを選択', chs: '选择账号', cht: '選擇帳號' },
   stageTitleConfirmation: { en: 'Device trust', ja: '端末の信頼', chs: '设备信任', cht: '裝置信任' },
   stageTitleMfa: { en: 'Multi-factor authentication', ja: '多要素認証', chs: '多因素验证', cht: '多因素驗證' },
+  stageHintUserCode: {
+    en: 'Enter the user code displayed on the device you want to authorize.',
+    ja: '認可するデバイスに表示されているユーザーコードを入力してください。',
+    chs: '请输入设备上显示的 user code，继续完成授权。',
+    cht: '請輸入裝置上顯示的 user code，繼續完成授權。'
+  },
+  stageHintDeviceReview: {
+    en: 'Review the device request before continuing to sign in.',
+    ja: 'サインインを続行する前にデバイスリクエストを確認してください。',
+    chs: '先确认本次设备授权请求，再继续登录。',
+    cht: '先確認本次裝置授權請求，再繼續登入。'
+  },
   stageHintLogin: {
     en: 'Authenticate with your Pass Pivot account.',
     ja: 'Pass Pivot アカウントで認証します。',
@@ -30,22 +44,33 @@ export const text = {
     chs: '为当前会话选择一种可用的验证方式。',
     cht: '為目前工作階段選擇一種可用的驗證方式。'
   },
-  deviceAuthorizationCompleteTitle: {
-    en: '{appName} has been authorized',
-    ja: '{appName} の認可が完了しました',
-    chs: '你已成功授权 {appName}',
-    cht: '你已成功授權 {appName}'
-  },
+  deviceAuthorizationCompleteTitle: { en: 'Authorization complete', ja: '認可完了', chs: '授权完成', cht: '授權完成' },
   deviceAuthorizationCompleteHint: {
-    en: 'This client can now continue sign-in using the approved device code.',
-    ja: 'このクライアントはデバイスコードサインインを続行できます。',
-    chs: '客户端现在可以继续完成设备码登录。',
-    cht: '客戶端現在可以繼續完成裝置碼登入。'
+    en: 'This device authorization has been completed successfully.',
+    ja: 'このデバイス認可は正常に完了しました。',
+    chs: '本次设备授权已成功完成。',
+    cht: '本次裝置授權已成功完成。'
+  },
+  deviceAuthorizationErrorHint: {
+    en: 'This device authorization could not be completed.',
+    ja: 'このデバイス認可を完了できませんでした。',
+    chs: '本次设备授权未能完成。',
+    cht: '本次裝置授權未能完成。'
   },
   accountTitle: { en: 'You are already signed in', ja: '現在サインイン中のアカウント', chs: '当前已登录账号', cht: '目前已登入帳號' },
   authorizeThisClient: { en: 'Authorize this client', ja: 'このクライアントを認可', chs: '授权此客户端', cht: '授權此客戶端' },
   continueAsCurrentAccount: { en: 'Continue with this account', ja: 'このアカウントで続行', chs: '使用当前账号继续登录', cht: '使用目前帳號繼續登入' },
   logoutAndSwitchAccount: { en: 'Sign out and use another account', ja: 'サインアウトして別のアカウントを使用', chs: '退出当前账号并切换登录', cht: '退出目前帳號並切換登入' },
+  userCode: { en: 'User code', ja: 'ユーザーコード', chs: 'User Code', cht: 'User Code' },
+  userCodePlaceholder: { en: 'Enter your user code', ja: 'ユーザーコードを入力', chs: '请输入 user code', cht: '請輸入 user code' },
+  submitUserCode: { en: 'Continue', ja: '続行', chs: '继续', cht: '繼續' },
+  deviceAuthorizationRequestTitle: { en: 'Request details', ja: 'リクエスト詳細', chs: '本次设备授权请求', cht: '本次裝置授權請求' },
+  deviceAuthorizationRequestDevice: { en: 'Device', ja: 'デバイス', chs: '设备名', cht: '裝置名稱' },
+  deviceAuthorizationRequestIp: { en: 'IP address', ja: 'IP アドレス', chs: 'IP 地址', cht: 'IP 位址' },
+  deviceAuthorizationReviewTitle: { en: 'Authorize this device request?', ja: 'このデバイス要求を認可しますか？', chs: '确认此设备授权请求？', cht: '確認此裝置授權請求？' },
+  deviceAuthorizationReviewContinue: { en: 'Continue', ja: '続行', chs: '继续', cht: '繼續' },
+  deviceAuthorizationReviewCancel: { en: 'Cancel', ja: 'キャンセル', chs: '取消', cht: '取消' },
+  closePage: { en: 'Close page', ja: 'ページを閉じる', chs: '关闭页面', cht: '關閉頁面' },
   identifier: { en: 'Account', ja: 'アカウント', chs: '账号', cht: '帳號' },
   identifierPlaceholder: { en: 'Enter your account', ja: 'アカウントを入力', chs: '请输入账号', cht: '請輸入帳號' },
   password: { en: 'Password', ja: 'パスワード', chs: '密码', cht: '密碼' },

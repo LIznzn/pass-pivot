@@ -10,7 +10,9 @@
         />
 
         <section class="auth-card">
-          <LoginStep v-if="auth.stage === 'login'" />
+          <DeviceCodeStep v-if="auth.stage === 'user_code'" />
+          <DeviceAuthorizationReviewStep v-else-if="auth.stage === 'device_review'" />
+          <LoginStep v-else-if="auth.stage === 'login'" />
           <AccountStep v-else-if="auth.stage === 'account'" />
           <ConfirmationStep v-else-if="auth.stage === 'confirmation'" />
           <MfaStep v-else-if="auth.stage === 'mfa'" />
@@ -35,6 +37,8 @@ import { watch } from 'vue'
 import { useToast } from 'bootstrap-vue-next'
 import AccountStep from '@/components/AccountStep.vue'
 import ConfirmationStep from '@/components/ConfirmationStep.vue'
+import DeviceAuthorizationReviewStep from '@/components/DeviceAuthorizationReviewStep.vue'
+import DeviceCodeStep from '@/components/DeviceCodeStep.vue'
 import DoneStep from '@/components/DoneStep.vue'
 import LoginStep from '@/components/LoginStep.vue'
 import MfaStep from '@/components/MfaStep.vue'
@@ -259,30 +263,36 @@ body {
 }
 
 .auth-result {
-  border-radius: 10px;
-  padding: 1rem;
   display: grid;
   gap: 0.5rem;
 }
 
-.auth-result p,
-.auth-result strong {
+.auth-result-title,
+.auth-result-text {
   margin: 0;
 }
 
-.auth-result-success {
-  background: #dafbe1;
-  color: #1a7f37;
+.auth-result-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1f2328;
 }
 
-.auth-result-error {
-  background: #ffebe9;
-  color: #cf222e;
+.auth-result-text {
+  color: #656d76;
+  line-height: 1.6;
 }
 
 .auth-form {
   display: grid;
   gap: 1rem;
+}
+
+.auth-step-hint {
+  margin: 0;
+  color: #656d76;
+  font-size: 0.9rem;
+  line-height: 1.5;
 }
 
 .auth-field {

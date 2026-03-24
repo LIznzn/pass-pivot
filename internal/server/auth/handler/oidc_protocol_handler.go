@@ -76,10 +76,6 @@ func (h *OIDCHandler) JWKS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *OIDCHandler) Authorize(w http.ResponseWriter, r *http.Request) {
-	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("type")), "device_code") {
-		h.writeAuthorizeApp(w, http.StatusOK, "设备授权", "")
-		return
-	}
 	h.renderAuthorizeInteraction(w, r, "")
 }
 

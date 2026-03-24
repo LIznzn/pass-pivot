@@ -350,6 +350,8 @@ type DeviceAuthorization struct {
 	SessionID       string     `gorm:"index;size:36" json:"sessionId"`
 	DeviceCode      string     `gorm:"uniqueIndex;size:128" json:"deviceCode"`
 	UserCode        string     `gorm:"uniqueIndex;size:32" json:"userCode"`
+	IPAddress       string     `gorm:"size:64" json:"ipAddress"`
+	DeviceName      string     `gorm:"size:255" json:"deviceName"`
 	Scope           string     `gorm:"size:255" json:"scope"`
 	Status          string     `gorm:"size:32;index" json:"status"`
 	IntervalSeconds int        `json:"intervalSeconds"`

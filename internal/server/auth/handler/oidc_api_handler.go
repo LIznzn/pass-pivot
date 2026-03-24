@@ -28,6 +28,7 @@ type authorizeInteractionResponse struct {
 	MFAOptions         []string                               `json:"mfaOptions,omitempty"`
 	Target             *coreservice.LoginTarget               `json:"target,omitempty"`
 	CurrentUser        *authorizeCurrentUser                  `json:"currentUser,omitempty"`
+	DeviceAuthorization *authorizeDeviceAuthorization         `json:"deviceAuthorization,omitempty"`
 	Captcha            *authservice.AuthorizeCaptchaBootstrap `json:"captcha,omitempty"`
 }
 
@@ -35,6 +36,7 @@ type authorizeInteractionRequest struct {
 	SessionID            string `json:"sessionId"`
 	FlowType             string `json:"flowType"`
 	UserCode             string `json:"userCode"`
+	DeviceReviewConfirmed bool   `json:"deviceReviewConfirmed"`
 	ClientID             string `json:"clientId"`
 	ResponseType         string `json:"responseType"`
 	RedirectURI          string `json:"redirectUri"`
@@ -58,6 +60,7 @@ type authorizeContextResponse struct {
 	AuthorizeReturnURL string                                 `json:"authorizeReturnUrl,omitempty"`
 	Target             *coreservice.LoginTarget               `json:"target,omitempty"`
 	CurrentUser        *authorizeCurrentUser                  `json:"currentUser,omitempty"`
+	DeviceAuthorization *authorizeDeviceAuthorization         `json:"deviceAuthorization,omitempty"`
 	ApplicationID      string                                 `json:"applicationId,omitempty"`
 	SecondFactorMethod string                                 `json:"secondFactorMethod,omitempty"`
 	MFAOptions         []authorizeUIMethodOption              `json:"mfaOptions,omitempty"`
@@ -70,6 +73,11 @@ type authorizeCurrentUser struct {
 	Name        string `json:"name"`
 	Email       string `json:"email"`
 	PhoneNumber string `json:"phoneNumber"`
+}
+
+type authorizeDeviceAuthorization struct {
+	IPAddress  string `json:"ipAddress"`
+	DeviceName string `json:"deviceName"`
 }
 
 func (h *OIDCHandler) QueryMetadataAPI(w http.ResponseWriter, r *http.Request) {
@@ -110,7 +118,15 @@ func (h *OIDCHandler) QueryAuthorizeContextAPI(w http.ResponseWriter, r *http.Re
 		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
 		return
 	}
-	response, err := h.queryAuthorizeInteractionFromCore(w, r, payload)
+	var (
+		response authorizeInteractionResponse
+		err      error
+	)
+	if strings.EqualFold(strings.TrimSpace(payload.FlowType), "device_code") {
+		response, err = h.queryAuthorizeInteractionFromPayload(w, r, payload)
+	} else {
+		response, err = h.queryAuthorizeInteractionFromCore(w, r, payload)
+	}
 	if err != nil {
 		authnapi.WriteKnown(w, err)
 		return
@@ -122,7 +138,7 @@ func (h *OIDCHandler) QueryAuthorizeContextAPI(w http.ResponseWriter, r *http.Re
 		})
 		return
 	}
-	if response.Target == nil && response.Stage != "done" {
+	if response.Target == nil && response.Stage != "done" && response.Stage != "user_code" {
 		sharedweb.JSON(w, http.StatusBadRequest, authorizeContextResponse{
 			Action: "error",
 			Error:  "login target is not available",
@@ -142,6 +158,7 @@ func (h *OIDCHandler) QueryAuthorizeContextAPI(w http.ResponseWriter, r *http.Re
 		AuthorizeReturnURL: buildAuthorizeReturnURLFromPayload(payload),
 		Target:             response.Target,
 		CurrentUser:        response.CurrentUser,
+		DeviceAuthorization: response.DeviceAuthorization,
 		ApplicationID:      applicationID,
 		SecondFactorMethod: response.SecondFactorMethod,
 		MFAOptions:         buildAuthorizeMFAOptions(response.MFAOptions),
@@ -338,7 +355,7 @@ func (h *OIDCHandler) VerifyAuthorizeMFAAPI(w http.ResponseWriter, r *http.Reque
 
 func (h *OIDCHandler) queryAuthorizeInteractionFromPayload(w http.ResponseWriter, r *http.Request, payload authorizeInteractionRequest) (authorizeInteractionResponse, error) {
 	if strings.EqualFold(strings.TrimSpace(payload.FlowType), "device_code") {
-		return h.queryDeviceCodeInteraction(w, r, strings.TrimSpace(payload.UserCode))
+		return h.queryDeviceCodeInteraction(w, r, strings.TrimSpace(payload.UserCode), payload.DeviceReviewConfirmed)
 	}
 	in := authservice.StandardAuthorizeRequest{
 		SessionID:           strings.TrimSpace(payload.SessionID),

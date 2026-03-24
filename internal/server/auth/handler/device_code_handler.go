@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	authservice "pass-pivot/internal/server/auth/service"
+	sharedhandler "pass-pivot/internal/server/shared/handler"
 	sharedweb "pass-pivot/internal/server/shared/web"
 )
 
@@ -30,6 +31,8 @@ func (h *OIDCHandler) DeviceAuthorization(w http.ResponseWriter, r *http.Request
 		strings.TrimSpace(r.Form.Get("client_assertion_type")),
 		strings.TrimSpace(r.Form.Get("client_assertion")),
 		strings.TrimSpace(r.Form.Get("scope")),
+		sharedhandler.NormalizeRemoteIP(sharedhandler.OriginalRemoteAddr(r)),
+		strings.TrimSpace(sharedhandler.OriginalUserAgent(r)),
 	)
 	if err != nil {
 		writeOAuthTokenError(w, http.StatusBadRequest, oauthErrorCode(err), err.Error())

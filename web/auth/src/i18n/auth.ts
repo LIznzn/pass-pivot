@@ -14,14 +14,25 @@ export type TranslationShape = {
   productTagline: string
   language: string
   securityLabel: string
-  stageTitles: Record<'login' | 'account' | 'confirmation' | 'mfa', (appName: string) => string>
-  stageHints: Record<'login' | 'account' | 'confirmation' | 'mfa', string>
-  deviceAuthorizationCompleteTitle: (appName: string) => string
+  stageTitles: Record<'user_code' | 'device_review' | 'login' | 'account' | 'confirmation' | 'mfa', (appName: string) => string>
+  stageHints: Record<'user_code' | 'device_review' | 'login' | 'account' | 'confirmation' | 'mfa', string>
+  deviceAuthorizationCompleteTitle: string
   deviceAuthorizationCompleteHint: string
+  deviceAuthorizationErrorHint: string
   accountTitle: string
   authorizeThisClient: string
   continueAsCurrentAccount: string
   logoutAndSwitchAccount: string
+  userCode: string
+  userCodePlaceholder: string
+  submitUserCode: string
+  deviceAuthorizationRequestTitle: string
+  deviceAuthorizationRequestDevice: string
+  deviceAuthorizationRequestIp: string
+  deviceAuthorizationReviewTitle: string
+  deviceAuthorizationReviewContinue: string
+  deviceAuthorizationReviewCancel: string
+  closePage: string
   identifier: string
   identifierPlaceholder: string
   password: string
@@ -114,23 +125,38 @@ export function buildLocaleText(locale: Locale): TranslationShape {
     language: resolveLocaleText('language', locale),
     securityLabel: resolveLocaleText('securityLabel', locale),
     stageTitles: {
+      user_code: () => resolveLocaleText('stageTitleUserCode', locale),
+      device_review: () => resolveLocaleText('stageTitleDeviceReview', locale),
       login: (appName: string) => formatLocaleText('stageTitleLogin', locale, { appName }),
       account: () => resolveLocaleText('stageTitleAccount', locale),
       confirmation: () => resolveLocaleText('stageTitleConfirmation', locale),
       mfa: () => resolveLocaleText('stageTitleMfa', locale)
     },
     stageHints: {
+      user_code: resolveLocaleText('stageHintUserCode', locale),
+      device_review: resolveLocaleText('stageHintDeviceReview', locale),
       login: resolveLocaleText('stageHintLogin', locale),
       account: resolveLocaleText('stageHintAccount', locale),
       confirmation: resolveLocaleText('stageHintConfirmation', locale),
       mfa: resolveLocaleText('stageHintMfa', locale)
     },
-    deviceAuthorizationCompleteTitle: (appName: string) => formatLocaleText('deviceAuthorizationCompleteTitle', locale, { appName }),
+    deviceAuthorizationCompleteTitle: resolveLocaleText('deviceAuthorizationCompleteTitle', locale),
     deviceAuthorizationCompleteHint: resolveLocaleText('deviceAuthorizationCompleteHint', locale),
+    deviceAuthorizationErrorHint: resolveLocaleText('deviceAuthorizationErrorHint', locale),
     accountTitle: resolveLocaleText('accountTitle', locale),
     authorizeThisClient: resolveLocaleText('authorizeThisClient', locale),
     continueAsCurrentAccount: resolveLocaleText('continueAsCurrentAccount', locale),
     logoutAndSwitchAccount: resolveLocaleText('logoutAndSwitchAccount', locale),
+    userCode: resolveLocaleText('userCode', locale),
+    userCodePlaceholder: resolveLocaleText('userCodePlaceholder', locale),
+    submitUserCode: resolveLocaleText('submitUserCode', locale),
+    deviceAuthorizationRequestTitle: resolveLocaleText('deviceAuthorizationRequestTitle', locale),
+    deviceAuthorizationRequestDevice: resolveLocaleText('deviceAuthorizationRequestDevice', locale),
+    deviceAuthorizationRequestIp: resolveLocaleText('deviceAuthorizationRequestIp', locale),
+    deviceAuthorizationReviewTitle: resolveLocaleText('deviceAuthorizationReviewTitle', locale),
+    deviceAuthorizationReviewContinue: resolveLocaleText('deviceAuthorizationReviewContinue', locale),
+    deviceAuthorizationReviewCancel: resolveLocaleText('deviceAuthorizationReviewCancel', locale),
+    closePage: resolveLocaleText('closePage', locale),
     identifier: resolveLocaleText('identifier', locale),
     identifierPlaceholder: resolveLocaleText('identifierPlaceholder', locale),
     password: resolveLocaleText('password', locale),

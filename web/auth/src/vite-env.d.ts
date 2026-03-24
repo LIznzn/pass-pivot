@@ -35,6 +35,11 @@ export type AuthCurrentUser = {
   phoneNumber: string
 }
 
+export type AuthDeviceAuthorization = {
+  ipAddress: string
+  deviceName: string
+}
+
 export type AuthCaptcha = {
   provider: string
   client_key?: string
@@ -46,14 +51,15 @@ export type AuthContextPayload = {
   action: string
   redirectTarget?: string
   flowType?: 'authorize' | 'device_code'
-  stage: 'login' | 'account' | 'confirmation' | 'mfa' | 'done'
+  stage: 'user_code' | 'device_review' | 'login' | 'account' | 'confirmation' | 'mfa' | 'done'
   resultStatus?: 'success' | 'error'
   resultMessage?: string
   error?: string
   authorizeReturnUrl: string
-  target: AuthTarget
+  target?: AuthTarget
   currentUser?: AuthCurrentUser
-  applicationId: string
+  deviceAuthorization?: AuthDeviceAuthorization
+  applicationId?: string
   secondFactorMethod?: string
   mfaOptions: AuthMethodOption[]
   captcha?: AuthCaptcha

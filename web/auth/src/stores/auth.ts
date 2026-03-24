@@ -32,12 +32,44 @@ function hasRecaptchaAPI() {
     typeof window.grecaptcha?.reset === 'function'
 }
 
+const deviceReviewStorageKey = 'ppvt_device_review_confirmed'
+
+function getDeviceReviewConfirmationKey(userCode: string) {
+  return `${deviceReviewStorageKey}:${userCode.trim().toUpperCase()}`
+}
+
+function getDeviceReviewConfirmedFromStorage(userCode: string) {
+  if (typeof window === 'undefined') {
+    return false
+  }
+  const key = getDeviceReviewConfirmationKey(userCode)
+  return window.sessionStorage.getItem(key) === '1'
+}
+
+function setDeviceReviewConfirmedInStorage(userCode: string, confirmed: boolean) {
+  if (typeof window === 'undefined') {
+    return
+  }
+  const normalized = userCode.trim().toUpperCase()
+  if (!normalized) {
+    return
+  }
+  const key = getDeviceReviewConfirmationKey(normalized)
+  if (confirmed) {
+    window.sessionStorage.setItem(key, '1')
+    return
+  }
+  window.sessionStorage.removeItem(key)
+}
+
 function buildAuthorizePayload() {
   const query = router.currentRoute.value.query
+  const userCode = typeof query.user_code === 'string' ? query.user_code : ''
   return {
     sessionId: typeof query.ppvt_session_id === 'string' ? query.ppvt_session_id : '',
     flowType: typeof query.type === 'string' ? query.type : '',
-    userCode: typeof query.user_code === 'string' ? query.user_code : '',
+    userCode,
+    deviceReviewConfirmed: getDeviceReviewConfirmedFromStorage(userCode),
     clientId: typeof query.client_id === 'string' ? query.client_id : '',
     responseType: typeof query.response_type === 'string' ? query.response_type : '',
     redirectUri: typeof query.redirect_uri === 'string' ? query.redirect_uri : '',
@@ -72,10 +104,10 @@ export const useAuthStore = defineStore('auth', () => {
   let recaptchaScriptPromise: Promise<void> | null = null
 
   const text = computed(() => buildLocaleText(locale.value))
-  const stage = computed<'login' | 'account' | 'confirmation' | 'mfa' | 'done'>(() => context.value?.stage || 'login')
+  const stage = computed<'user_code' | 'device_review' | 'login' | 'account' | 'confirmation' | 'mfa' | 'done'>(() => context.value?.stage || 'login')
   const flowType = computed<'authorize' | 'device_code'>(() => context.value?.flowType || 'authorize')
-  const termsOfServiceUrl = computed(() => String(context.value?.target.termsOfServiceUrl || '').trim())
-  const privacyPolicyUrl = computed(() => String(context.value?.target.privacyPolicyUrl || '').trim())
+  const termsOfServiceUrl = computed(() => String(context.value?.target?.termsOfServiceUrl || '').trim())
+  const privacyPolicyUrl = computed(() => String(context.value?.target?.privacyPolicyUrl || '').trim())
   const organizationDisplayName = computed(() => {
     const target = context.value?.target
     if (!target) return ''
@@ -107,24 +139,55 @@ export const useAuthStore = defineStore('auth', () => {
       ''
     ).trim()
   )
-  const externalIdps = computed(() => Array.isArray(context.value?.target.externalIdps) ? context.value?.target.externalIdps : [])
+  const externalIdps = computed(() => {
+    const providers = context.value?.target?.externalIdps
+    return Array.isArray(providers) ? providers : []
+  })
   const stageTitle = computed(() => {
     if (stage.value === 'done' && flowType.value === 'device_code') {
-      return text.value.deviceAuthorizationCompleteTitle(applicationName.value)
+      return text.value.deviceAuthorizationCompleteTitle
     }
     return text.value.stageTitles[stage.value === 'done' ? 'login' : stage.value](applicationName.value)
   })
   const stageHint = computed(() => {
     if (stage.value === 'done' && flowType.value === 'device_code') {
-      return text.value.deviceAuthorizationCompleteHint
+      return resultStatus.value === 'error'
+        ? text.value.deviceAuthorizationErrorHint
+        : text.value.deviceAuthorizationCompleteHint
     }
     return text.value.stageHints[stage.value === 'done' ? 'login' : stage.value]
   })
   const resultStatus = computed(() => context.value?.resultStatus || '')
   const resultMessage = computed(() => String(context.value?.resultMessage || '').trim())
+  const localizedResultMessage = computed(() => {
+    if (stage.value === 'done' && flowType.value === 'device_code') {
+      return stageHint.value
+    }
+    return resultMessage.value || stageHint.value
+  })
   const continueButtonText = computed(() =>
     flowType.value === 'device_code' ? text.value.authorizeThisClient : text.value.continueAsCurrentAccount
   )
+  const deviceAuthorizationSummary = computed(() => {
+    const request = context.value?.deviceAuthorization
+    if (!request) {
+      return []
+    }
+    const items: Array<{ label: string; value: string }> = []
+    if (request.deviceName?.trim()) {
+      items.push({
+        label: text.value.deviceAuthorizationRequestDevice,
+        value: request.deviceName.trim()
+      })
+    }
+    if (request.ipAddress?.trim()) {
+      items.push({
+        label: text.value.deviceAuthorizationRequestIp,
+        value: request.ipAddress.trim()
+      })
+    }
+    return items
+  })
   const localizedContextError = computed(() => localizeError(context.value?.error, text.value))
   const localizedMFAOptions = computed(() =>
     (context.value?.mfaOptions || []).map((option: AuthMethodOption) => ({
@@ -255,8 +318,45 @@ export const useAuthStore = defineStore('auth', () => {
     initializeFromContext(nextContext)
   }
 
+  async function submitDeviceUserCode(userCode: string) {
+    const trimmedUserCode = userCode.trim().toUpperCase()
+    setDeviceReviewConfirmedInStorage(trimmedUserCode, false)
+    await router.replace({
+      query: {
+        ...router.currentRoute.value.query,
+        user_code: trimmedUserCode || undefined
+      }
+    })
+    await reloadContext()
+  }
+
+  async function confirmDeviceAuthorizationReview() {
+    const userCode = typeof router.currentRoute.value.query.user_code === 'string'
+      ? router.currentRoute.value.query.user_code
+      : ''
+    setDeviceReviewConfirmedInStorage(userCode, true)
+    await reloadContext()
+  }
+
+  async function cancelDeviceAuthorizationReview() {
+    const userCode = typeof router.currentRoute.value.query.user_code === 'string'
+      ? router.currentRoute.value.query.user_code
+      : ''
+    setDeviceReviewConfirmedInStorage(userCode, false)
+    await router.replace({
+      query: {
+        ...router.currentRoute.value.query,
+        user_code: undefined
+      }
+    })
+    await reloadContext()
+  }
+
   async function createSession(identifier: string, secret: string, captchaAnswer: string) {
     const current = requireContext()
+    if (!current.target || !current.applicationId) {
+      throw new Error('missing auth target')
+    }
     try {
       const result = await createAuthorizeSession({
         organizationId: current.target.organizationId,
@@ -340,6 +440,9 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function loginWithWebAuthn(identifier = '') {
     const current = requireContext()
+    if (!current.applicationId) {
+      throw new Error('missing application id')
+    }
     try {
       const begin = await beginWebAuthnLogin(current.applicationId)
       const credential = await navigator.credentials.get({
@@ -587,7 +690,9 @@ export const useAuthStore = defineStore('auth', () => {
     stageHint,
     resultStatus,
     resultMessage,
+    localizedResultMessage,
     continueButtonText,
+    deviceAuthorizationSummary,
     termsOfServiceUrl,
     privacyPolicyUrl,
     organizationDisplayName,
@@ -607,6 +712,9 @@ export const useAuthStore = defineStore('auth', () => {
     initialize,
     reloadContext,
     continueAuthorization,
+    submitDeviceUserCode,
+    confirmDeviceAuthorizationReview,
+    cancelDeviceAuthorizationReview,
     createSession,
     switchAccount,
     confirmSession,

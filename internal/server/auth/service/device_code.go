@@ -40,7 +40,7 @@ type DeviceAuthorizationView struct {
 	Organization  model.Organization
 }
 
-func (s *OIDCService) CreateDeviceAuthorization(ctx context.Context, audience, clientID, clientSecret, clientAssertionType, clientAssertion, scope string) (*DeviceAuthorizationResponse, error) {
+func (s *OIDCService) CreateDeviceAuthorization(ctx context.Context, audience, clientID, clientSecret, clientAssertionType, clientAssertion, scope, ipAddress, deviceName string) (*DeviceAuthorizationResponse, error) {
 	app, err := s.validateClientAuthentication(ctx, audience, clientID, clientSecret, clientAssertionType, clientAssertion)
 	if err != nil {
 		return nil, err
@@ -61,6 +61,8 @@ func (s *OIDCService) CreateDeviceAuthorization(ctx context.Context, audience, c
 		ApplicationID:   app.ID,
 		DeviceCode:      deviceCode,
 		UserCode:        userCode,
+		IPAddress:       strings.TrimSpace(ipAddress),
+		DeviceName:      strings.TrimSpace(deviceName),
 		Scope:           strings.TrimSpace(scope),
 		Status:          deviceAuthorizationStatusPending,
 		IntervalSeconds: deviceAuthorizationInterval,

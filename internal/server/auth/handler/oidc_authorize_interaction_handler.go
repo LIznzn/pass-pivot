@@ -183,7 +183,12 @@ func (h *OIDCHandler) AuthorizeWebAuthnLoginFinish(w http.ResponseWriter, r *htt
 func (h *OIDCHandler) AuthorizeCaptchaRefresh(w http.ResponseWriter, r *http.Request) {
 	var organizationID string
 	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("type")), "device_code") {
-		response, err := h.queryDeviceCodeInteraction(w, r, strings.TrimSpace(r.URL.Query().Get("user_code")))
+		response, err := h.queryDeviceCodeInteraction(
+			w,
+			r,
+			strings.TrimSpace(r.URL.Query().Get("user_code")),
+			strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("ppvt_device_review_confirmed")), "1"),
+		)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
@@ -254,7 +259,24 @@ func (h *OIDCHandler) AuthorizeSessionU2FFinish(w http.ResponseWriter, r *http.R
 }
 
 func (h *OIDCHandler) renderAuthorizeInteraction(w http.ResponseWriter, r *http.Request, bannerError string) {
-	response, err := h.queryAuthorizeInteraction(w, r)
+	var (
+		response *authorizeInteractionResponse
+		err      error
+	)
+	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("type")), "device_code") {
+		var next authorizeInteractionResponse
+		next, err = h.queryDeviceCodeInteraction(
+			w,
+			r,
+			strings.TrimSpace(r.URL.Query().Get("user_code")),
+			strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("ppvt_device_review_confirmed")), "1"),
+		)
+		if err == nil {
+			response = &next
+		}
+	} else {
+		response, err = h.queryAuthorizeInteraction(w, r)
+	}
 	if err != nil {
 		h.writeAuthorizeErrorPage(w, http.StatusBadGateway, err.Error())
 		return
@@ -263,7 +285,7 @@ func (h *OIDCHandler) renderAuthorizeInteraction(w http.ResponseWriter, r *http.
 		http.Redirect(w, r, response.RedirectTarget, http.StatusFound)
 		return
 	}
-	if response.Target == nil {
+	if response.Target == nil && response.Stage != "user_code" {
 		h.writeAuthorizeErrorPage(w, http.StatusBadRequest, "login target is not available")
 		return
 	}
@@ -397,6 +419,10 @@ func redirectErrorOrDefault(redirectError, redirectURI, state string) string {
 func authorizePageTitle(stage string) string {
 	title := "登录"
 	switch stage {
+	case "user_code":
+		title = "输入设备码"
+	case "device_review":
+		title = "确认设备授权"
 	case "account":
 		title = "选择账号"
 	case "confirmation":
@@ -481,7 +507,30 @@ func deviceCodeLoginTarget(view *authservice.DeviceAuthorizationView) *coreservi
 	}
 }
 
-func (h *OIDCHandler) queryDeviceCodeInteraction(w http.ResponseWriter, r *http.Request, userCode string) (authorizeInteractionResponse, error) {
+func deviceAuthorizationMeta(view *authservice.DeviceAuthorizationView) *authorizeDeviceAuthorization {
+	if view == nil {
+		return nil
+	}
+	ipAddress := strings.TrimSpace(view.Authorization.IPAddress)
+	deviceName := strings.TrimSpace(view.Authorization.DeviceName)
+	if ipAddress == "" && deviceName == "" {
+		return nil
+	}
+	return &authorizeDeviceAuthorization{
+		IPAddress:  ipAddress,
+		DeviceName: deviceName,
+	}
+}
+
+func (h *OIDCHandler) queryDeviceCodeInteraction(w http.ResponseWriter, r *http.Request, userCode string, deviceReviewConfirmed bool) (authorizeInteractionResponse, error) {
+	userCode = strings.TrimSpace(userCode)
+	if userCode == "" {
+		return authorizeInteractionResponse{
+			Action:   "render",
+			FlowType: "device_code",
+			Stage:    "user_code",
+		}, nil
+	}
 	view, err := h.oidc.DeviceAuthorizationByUserCode(r.Context(), userCode)
 	if err != nil {
 		return authorizeInteractionResponse{
@@ -493,6 +542,7 @@ func (h *OIDCHandler) queryDeviceCodeInteraction(w http.ResponseWriter, r *http.
 		}, nil
 	}
 	target := deviceCodeLoginTarget(view)
+	deviceAuthorization := deviceAuthorizationMeta(view)
 	now := time.Now()
 	if view.Authorization.ExpiresAt.Before(now) {
 		return authorizeInteractionResponse{
@@ -502,10 +552,11 @@ func (h *OIDCHandler) queryDeviceCodeInteraction(w http.ResponseWriter, r *http.
 			ResultStatus:  "error",
 			ResultMessage: "device code has expired",
 			Target:        target,
+			DeviceAuthorization: deviceAuthorization,
 		}, nil
 	}
 	switch view.Authorization.Status {
-	case "approved", "consumed":
+	case "approved":
 		var currentUser *authorizeCurrentUser
 		if strings.TrimSpace(view.Authorization.SessionID) != "" {
 			if user, _, err := h.oidc.GetSessionUser(r.Context(), view.Authorization.SessionID); err == nil {
@@ -526,6 +577,17 @@ func (h *OIDCHandler) queryDeviceCodeInteraction(w http.ResponseWriter, r *http.
 			ResultMessage: "You have successfully authorized this client.",
 			Target:        target,
 			CurrentUser:   currentUser,
+			DeviceAuthorization: deviceAuthorization,
+		}, nil
+	case "consumed":
+		return authorizeInteractionResponse{
+			Action:        "render",
+			FlowType:      "device_code",
+			Stage:         "done",
+			ResultStatus:  "error",
+			ResultMessage: "device authorization has already been used",
+			Target:        target,
+			DeviceAuthorization: deviceAuthorization,
 		}, nil
 	case "denied":
 		return authorizeInteractionResponse{
@@ -535,6 +597,16 @@ func (h *OIDCHandler) queryDeviceCodeInteraction(w http.ResponseWriter, r *http.
 			ResultStatus:  "error",
 			ResultMessage: "The authorization request has been denied.",
 			Target:        target,
+			DeviceAuthorization: deviceAuthorization,
+		}, nil
+	}
+	if !deviceReviewConfirmed {
+		return authorizeInteractionResponse{
+			Action:              "render",
+			FlowType:            "device_code",
+			Stage:               "device_review",
+			Target:              target,
+			DeviceAuthorization: deviceAuthorization,
 		}, nil
 	}
 	sessionID := strings.TrimSpace(sharedhandler.ReadAuthSessionCookie(r, target.OrganizationID))
@@ -554,6 +626,7 @@ func (h *OIDCHandler) queryDeviceCodeInteraction(w http.ResponseWriter, r *http.
 					FlowType: "device_code",
 					Stage:    "account",
 					Target:   target,
+					DeviceAuthorization: deviceAuthorization,
 					CurrentUser: &authorizeCurrentUser{
 						ID:          user.ID,
 						Username:    user.Username,
@@ -572,6 +645,7 @@ func (h *OIDCHandler) queryDeviceCodeInteraction(w http.ResponseWriter, r *http.
 					FlowType:           "device_code",
 					Stage:              "confirmation",
 					Target:             target,
+					DeviceAuthorization: deviceAuthorization,
 					SecondFactorMethod: session.SecondFactorMethod,
 					MFAOptions:         mfaOptions,
 				}, nil
@@ -585,6 +659,7 @@ func (h *OIDCHandler) queryDeviceCodeInteraction(w http.ResponseWriter, r *http.
 					FlowType:           "device_code",
 					Stage:              "mfa",
 					Target:             target,
+					DeviceAuthorization: deviceAuthorization,
 					SecondFactorMethod: session.SecondFactorMethod,
 					MFAOptions:         mfaOptions,
 				}, nil
@@ -596,6 +671,7 @@ func (h *OIDCHandler) queryDeviceCodeInteraction(w http.ResponseWriter, r *http.
 		FlowType: "device_code",
 		Stage:    "login",
 		Target:   target,
+		DeviceAuthorization: deviceAuthorization,
 		Captcha:  h.mustBuildAuthorizeCaptcha(r.Context(), target.OrganizationID),
 	}, nil
 }
