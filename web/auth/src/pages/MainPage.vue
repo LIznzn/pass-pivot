@@ -11,7 +11,7 @@
 
         <section class="auth-card">
           <DeviceCodeStep v-if="auth.stage === 'user_code'" />
-          <DeviceAuthorizationReviewStep v-else-if="auth.stage === 'device_review'" />
+          <DeviceReviewStep v-else-if="auth.stage === 'device_review'" />
           <LoginStep v-else-if="auth.stage === 'login'" />
           <AccountStep v-else-if="auth.stage === 'account'" />
           <ConfirmationStep v-else-if="auth.stage === 'confirmation'" />
@@ -37,7 +37,7 @@ import { watch } from 'vue'
 import { useToast } from 'bootstrap-vue-next'
 import AccountStep from '@/components/AccountStep.vue'
 import ConfirmationStep from '@/components/ConfirmationStep.vue'
-import DeviceAuthorizationReviewStep from '@/components/DeviceAuthorizationReviewStep.vue'
+import DeviceReviewStep from '@/components/DeviceReviewStep.vue'
 import DeviceCodeStep from '@/components/DeviceCodeStep.vue'
 import DoneStep from '@/components/DoneStep.vue'
 import LoginStep from '@/components/LoginStep.vue'
