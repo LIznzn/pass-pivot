@@ -151,12 +151,12 @@
 <script setup lang="ts">
 import { computed, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { BButton, BForm, BFormInput, BFormSelect } from 'bootstrap-vue-next'
-import { useToast } from '@shared/composables/toast'
-import RoleDetail from '../components/RoleDetail.vue'
-import { useConsoleStore } from '../stores/console'
-import { useOrganizationStore } from '../stores/organization'
-import { useRoleStore } from '../stores/role'
+import { BButton, BForm, BFormInput, BFormSelect, useToast } from 'bootstrap-vue-next'
+import RoleDetail from '@/components/RoleDetail.vue'
+import { useConsoleStore } from '@/stores/console'
+import { useOrganizationStore } from '@/stores/organization'
+import { useRoleStore } from '@/stores/role'
+import { notifyToast } from '@shared/utils/notify'
 
 const router = useRouter()
 const route = useRoute()
@@ -164,6 +164,29 @@ const toast = useToast()
 const console = useConsoleStore()
 const organizationStore = useOrganizationStore()
 const roleStore = useRoleStore()
+
+function showToast(
+  message: string,
+  variant: 'success' | 'danger',
+  options: {
+    source: string
+    trigger?: string
+    error?: unknown
+    metadata?: Record<string, unknown>
+  } = {
+    source: 'console/Role'
+  }
+) {
+  notifyToast({
+    toast,
+    message,
+    variant,
+    source: options.source,
+    trigger: options.trigger,
+    error: options.error,
+    metadata: options.metadata
+  })
+}
 
 const roleTypeOptions = [
   { value: 'user', text: '用户角色' },
@@ -264,9 +287,16 @@ function toggleRoleSelection(roleId: string, checked: boolean) {
 async function runWithFeedback(fn: () => Promise<unknown>, successMessage = '操作成功') {
   try {
     await fn()
-    toast.success(successMessage)
+    showToast(successMessage, 'success', {
+      source: 'console/Role.submitRoleMutation',
+      trigger: 'submitRoleMutation'
+    })
   } catch (error) {
-    toast.error(String(error))
+    showToast(String(error), 'danger', {
+      source: 'console/Role.submitRoleMutation',
+      trigger: 'submitRoleMutation',
+      error
+    })
   }
 }
 
@@ -315,9 +345,16 @@ async function runModuleAction() {
 async function evaluatePolicyCheck() {
   try {
     decisionResult.value = await roleStore.evaluatePolicyCheck()
-    toast.success('操作成功')
+    showToast('操作成功', 'success', {
+      source: 'console/Role.runPolicyCheck',
+      trigger: 'runPolicyCheck'
+    })
   } catch (error) {
-    toast.error(String(error))
+    showToast(String(error), 'danger', {
+      source: 'console/Role.runPolicyCheck',
+      trigger: 'runPolicyCheck',
+      error
+    })
   }
 }
 </script>

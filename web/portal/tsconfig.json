@@ -1,5 +1,11 @@
 {
   "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["portal/src/*"],
+      "@shared/*": ["shared/*"]
+    }
+  },
   "include": [
     "src/**/*.ts",
     "src/**/*.d.ts",

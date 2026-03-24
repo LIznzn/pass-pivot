@@ -87,9 +87,9 @@
 <script setup lang="ts">
 import { computed, reactive, watchEffect } from 'vue'
 import { BButton, BFormInput, BFormSelect } from 'bootstrap-vue-next'
-import { useAuditStore } from '../stores/audit'
-import { useConsoleStore } from '../stores/console'
-import { useOrganizationStore } from '../stores/organization'
+import { useAuditStore } from '@/stores/audit'
+import { useConsoleStore } from '@/stores/console'
+import { useOrganizationStore } from '@/stores/organization'
 
 const auditStore = useAuditStore()
 const consoleStore = useConsoleStore()

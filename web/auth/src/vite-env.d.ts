@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-type OAuthBootstrapTarget = {
+export type AuthTarget = {
   organizationId: string
   organizationName: string
   displayName: string
@@ -22,12 +22,12 @@ type OAuthBootstrapTarget = {
   }>
 }
 
-type OAuthBootstrapMethodOption = {
+export type AuthMethodOption = {
   value: string
   label: string
 }
 
-type OAuthBootstrapCurrentUser = {
+export type AuthCurrentUser = {
   id: string
   username: string
   name: string
@@ -35,60 +35,28 @@ type OAuthBootstrapCurrentUser = {
   phoneNumber: string
 }
 
-type OAuthBootstrapAPIConfig = {
-  webauthnLoginBegin: string
-  webauthnLoginEnd: string
-  sessionU2fBegin: string
-  sessionU2fFinish: string
-  mfaChallenge: string
-  captchaRefresh: string
-}
-
-type OAuthBootstrapCaptcha = {
+export type AuthCaptcha = {
   provider: string
   client_key?: string
   imageDataUrl?: string
   challengeToken?: string
 }
 
-type OAuthBootstrapPayload = {
-  stage: 'login' | 'account' | 'confirmation' | 'mfa'
-  title: string
+export type AuthContextPayload = {
+  action: string
+  redirectTarget?: string
+  flowType?: 'authorize' | 'device_code'
+  stage: 'login' | 'account' | 'confirmation' | 'mfa' | 'done'
+  resultStatus?: 'success' | 'error'
+  resultMessage?: string
   error?: string
   authorizeReturnUrl: string
-  target: OAuthBootstrapTarget
-  currentUser?: OAuthBootstrapCurrentUser
+  target: AuthTarget
+  currentUser?: AuthCurrentUser
   applicationId: string
-  loginAction: string
-  accountAction: string
-  switchAccountAction: string
-  confirmAction: string
-  mfaAction: string
   secondFactorMethod?: string
-  mfaOptions: OAuthBootstrapMethodOption[]
-  captcha?: OAuthBootstrapCaptcha
-  api: OAuthBootstrapAPIConfig
-}
-
-type DeviceBootstrapCurrentUser = {
-  id: string
-  username: string
-  name: string
-  email: string
-  phoneNumber: string
-}
-
-type DeviceBootstrapPayload = {
-  title: string
-  status: 'pending' | 'done' | 'error'
-  error?: string
-  userCode: string
-  applicationName?: string
-  organizationName?: string
-  currentUser?: DeviceBootstrapCurrentUser
-  loginAction: string
-  confirmAction: string
-  denied?: boolean
+  mfaOptions: AuthMethodOption[]
+  captcha?: AuthCaptcha
 }
 
 declare global {
@@ -118,12 +86,6 @@ declare global {
   }
   interface Window {
     __ppvtRecaptchaOnload?: () => void
-  }
-  interface Window {
-    __PPVT_OAUTH_BOOTSTRAP__?: OAuthBootstrapPayload
-  }
-  interface Window {
-    __PPVT_DEVICE_BOOTSTRAP__?: DeviceBootstrapPayload
   }
 }
 

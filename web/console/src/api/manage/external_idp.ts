@@ -1,4 +1,4 @@
-import { requestPost } from '../../util/request'
+import { requestPost } from '@/utils/request'
 
 export function queryExternalIdps(organizationId: string) {
   return requestPost<{ items: any[] }>('/api/manage/v1/external_idp/query', { organizationId })

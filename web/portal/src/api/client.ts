@@ -1,4 +1,4 @@
-import { requestGet, requestPost } from '../util/request'
+import { requestGet, requestPost } from '@/utils/request'
 
 export async function apiGet<T>(path: string): Promise<T> {
   return requestGet<T>(path)

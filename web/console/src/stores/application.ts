@@ -7,7 +7,7 @@ import {
   queryApplications as apiQueryApplications,
   resetApplicationKey as apiResetApplicationKey,
   updateApplication as apiUpdateApplication
-} from '../api/manage/application'
+} from '@/api/manage/application'
 import { useProjectStore } from './project'
 
 export const useApplicationStore = defineStore('application', () => {

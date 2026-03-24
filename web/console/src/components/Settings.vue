@@ -249,27 +249,51 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch, watchEffect } from 'vue'
-import { useToast } from '@shared/composables/toast'
-import DomainCreateModal from '../modal/DomainCreateModal.vue'
-import DomainVerificationModal from '../modal/DomainVerificationModal.vue'
-import ExternalIdpConfigModal from '../modal/ExternalIdpConfigModal.vue'
+import { useToast } from 'bootstrap-vue-next'
+import DomainCreateModal from '@/modal/DomainCreateModal.vue'
+import DomainVerificationModal from '@/modal/DomainVerificationModal.vue'
+import ExternalIdpConfigModal from '@/modal/ExternalIdpConfigModal.vue'
 import {
   prepareOrganizationDomainVerification as apiPrepareOrganizationDomainVerification,
   verifyOrganizationDomain as apiVerifyOrganizationDomain,
-} from '../api/manage/organization'
+} from '@/api/manage/organization'
 import {
   createExternalIdp as apiCreateExternalIdp,
   queryExternalIdps as apiQueryExternalIdps,
   updateExternalIdp as apiUpdateExternalIdp
-} from '../api/manage/external_idp'
-import { useConsoleStore } from '../stores/console'
-import { useOrganizationStore } from '../stores/organization'
+} from '@/api/manage/external_idp'
+import { useConsoleStore } from '@/stores/console'
+import { useOrganizationStore } from '@/stores/organization'
 import { BButton, BForm, BFormInput, BFormSelect } from 'bootstrap-vue-next'
+import { notifyToast } from '@shared/utils/notify'
 
 const toast = useToast()
 const console = useConsoleStore()
 const organizationStore = useOrganizationStore()
 const formatDateTime = console.formatDateTime
+
+function showToast(
+  message: string,
+  variant: 'success' | 'danger',
+  options: {
+    source: string
+    trigger?: string
+    error?: unknown
+    metadata?: Record<string, unknown>
+  } = {
+    source: 'console/Settings'
+  }
+) {
+  notifyToast({
+    toast,
+    message,
+    variant,
+    source: options.source,
+    trigger: options.trigger,
+    error: options.error,
+    metadata: options.metadata
+  })
+}
 
 watchEffect(() => {
   console.setPageHeader('设置', '配置外部 OAuth/OIDC 联邦与身份绑定。')
@@ -648,9 +672,16 @@ function scrollToPanel(id: string) {
 async function withFeedback(fn: () => Promise<void>, successMessage = '操作成功') {
   try {
     await fn()
-    toast.success(successMessage)
+    showToast(successMessage, 'success', {
+      source: 'console/Settings.withFeedback',
+      trigger: 'withFeedback'
+    })
   } catch (error) {
-    toast.error(String(error))
+    showToast(String(error), 'danger', {
+      source: 'console/Settings.withFeedback',
+      trigger: 'withFeedback',
+      error
+    })
   }
 }
 
@@ -845,11 +876,11 @@ function resetCreateDomainForm() {
 async function submitCreateDomain() {
   const host = domainCreateForm.host.trim()
   if (!host) {
-    toast.error('请填写域名')
+    showToast('请填写域名', 'danger')
     return
   }
   if (organizationDomainRows.value.some((item) => item.host === host)) {
-    toast.error('域名已存在')
+    showToast('域名已存在', 'danger')
     return
   }
   const nextRows = [
@@ -887,17 +918,24 @@ async function deleteOrganizationDomain(index: number) {
   removeOrganizationDomainRow(index)
   try {
     await saveOrganizationConsoleSettings()
-    toast.success('域名已删除')
+    showToast('域名已删除', 'success', {
+      source: 'console/Settings.deleteOrganizationDomain',
+      trigger: 'deleteOrganizationDomain'
+    })
   } catch (error) {
     organizationDomainRows.value = snapshot
-    toast.error(String(error))
+    showToast(String(error), 'danger', {
+      source: 'console/Settings.deleteOrganizationDomain',
+      trigger: 'deleteOrganizationDomain',
+      error
+    })
   }
 }
 
 function openDomainVerificationModal(index: number) {
   const item = organizationDomainRows.value[index]
   if (!item || !item.host.trim()) {
-    toast.error('请先填写域名')
+    showToast('请先填写域名', 'danger')
     return
   }
   currentDomainVerificationIndex.value = index
@@ -908,7 +946,7 @@ function openDomainVerificationModal(index: number) {
 async function prepareOrganizationDomainVerification(method: 'http_file' | 'dns_txt') {
   const item = currentDomainVerificationRow.value
   if (!item || !item.host.trim()) {
-    toast.error('请先填写域名')
+    showToast('请先填写域名', 'danger')
     return
   }
   await withFeedback(async () => {
@@ -936,7 +974,7 @@ async function prepareOrganizationDomainVerification(method: 'http_file' | 'dns_
 async function verifyOrganizationDomain() {
   const item = currentDomainVerificationRow.value
   if (!item || !item.host.trim()) {
-    toast.error('请先填写域名')
+    showToast('请先填写域名', 'danger')
     return
   }
   await withFeedback(async () => {

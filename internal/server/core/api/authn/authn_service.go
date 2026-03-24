@@ -15,7 +15,7 @@ import (
 	sharedauthn "pass-pivot/internal/server/shared/authn"
 	sharedfido "pass-pivot/internal/server/shared/fido"
 	sharedhandler "pass-pivot/internal/server/shared/handler"
-	"pass-pivot/util"
+	"pass-pivot/utils"
 
 	"gorm.io/gorm"
 )
@@ -175,7 +175,7 @@ func (s *AuthnService) LoginWithUserCredential(ctx context.Context, in sharedaut
 		})
 		return nil, errors.New("invalid credentials")
 	}
-	if strings.TrimSpace(user.PasswordHash) == "" || !util.CheckSecret(user.PasswordHash, in.Secret) {
+	if strings.TrimSpace(user.PasswordHash) == "" || !utils.CheckSecret(user.PasswordHash, in.Secret) {
 		_ = s.audit.Record(ctx, coreservice.AuditEvent{
 			OrganizationID: in.OrganizationID,
 			ApplicationID:  in.ApplicationID,
@@ -249,7 +249,7 @@ func (s *AuthnService) LoginWithUserCredential(ctx context.Context, in sharedaut
 		session.State = "confirmation_required"
 		session.RequiresConfirmation = true
 	}
-	session.LoginChallenge, _ = util.RandomToken(18)
+	session.LoginChallenge, _ = utils.RandomToken(18)
 	if err := s.db.WithContext(ctx).Create(&session).Error; err != nil {
 		return nil, err
 	}
@@ -579,7 +579,7 @@ func (s *AuthnService) recordLoginSucceeded(ctx context.Context, session model.S
 func (s *AuthnService) upsertDevice(ctx context.Context, user model.User, fingerprint, userAgent, ipAddress string, trusted bool) (*model.Device, error) {
 	if fingerprint == "" {
 		var err error
-		fingerprint, err = util.GenerateFingerprint()
+		fingerprint, err = utils.GenerateFingerprint()
 		if err != nil {
 			return nil, err
 		}
@@ -638,7 +638,7 @@ func (s *AuthnService) upsertDevice(ctx context.Context, user model.User, finger
 }
 
 func (s *AuthnService) ParseFingerprint(signedFingerprint string) string {
-	deviceKey, ok := util.VerifyFingerprint(signedFingerprint, s.cfg.Secret)
+	deviceKey, ok := utils.VerifyFingerprint(signedFingerprint, s.cfg.Secret)
 	if !ok {
 		return ""
 	}
@@ -649,7 +649,7 @@ func (s *AuthnService) fingerprintForDevice(device *model.Device) (string, error
 	if device == nil {
 		return "", nil
 	}
-	return util.SignFingerprint(device.Fingerprint, s.cfg.Secret)
+	return utils.SignFingerprint(device.Fingerprint, s.cfg.Secret)
 }
 
 func (s *AuthnService) RequestMFAChallenge(ctx context.Context, sessionID, method string) (*model.MFAChallenge, string, error) {
@@ -752,7 +752,7 @@ func (s *AuthnService) IssueClientCredentialToken(ctx context.Context, clientID,
 	if err := s.db.WithContext(ctx).Where("id = ?", clientID).First(&app).Error; err != nil {
 		return nil, errors.New("invalid client credentials")
 	}
-	if app.ClientSecretHash == "" || !util.CheckSecret(app.ClientSecretHash, clientSecret) {
+	if app.ClientSecretHash == "" || !utils.CheckSecret(app.ClientSecretHash, clientSecret) {
 		return nil, errors.New("invalid client credentials")
 	}
 	return s.IssueClientCredentialTokenForApplication(ctx, app, scope)
@@ -771,7 +771,7 @@ func (s *AuthnService) IssueClientCredentialTokenForApplication(ctx context.Cont
 	if err := s.db.WithContext(ctx).Create(&session).Error; err != nil {
 		return nil, err
 	}
-	tokenValue, err := util.RandomToken(32)
+	tokenValue, err := utils.RandomToken(32)
 	if err != nil {
 		return nil, err
 	}
@@ -823,7 +823,7 @@ func (s *AuthnService) IssuePasswordGrantTokenForApplication(ctx context.Context
 	if err != nil {
 		return nil, nil, nil, errors.New("invalid credentials")
 	}
-	if strings.TrimSpace(user.PasswordHash) == "" || !util.CheckSecret(user.PasswordHash, password) {
+	if strings.TrimSpace(user.PasswordHash) == "" || !utils.CheckSecret(user.PasswordHash, password) {
 		return nil, nil, nil, errors.New("invalid credentials")
 	}
 	if user.Status != "active" {
@@ -940,7 +940,7 @@ func (s *AuthnService) ResetUserUKID(ctx context.Context, userID string) (string
 	if err := s.db.WithContext(ctx).First(&user, "id = ?", userID).Error; err != nil {
 		return "", err
 	}
-	newUKID, err := util.RandomToken(18)
+	newUKID, err := utils.RandomToken(18)
 	if err != nil {
 		return "", err
 	}
@@ -994,7 +994,7 @@ func (s *AuthnService) issueTokensForApplication(ctx context.Context, user model
 	}
 	tokens := make([]model.Token, 0, 2)
 	if applicationIssuesAccessToken(app.TokenType) {
-		accessValue, err := util.RandomToken(32)
+		accessValue, err := utils.RandomToken(32)
 		if err != nil {
 			return nil, err
 		}
@@ -1014,7 +1014,7 @@ func (s *AuthnService) issueTokensForApplication(ctx context.Context, user model
 		tokens = append(tokens, *access)
 	}
 	if scope != "" && app.EnableRefreshToken && applicationIssuesAccessToken(app.TokenType) {
-		refreshValue, err := util.RandomToken(32)
+		refreshValue, err := utils.RandomToken(32)
 		if err != nil {
 			return nil, err
 		}

@@ -166,11 +166,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { BButton, BForm, BFormCheckbox, BFormInput } from 'bootstrap-vue-next'
-import RightSide from '../layout/RightSide.vue'
-import ProjectUserAssignmentModal from '../modal/ProjectUserAssignmentModal.vue'
-import { useAuditStore } from '../stores/audit'
-import { useConsoleStore } from '../stores/console'
-import { useUserStore } from '../stores/user'
+import RightSide from '@/layout/RightSide.vue'
+import ProjectUserAssignmentModal from '@/modal/ProjectUserAssignmentModal.vue'
+import { useAuditStore } from '@/stores/audit'
+import { useConsoleStore } from '@/stores/console'
+import { useUserStore } from '@/stores/user'
 
 const props = defineProps<{
   currentProject: any

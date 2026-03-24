@@ -140,14 +140,14 @@
 import { computed, reactive, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import QRCode from 'qrcode'
-import { BButton, BForm, BFormInput, BFormSelect } from 'bootstrap-vue-next'
-import { normalizeCreationOptions, serializeCredential } from '@shared/api/webauthn'
-import { useToast } from '@shared/composables/toast'
-import UserDetail from '../components/UserDetail.vue'
-import MfaConfigModal from '../modal/MfaConfigModal.vue'
-import { useConsoleStore } from '../stores/console'
-import { useOrganizationStore } from '../stores/organization'
-import { useUserStore } from '../stores/user'
+import { BButton, BForm, BFormInput, BFormSelect, useToast } from 'bootstrap-vue-next'
+import { normalizeCreationOptions, serializeCredential } from '@shared/utils/webauthn'
+import { notifyToast } from '@shared/utils/notify'
+import UserDetail from '@/components/UserDetail.vue'
+import MfaConfigModal from '@/modal/MfaConfigModal.vue'
+import { useConsoleStore } from '@/stores/console'
+import { useOrganizationStore } from '@/stores/organization'
+import { useUserStore } from '@/stores/user'
 
 type MFAMethod = 'totp' | 'email_code' | 'sms_code' | 'u2f' | 'recovery_code'
 type PhoneInputState = {
@@ -162,6 +162,29 @@ const console = useConsoleStore()
 const organizationStore = useOrganizationStore()
 const userStore = useUserStore()
 const consoleApplicationId = import.meta.env.PPVT_CONSOLE_APPLICATION_ID ?? ''
+
+function showToast(
+  message: string,
+  variant: 'success' | 'danger',
+  options: {
+    source: string
+    trigger?: string
+    error?: unknown
+    metadata?: Record<string, unknown>
+  } = {
+    source: 'console/User'
+  }
+) {
+  notifyToast({
+    toast,
+    message,
+    variant,
+    source: options.source,
+    trigger: options.trigger,
+    error: options.error,
+    metadata: options.metadata
+  })
+}
 
 const userViewMode = ref<'list' | 'detail'>('list')
 const mfaConfigModalVisible = ref(false)
@@ -336,9 +359,16 @@ function buildUserRouteAfterDelete() {
 async function withFeedback(fn: () => Promise<void>, successMessage = '操作成功') {
   try {
     await fn()
-    toast.success(successMessage)
+    showToast(successMessage, 'success', {
+      source: 'console/User.withFeedback',
+      trigger: 'withFeedback'
+    })
   } catch (error) {
-    toast.error(String(error))
+    showToast(String(error), 'danger', {
+      source: 'console/User.withFeedback',
+      trigger: 'withFeedback',
+      error
+    })
   }
 }
 
@@ -524,7 +554,7 @@ async function handleInlineMFAMethodAction(item: { id: MFAMethod; enabled: boole
     return
   }
   if (item.disabled) {
-    toast.error(item.id === 'email_code' ? '请先在基本信息中配置邮箱' : '请先在基本信息中配置手机')
+    showToast(item.id === 'email_code' ? '请先在基本信息中配置邮箱' : '请先在基本信息中配置手机', 'danger')
     return
   }
   await toggleInlineMFAMethod(item.id, !item.enabled)

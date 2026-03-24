@@ -22,7 +22,7 @@ import (
 	coreservice "pass-pivot/internal/server/core/service"
 	sharedauthn "pass-pivot/internal/server/shared/authn"
 	sharedfido "pass-pivot/internal/server/shared/fido"
-	"pass-pivot/util"
+	"pass-pivot/utils"
 )
 
 type MFAService struct {
@@ -128,7 +128,7 @@ func (s *MFAService) EnrollTOTPForApplication(ctx context.Context, userID, appli
 	if err != nil {
 		return nil, err
 	}
-	enrollmentID, err := util.RandomToken(18)
+	enrollmentID, err := utils.RandomToken(18)
 	if err != nil {
 		return nil, err
 	}
@@ -256,7 +256,7 @@ func (s *MFAService) CreateDeliveryChallenge(ctx context.Context, sessionID, met
 		return nil, "", errors.New("no reachable target for selected method")
 	}
 	code := fmt.Sprintf("%06d", rand.IntN(1000000))
-	hash, err := util.HashSecret(code)
+	hash, err := utils.HashSecret(code)
 	if err != nil {
 		return nil, "", err
 	}
@@ -356,7 +356,7 @@ func (s *MFAService) Verify(ctx context.Context, sessionID, method, code string)
 		if time.Now().After(challenge.ExpiresAt) {
 			return errors.New("MFA challenge expired")
 		}
-		if !util.CheckSecret(challenge.CodeHash, code) {
+		if !utils.CheckSecret(challenge.CodeHash, code) {
 			challenge.AttemptCount++
 			challenge.UpdatedAt = time.Now()
 			updateMFAChallenge(challenge)
@@ -373,7 +373,7 @@ func (s *MFAService) Verify(ctx context.Context, sessionID, method, code string)
 			return err
 		}
 		for _, item := range codes {
-			if strings.TrimSpace(item.Code) == code || (strings.TrimSpace(item.Code) == "" && util.CheckSecret(item.CodeHash, code)) {
+			if strings.TrimSpace(item.Code) == code || (strings.TrimSpace(item.Code) == "" && utils.CheckSecret(item.CodeHash, code)) {
 				now := time.Now()
 				return s.db.WithContext(ctx).Model(&item).Update("consumed_at", &now).Error
 			}

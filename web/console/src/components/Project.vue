@@ -102,7 +102,7 @@
     @update:visible="applicationCreateModalVisible = $event"
     @hidden="applicationStore.resetApplicationCreateForm"
     @submit="submitApplicationCreate"
-    @validation-error="toast.error($event)"
+    @validation-error="showToast($event, 'danger')"
     @toggle-role-name="toggleRoleName"
   />
 </template>
@@ -110,17 +110,18 @@
 <script setup lang="ts">
 import { computed, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useToast } from '@shared/composables/toast'
-import ProjectDetail from '../components/ProjectDetail.vue'
-import Application from '../components/Application.vue'
-import ApplicationKeyModal from '../modal/ApplicationKeyModal.vue'
-import ProjectCreateModal from '../modal/ProjectCreateModal.vue'
-import ApplicationCreateModal from '../modal/ApplicationCreateModal.vue'
-import { useApplicationStore } from '../stores/application'
-import { useConsoleStore } from '../stores/console'
-import { useOrganizationStore } from '../stores/organization'
-import { useProjectStore } from '../stores/project'
-import { useRoleStore } from '../stores/role'
+import { useToast } from 'bootstrap-vue-next'
+import ProjectDetail from '@/components/ProjectDetail.vue'
+import Application from '@/components/Application.vue'
+import ApplicationKeyModal from '@/modal/ApplicationKeyModal.vue'
+import ProjectCreateModal from '@/modal/ProjectCreateModal.vue'
+import ApplicationCreateModal from '@/modal/ApplicationCreateModal.vue'
+import { useApplicationStore } from '@/stores/application'
+import { useConsoleStore } from '@/stores/console'
+import { useOrganizationStore } from '@/stores/organization'
+import { useProjectStore } from '@/stores/project'
+import { useRoleStore } from '@/stores/role'
+import { notifyToast } from '@shared/utils/notify'
 
 const router = useRouter()
 const route = useRoute()
@@ -130,6 +131,29 @@ const consoleStore = useConsoleStore()
 const organizationStore = useOrganizationStore()
 const projectStore = useProjectStore()
 const roleStore = useRoleStore()
+
+function showToast(
+  message: string,
+  variant: 'success' | 'danger',
+  options: {
+    source: string
+    trigger?: string
+    error?: unknown
+    metadata?: Record<string, unknown>
+  } = {
+    source: 'console/Project'
+  }
+) {
+  notifyToast({
+    toast,
+    message,
+    variant,
+    source: options.source,
+    trigger: options.trigger,
+    error: options.error,
+    metadata: options.metadata
+  })
+}
 
 const consoleApplicationId = import.meta.env.PPVT_CONSOLE_APPLICATION_ID ?? ''
 const projectViewMode = ref<'list' | 'detail'>('list')
@@ -224,9 +248,16 @@ watch(
 async function withFeedback(fn: () => Promise<void>, successMessage = '操作成功') {
   try {
     await fn()
-    toast.success(successMessage)
+    showToast(successMessage, 'success', {
+      source: 'console/Project.withFeedback',
+      trigger: 'withFeedback'
+    })
   } catch (error) {
-    toast.error(String(error))
+    showToast(String(error), 'danger', {
+      source: 'console/Project.withFeedback',
+      trigger: 'withFeedback',
+      error
+    })
   }
 }
 
@@ -323,7 +354,10 @@ function openProjectCreateModal() {
 
 function openApplicationCreateModal() {
   if (!projectStore.selectedProjectId && !currentProject.value?.id) {
-    toast.error('请先选择项目')
+    showToast('请先选择项目', 'danger', {
+      source: 'console/Project.openApplicationCreateModal',
+      trigger: 'openApplicationCreateModal'
+    })
     return
   }
   applicationStore.resetApplicationCreateForm(projectStore.selectedProjectId || currentProject.value?.id || '')
@@ -397,7 +431,10 @@ async function submitApplicationCreate() {
 async function updateApplication() {
   const updateProtocolError = validateApplicationProtocolInput(applicationStore.applicationUpdateForm)
   if (updateProtocolError) {
-    toast.error(updateProtocolError)
+    showToast(updateProtocolError, 'danger', {
+      source: 'console/Project.updateApplication',
+      trigger: 'validateApplicationProtocolInput'
+    })
     return
   }
   await withFeedback(async () => {

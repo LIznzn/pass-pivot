@@ -1,4 +1,4 @@
-import { requestPost } from '../../util/request'
+import { requestPost } from '@/utils/request'
 
 export function queryRoles(payload: any) {
   return requestPost<{ items: any[] }>('/api/manage/v1/role/query', payload)

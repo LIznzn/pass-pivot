@@ -21,7 +21,7 @@ import (
 	sharedauthn "pass-pivot/internal/server/shared/authn"
 	sharedfido "pass-pivot/internal/server/shared/fido"
 	sharedhandler "pass-pivot/internal/server/shared/handler"
-	"pass-pivot/util"
+	"pass-pivot/utils"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -632,7 +632,7 @@ func (s *Service) PrepareOrganizationDomainVerification(ctx context.Context, org
 	if err := coreservice.ValidateOrganizationDomains([]model.OrganizationDomain{domain}); err != nil {
 		return nil, err
 	}
-	token, err := util.RandomToken(24)
+	token, err := utils.RandomToken(24)
 	if err != nil {
 		return nil, err
 	}
@@ -1197,7 +1197,7 @@ func (s *Service) ResetUserPassword(ctx context.Context, userID, password string
 	if err != nil {
 		return err
 	}
-	hash, err := util.HashSecret(password)
+	hash, err := utils.HashSecret(password)
 	if err != nil {
 		return err
 	}
@@ -1219,7 +1219,7 @@ func (s *Service) ResetUserUKID(ctx context.Context, userID string) (string, err
 	if err != nil {
 		return "", err
 	}
-	newUKID, err := util.RandomToken(18)
+	newUKID, err := utils.RandomToken(18)
 	if err != nil {
 		return "", err
 	}
@@ -2247,7 +2247,7 @@ func (s *Service) CreateUser(ctx context.Context, user model.User, identifier, p
 		return nil, err
 	}
 	user.Roles = validatedRoles
-	hash, err := util.HashSecret(password)
+	hash, err := utils.HashSecret(password)
 	if err != nil {
 		return nil, err
 	}
@@ -2935,7 +2935,7 @@ func (s *Service) UpdateCurrentUserPassword(ctx context.Context, sessionID, curr
 	if err != nil {
 		return err
 	}
-	if strings.TrimSpace(user.PasswordHash) == "" || !util.CheckSecret(user.PasswordHash, currentPassword) {
+	if strings.TrimSpace(user.PasswordHash) == "" || !utils.CheckSecret(user.PasswordHash, currentPassword) {
 		return errors.New("current password is invalid")
 	}
 	var organization model.Organization
@@ -2945,7 +2945,7 @@ func (s *Service) UpdateCurrentUserPassword(ctx context.Context, sessionID, curr
 	if err := validatePasswordAgainstPolicy(newPassword, organization.PasswordPolicy); err != nil {
 		return err
 	}
-	hash, err := util.HashSecret(newPassword)
+	hash, err := utils.HashSecret(newPassword)
 	if err != nil {
 		return err
 	}

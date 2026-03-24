@@ -25,10 +25,10 @@ import {
   updateSecureKey as apiUpdateSecureKey,
   updateUserMfaMethod as apiUpdateUserMfaMethod,
   verifyUserTotp as apiVerifyUserTotp
-} from '../api/manage/user'
+} from '@/api/manage/user'
 import { useConsoleStore } from './console'
 import { useOrganizationStore } from './organization'
-import { queryRoles as apiQueryRoles } from '../api/manage/role'
+import { queryRoles as apiQueryRoles } from '@/api/manage/role'
 
 export const useUserStore = defineStore('user', () => {
   const console = useConsoleStore()

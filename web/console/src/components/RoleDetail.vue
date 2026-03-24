@@ -134,9 +134,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { BButton, BForm, BFormInput, BFormSelect } from 'bootstrap-vue-next'
-import RightSide from '../layout/RightSide.vue'
-import { useAuditStore } from '../stores/audit'
-import { useConsoleStore } from '../stores/console'
+import RightSide from '@/layout/RightSide.vue'
+import { useAuditStore } from '@/stores/audit'
+import { useConsoleStore } from '@/stores/console'
 
 const effectOptions = [
   { value: 'allow', text: 'allow' },

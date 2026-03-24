@@ -41,8 +41,8 @@
 <script setup lang="ts">
 import { watchEffect } from 'vue'
 import { BButton } from 'bootstrap-vue-next'
-import { useConsoleStore } from '../stores/console'
-import { useOrganizationStore } from '../stores/organization'
+import { useConsoleStore } from '@/stores/console'
+import { useOrganizationStore } from '@/stores/organization'
 
 const consoleStore = useConsoleStore()
 const organizationStore = useOrganizationStore()

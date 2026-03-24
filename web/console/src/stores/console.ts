@@ -1,8 +1,8 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import router from '../router'
-import { startConsoleLogout } from '../api/auth'
-import { requestPost } from '../util/request'
+import router from '@/router'
+import { startConsoleLogout } from '@/api/auth'
+import { requestPost } from '@/utils/request'
 import { formatDateTime as formatSharedDateTime } from '@shared/utils/datetime'
 
 export type ConsoleTab = 'dashboard' | 'organization' | 'project' | 'user' | 'role' | 'audit' | 'setting'
@@ -11,6 +11,10 @@ export const useConsoleStore = defineStore('console', () => {
   const tab = ref<ConsoleTab>('dashboard')
   const message = ref('')
   const messageVariant = ref<'success' | 'danger'>('success')
+  const messageSource = ref('')
+  const messageTrigger = ref('')
+  const messageError = ref<unknown>(undefined)
+  const messageMetadata = ref<Record<string, unknown> | undefined>(undefined)
   const pageHeaderTitle = ref('')
   const pageHeaderDescription = ref('')
   const currentOrganizationId = ref('')
@@ -148,9 +152,16 @@ export const useConsoleStore = defineStore('console', () => {
         document.execCommand('copy')
         document.body.removeChild(textarea)
       }
-      setMessage('已复制到剪贴板', 'success')
+      setMessage('已复制到剪贴板', 'success', {
+        source: 'console/store.copyMetricValue',
+        trigger: 'copyMetricValue'
+      })
     } catch (error) {
-      setMessage(String(error), 'danger')
+      setMessage(String(error), 'danger', {
+        source: 'console/store.copyMetricValue',
+        trigger: 'copyMetricValue',
+        error
+      })
     }
   }
 
@@ -165,13 +176,30 @@ export const useConsoleStore = defineStore('console', () => {
     window.scrollTo({ top: Math.max(targetTop, 0), behavior: 'smooth' })
   }
 
-  function setMessage(value: string, variant: 'success' | 'danger') {
+  function setMessage(
+    value: string,
+    variant: 'success' | 'danger',
+    options: {
+      source?: string
+      trigger?: string
+      error?: unknown
+      metadata?: Record<string, unknown>
+    } = {}
+  ) {
     message.value = value
     messageVariant.value = variant
+    messageSource.value = options.source || ''
+    messageTrigger.value = options.trigger || ''
+    messageError.value = options.error
+    messageMetadata.value = options.metadata
   }
 
   function clearMessage() {
     message.value = ''
+    messageSource.value = ''
+    messageTrigger.value = ''
+    messageError.value = undefined
+    messageMetadata.value = undefined
   }
 
   function setPageHeader(title: string, description = '') {
@@ -183,6 +211,10 @@ export const useConsoleStore = defineStore('console', () => {
     tab,
     message,
     messageVariant,
+    messageSource,
+    messageTrigger,
+    messageError,
+    messageMetadata,
     pageHeaderTitle,
     pageHeaderDescription,
     currentOrganizationId,

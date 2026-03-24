@@ -105,14 +105,14 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch, watchEffect } from 'vue'
-import { BButton, BForm, BFormInput } from 'bootstrap-vue-next'
-import RightSide from '../layout/RightSide.vue'
-import { useToast } from '@shared/composables/toast'
-import { useAuditStore } from '../stores/audit'
-import { useConsoleStore } from '../stores/console'
-import { useOrganizationStore } from '../stores/organization'
-import { useRoleStore } from '../stores/role'
-import { useUserStore } from '../stores/user'
+import { BButton, BForm, BFormInput, useToast } from 'bootstrap-vue-next'
+import RightSide from '@/layout/RightSide.vue'
+import { useAuditStore } from '@/stores/audit'
+import { useConsoleStore } from '@/stores/console'
+import { useOrganizationStore } from '@/stores/organization'
+import { useRoleStore } from '@/stores/role'
+import { useUserStore } from '@/stores/user'
+import { notifyToast } from '@shared/utils/notify'
 
 const auditStore = useAuditStore()
 const consoleStore = useConsoleStore()
@@ -120,6 +120,29 @@ const organizationStore = useOrganizationStore()
 const roleStore = useRoleStore()
 const userStore = useUserStore()
 const toast = useToast()
+
+function showToast(
+  message: string,
+  variant: 'success' | 'danger',
+  options: {
+    source: string
+    trigger?: string
+    error?: unknown
+    metadata?: Record<string, unknown>
+  } = {
+    source: 'console/Organization'
+  }
+) {
+  notifyToast({
+    toast,
+    message,
+    variant,
+    source: options.source,
+    trigger: options.trigger,
+    error: options.error,
+    metadata: options.metadata
+  })
+}
 
 watchEffect(() => {
   consoleStore.setPageHeader(
@@ -208,9 +231,16 @@ async function saveOrganizationBasicSettings() {
       name: organizationBasicSettingForm.name,
       description: organizationBasicSettingForm.description
     })
-    toast.success('基本设置已保存')
+    showToast('基本设置已保存', 'success', {
+      source: 'console/Organization.saveOrganizationBasicSettings',
+      trigger: 'saveOrganizationBasicSettings'
+    })
   } catch (error) {
-    toast.error(String(error))
+    showToast(String(error), 'danger', {
+      source: 'console/Organization.saveOrganizationBasicSettings',
+      trigger: 'saveOrganizationBasicSettings',
+      error
+    })
   }
 }
 

@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"golang.org/x/oauth2"
-	"pass-pivot/util"
+	"pass-pivot/utils"
 )
 
 type CustomIdProvider struct {
@@ -128,14 +128,14 @@ func (idp *CustomIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error)
 	}
 
 	// try to parse id to string
-	id, err := util.ParseIdToString(dataMap["id"])
+	id, err := utils.ParseIdToString(dataMap["id"])
 	if err != nil {
 		return nil, err
 	}
 	dataMap["id"] = id
 
 	customUserinfo := &CustomUserInfo{}
-	err = util.DecodeMapToStruct(dataMap, customUserinfo, "mapstructure")
+	err = utils.DecodeMapToStruct(dataMap, customUserinfo, "mapstructure")
 	if err != nil {
 		return nil, err
 	}

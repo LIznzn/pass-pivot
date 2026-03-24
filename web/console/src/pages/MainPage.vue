@@ -6,8 +6,6 @@
     <main class="admin-content container-fluid py-4">
       <Header :title="pageHeaderTitle" :description="pageHeaderDescription" />
 
-      <ToastHost />
-
       <RouterView />
 
       <div v-if="showBackToTopButton" class="console-back-to-top-wrap" :class="backToTopWrapClass">
@@ -30,16 +28,16 @@
 <script setup lang="ts">
 import { computed, onMounted, watch } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
-import ToastHost from '@shared/components/ToastHost.vue'
-import { useToast } from '@shared/composables/toast'
-import Header from '../layout/Header.vue'
-import Topbar from '../layout/Topbar.vue'
-import CreateOrganizationModal from '../modal/CreateOrganizationModal.vue'
-import { useAuditStore } from '../stores/audit'
-import { useConsoleStore } from '../stores/console'
-import { useOrganizationStore } from '../stores/organization'
-import { useRoleStore } from '../stores/role'
-import { useUserStore } from '../stores/user'
+import { useToast } from 'bootstrap-vue-next'
+import Header from '@/layout/Header.vue'
+import Topbar from '@/layout/Topbar.vue'
+import CreateOrganizationModal from '@/modal/CreateOrganizationModal.vue'
+import { useAuditStore } from '@/stores/audit'
+import { useConsoleStore } from '@/stores/console'
+import { useOrganizationStore } from '@/stores/organization'
+import { useRoleStore } from '@/stores/role'
+import { useUserStore } from '@/stores/user'
+import { notifyToast } from '@shared/utils/notify'
 
 const route = useRoute()
 const toast = useToast()
@@ -48,6 +46,27 @@ const console = useConsoleStore()
 const organizationStore = useOrganizationStore()
 const roleStore = useRoleStore()
 const userStore = useUserStore()
+
+function showToast(
+  message: string,
+  variant: 'success' | 'danger',
+  options: {
+    source: string
+    trigger?: string
+    error?: unknown
+    metadata?: Record<string, unknown>
+  }
+) {
+  notifyToast({
+    toast,
+    message,
+    variant,
+    source: options.source,
+    trigger: options.trigger,
+    error: options.error,
+    metadata: options.metadata
+  })
+}
 
 const currentRouteName = computed(() => String(route.name ?? 'console-dashboard'))
 const currentView = computed(() => {
@@ -169,9 +188,19 @@ watch(() => console.message, (value) => {
     return
   }
   if (console.messageVariant === 'danger') {
-    toast.error(value)
+    showToast(value, 'danger', {
+      source: console.messageSource || 'console/MainPage.message',
+      trigger: console.messageTrigger || 'watch(console.message)',
+      error: console.messageError,
+      metadata: console.messageMetadata
+    })
   } else {
-    toast.success(value)
+    showToast(value, 'success', {
+      source: console.messageSource || 'console/MainPage.message',
+      trigger: console.messageTrigger || 'watch(console.message)',
+      error: console.messageError,
+      metadata: console.messageMetadata
+    })
   }
   console.clearMessage()
 })

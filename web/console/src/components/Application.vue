@@ -215,9 +215,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { BButton, BForm, BFormCheckbox, BFormInput, BFormSelect } from 'bootstrap-vue-next'
-import RightSide from '../layout/RightSide.vue'
-import { useAuditStore } from '../stores/audit'
-import { useConsoleStore } from '../stores/console'
+import RightSide from '@/layout/RightSide.vue'
+import { useAuditStore } from '@/stores/audit'
+import { useConsoleStore } from '@/stores/console'
 
 const props = defineProps<{
   currentApplication: any

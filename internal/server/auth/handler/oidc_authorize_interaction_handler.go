@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	authservice "pass-pivot/internal/server/auth/service"
 	coreservice "pass-pivot/internal/server/core/service"
@@ -15,39 +16,11 @@ import (
 	sharedhandler "pass-pivot/internal/server/shared/handler"
 )
 
-type authorizeUIBootstrap struct {
-	Stage               string                                 `json:"stage"`
-	Title               string                                 `json:"title"`
-	Error               string                                 `json:"error,omitempty"`
-	AuthorizeReturnURL  string                                 `json:"authorizeReturnUrl"`
-	Target              *coreservice.LoginTarget               `json:"target"`
-	CurrentUser         *authorizeCurrentUser                  `json:"currentUser,omitempty"`
-	ApplicationID       string                                 `json:"applicationId"`
-	LoginAction         string                                 `json:"loginAction"`
-	AccountAction       string                                 `json:"accountAction"`
-	SwitchAccountAction string                                 `json:"switchAccountAction"`
-	ConfirmAction       string                                 `json:"confirmAction"`
-	MFAAction           string                                 `json:"mfaAction"`
-	SecondFactorMethod  string                                 `json:"secondFactorMethod,omitempty"`
-	MFAOptions          []authorizeUIMethodOption              `json:"mfaOptions"`
-	Captcha             *authservice.AuthorizeCaptchaBootstrap `json:"captcha,omitempty"`
-	API                 authorizeUIAPIConfig                   `json:"api"`
-}
-
 const loginChallengeQueryKey = "ppvt_login_challenge"
 
 type authorizeUIMethodOption struct {
 	Value string `json:"value"`
 	Label string `json:"label"`
-}
-
-type authorizeUIAPIConfig struct {
-	WebAuthnLoginBegin string `json:"webauthnLoginBegin"`
-	WebAuthnLoginEnd   string `json:"webauthnLoginEnd"`
-	SessionU2FBegin    string `json:"sessionU2fBegin"`
-	SessionU2FFinish   string `json:"sessionU2fFinish"`
-	MFAChallenge       string `json:"mfaChallenge"`
-	CaptchaRefresh     string `json:"captchaRefresh"`
 }
 
 type authnAPIError struct {
@@ -124,25 +97,6 @@ func errAuthorizeAPI(message string) error {
 		message = "authorize api request failed"
 	}
 	return authorizeAPIError{message: message}
-}
-
-func (h *OIDCHandler) AuthorizeSubmit(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		h.writeAuthorizeErrorPage(w, http.StatusBadRequest, "invalid form body")
-		return
-	}
-	switch strings.TrimSpace(r.Form.Get("interaction")) {
-	case "login":
-		h.AuthorizeLogin(w, r)
-	case "account":
-		h.AuthorizeAccount(w, r)
-	case "confirm":
-		h.AuthorizeConfirm(w, r)
-	case "mfa":
-		h.AuthorizeMFA(w, r)
-	default:
-		h.writeAuthorizeErrorPage(w, http.StatusBadRequest, "invalid authorize interaction")
-	}
 }
 
 func (h *OIDCHandler) AuthorizeChallenge(w http.ResponseWriter, r *http.Request) {
@@ -227,16 +181,31 @@ func (h *OIDCHandler) AuthorizeWebAuthnLoginFinish(w http.ResponseWriter, r *htt
 }
 
 func (h *OIDCHandler) AuthorizeCaptchaRefresh(w http.ResponseWriter, r *http.Request) {
-	response, err := h.queryAuthorizeInteraction(w, r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
-		return
+	var organizationID string
+	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("type")), "device_code") {
+		response, err := h.queryDeviceCodeInteraction(w, r, strings.TrimSpace(r.URL.Query().Get("user_code")))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		if response.Target != nil {
+			organizationID = strings.TrimSpace(response.Target.OrganizationID)
+		}
+	} else {
+		response, err := h.queryAuthorizeInteraction(w, r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		if response.Target != nil {
+			organizationID = strings.TrimSpace(response.Target.OrganizationID)
+		}
 	}
-	if response.Target == nil {
+	if organizationID == "" {
 		http.Error(w, "login target is not available", http.StatusBadRequest)
 		return
 	}
-	captcha, err := h.oidc.BuildAuthorizeCaptchaChallengeBootstrap(r.Context(), response.Target.OrganizationID)
+	captcha, err := h.oidc.BuildAuthorizeCaptchaChallengeBootstrap(r.Context(), organizationID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -284,101 +253,6 @@ func (h *OIDCHandler) AuthorizeSessionU2FFinish(w http.ResponseWriter, r *http.R
 	_, _ = w.Write(body)
 }
 
-func (h *OIDCHandler) AuthorizeLogin(w http.ResponseWriter, r *http.Request) {
-	response, err := h.queryAuthorizeInteraction(w, r)
-	if err != nil {
-		h.writeAuthorizeErrorPage(w, http.StatusBadGateway, err.Error())
-		return
-	}
-	if response.Action == "redirect" && strings.TrimSpace(response.RedirectTarget) != "" {
-		http.Redirect(w, r, response.RedirectTarget, http.StatusFound)
-		return
-	}
-	if response.Target == nil {
-		h.writeAuthorizeErrorPage(w, http.StatusBadRequest, "login target is not available")
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		h.writeAuthorizeErrorPage(w, http.StatusBadRequest, "invalid form body")
-		return
-	}
-
-	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/session/create", map[string]any{
-		"organizationId":  response.Target.OrganizationID,
-		"applicationId":   response.Target.ApplicationID,
-		"identifier":      strings.TrimSpace(r.Form.Get("identifier")),
-		"secret":          r.Form.Get("secret"),
-		"captchaProvider": strings.TrimSpace(r.Form.Get("captcha_provider")),
-		"captchaToken":    buildAuthorizeCaptchaToken(r),
-	})
-	if err != nil {
-		h.renderAuthorizeInteraction(w, r, err.Error())
-		return
-	}
-	redirectTarget := authorizeURLWithSkipAccount(r).String()
-	if result, parseErr := parseLoginResult(body); parseErr == nil && result.NextStep != "done" {
-		redirectTarget = appendLoginChallenge(authorizeURL(r).String(), result.Session.LoginChallenge)
-	}
-	http.Redirect(w, r, redirectTarget, http.StatusFound)
-}
-
-func (h *OIDCHandler) AuthorizeConfirm(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		h.writeAuthorizeErrorPage(w, http.StatusBadRequest, "invalid form body")
-		return
-	}
-	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/session/confirm", map[string]any{
-		"sessionId":   resolveLoginSessionRef(r),
-		"accept":      strings.EqualFold(r.Form.Get("accept"), "true"),
-		"trustDevice": strings.EqualFold(r.Form.Get("trustDevice"), "true"),
-	})
-	if err != nil {
-		h.renderAuthorizeInteraction(w, r, err.Error())
-		return
-	}
-	redirectTarget := authorizeURLWithSkipAccount(r).String()
-	if result, parseErr := parseLoginResult(body); parseErr == nil && result.NextStep != "done" {
-		redirectTarget = appendLoginChallenge(authorizeURL(r).String(), result.Session.LoginChallenge)
-	}
-	http.Redirect(w, r, redirectTarget, http.StatusFound)
-}
-
-func (h *OIDCHandler) AuthorizeAccount(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		h.writeAuthorizeErrorPage(w, http.StatusBadRequest, "invalid form body")
-		return
-	}
-	if strings.EqualFold(r.Form.Get("continue"), "true") {
-		http.Redirect(w, r, authorizeURLWithSkipAccount(r).String(), http.StatusFound)
-		return
-	}
-	sharedhandler.ClearPendingLoginChallengeCookie(w, r)
-	sharedhandler.ClearPortalSessionCookie(w, r)
-	http.Redirect(w, r, authorizeURL(r).String(), http.StatusFound)
-}
-
-func (h *OIDCHandler) AuthorizeMFA(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		h.writeAuthorizeErrorPage(w, http.StatusBadRequest, "invalid form body")
-		return
-	}
-	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/session/verify_mfa", map[string]any{
-		"sessionId":   resolveLoginSessionRef(r),
-		"method":      strings.TrimSpace(r.Form.Get("method")),
-		"code":        strings.TrimSpace(r.Form.Get("code")),
-		"trustDevice": false,
-	})
-	if err != nil {
-		h.renderAuthorizeInteraction(w, r, err.Error())
-		return
-	}
-	redirectTarget := authorizeURLWithSkipAccount(r).String()
-	if result, parseErr := parseLoginResult(body); parseErr == nil && result.NextStep != "done" {
-		redirectTarget = appendLoginChallenge(authorizeURL(r).String(), result.Session.LoginChallenge)
-	}
-	http.Redirect(w, r, redirectTarget, http.StatusFound)
-}
-
 func (h *OIDCHandler) renderAuthorizeInteraction(w http.ResponseWriter, r *http.Request, bannerError string) {
 	response, err := h.queryAuthorizeInteraction(w, r)
 	if err != nil {
@@ -393,12 +267,7 @@ func (h *OIDCHandler) renderAuthorizeInteraction(w http.ResponseWriter, r *http.
 		h.writeAuthorizeErrorPage(w, http.StatusBadRequest, "login target is not available")
 		return
 	}
-	bootstrap, buildErr := h.buildAuthorizeBootstrap(r, response.Target, response.CurrentUser, response.Stage, response.SessionRef, response.SecondFactorMethod, response.MFAOptions, response.Captcha, bannerError)
-	if buildErr != nil {
-		h.writeAuthorizeErrorPage(w, http.StatusInternalServerError, buildErr.Error())
-		return
-	}
-	h.writeAuthorizeApp(w, http.StatusOK, bootstrap)
+	h.writeAuthorizeApp(w, http.StatusOK, authorizePageTitle(response.Stage), bannerError)
 }
 
 func (h *OIDCHandler) queryAuthorizeInteraction(w http.ResponseWriter, r *http.Request) (*authorizeInteractionResponse, error) {
@@ -433,8 +302,8 @@ func (h *OIDCHandler) queryAuthorizeInteraction(w http.ResponseWriter, r *http.R
 	return &response, nil
 }
 
-func (h *OIDCHandler) writeAuthorizeApp(w http.ResponseWriter, status int, bootstrap authorizeUIBootstrap) {
-	body, err := buildAuthorizeAppShell(bootstrap)
+func (h *OIDCHandler) writeAuthorizeApp(w http.ResponseWriter, status int, title string, _ string) {
+	body, err := buildAuthorizeAppShell(title)
 	if err != nil {
 		h.writeAuthorizeErrorPage(w, http.StatusInternalServerError, err.Error())
 		return
@@ -481,12 +350,8 @@ func authorizeURL(r *http.Request) *url.URL {
 	return u
 }
 
-func authorizeURLWithSkipAccount(r *http.Request) *url.URL {
-	u := authorizeURL(r)
-	query := u.Query()
-	query.Set("ppvt_skip_account", "1")
-	u.RawQuery = query.Encode()
-	return u
+func buildAuthorizeReturnURL(r *http.Request) string {
+	return authorizeURL(r).String()
 }
 
 func resolveLoginSessionRef(r *http.Request) string {
@@ -507,20 +372,6 @@ func parseLoginResult(body []byte) (*sharedauthn.LoginResult, error) {
 	return &result, nil
 }
 
-func appendLoginChallenge(rawURL string, challenge string) string {
-	if strings.TrimSpace(challenge) == "" {
-		return rawURL
-	}
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		return rawURL
-	}
-	query := parsed.Query()
-	query.Set(loginChallengeQueryKey, challenge)
-	parsed.RawQuery = query.Encode()
-	return parsed.String()
-}
-
 func redirectErrorOrDefault(redirectError, redirectURI, state string) string {
 	if strings.TrimSpace(redirectError) != "" {
 		return redirectError
@@ -538,7 +389,7 @@ func redirectErrorOrDefault(redirectError, redirectURI, state string) string {
 	return redirect.String()
 }
 
-func (h *OIDCHandler) buildAuthorizeBootstrap(r *http.Request, target *coreservice.LoginTarget, currentUser *authorizeCurrentUser, stage, sessionRef, secondFactorMethod string, mfaMethods []string, captcha *authservice.AuthorizeCaptchaBootstrap, bannerError string) (authorizeUIBootstrap, error) {
+func authorizePageTitle(stage string) string {
 	title := "登录"
 	switch stage {
 	case "account":
@@ -548,39 +399,7 @@ func (h *OIDCHandler) buildAuthorizeBootstrap(r *http.Request, target *coreservi
 	case "mfa":
 		title = "多因素认证"
 	}
-	loginChallenge := strings.TrimSpace(sessionRef)
-	if stage == "login" && captcha == nil {
-		var err error
-		captcha, err = h.oidc.BuildAuthorizeCaptchaBootstrap(r.Context(), target.OrganizationID)
-		if err != nil {
-			return authorizeUIBootstrap{}, err
-		}
-	}
-	return authorizeUIBootstrap{
-		Stage:               stage,
-		Title:               title,
-		Error:               bannerError,
-		AuthorizeReturnURL:  appendLoginChallenge(authorizeURLWithSkipAccount(r).String(), loginChallenge),
-		Target:              target,
-		CurrentUser:         currentUser,
-		ApplicationID:       target.ApplicationID,
-		LoginAction:         "/auth/headless/login?" + r.URL.RawQuery,
-		AccountAction:       "/auth/headless/account?" + r.URL.RawQuery,
-		SwitchAccountAction: "/auth/headless/account?" + r.URL.RawQuery,
-		ConfirmAction:       appendLoginChallenge("/auth/headless/confirm?"+r.URL.RawQuery, loginChallenge),
-		MFAAction:           appendLoginChallenge("/auth/headless/mfa?"+r.URL.RawQuery, loginChallenge),
-		SecondFactorMethod:  strings.TrimSpace(secondFactorMethod),
-		MFAOptions:          buildAuthorizeMFAOptions(mfaMethods),
-		Captcha:             captcha,
-		API: authorizeUIAPIConfig{
-			WebAuthnLoginBegin: "/auth/headless/login/webauthn/begin?" + r.URL.RawQuery,
-			WebAuthnLoginEnd:   "/auth/headless/login/webauthn/finish?" + r.URL.RawQuery,
-			SessionU2FBegin:    appendLoginChallenge("/auth/headless/mfa/u2f/begin?"+r.URL.RawQuery, loginChallenge),
-			SessionU2FFinish:   appendLoginChallenge("/auth/headless/mfa/u2f/finish?"+r.URL.RawQuery, loginChallenge),
-			MFAChallenge:       appendLoginChallenge("/auth/headless/mfa/challenge/generator?"+r.URL.RawQuery, loginChallenge),
-			CaptchaRefresh:     "/auth/headless/login/captcha?" + r.URL.RawQuery,
-		},
-	}, nil
+	return title
 }
 
 func (h *OIDCHandler) mustBuildAuthorizeCaptcha(ctx context.Context, organizationID string) *authservice.AuthorizeCaptchaBootstrap {
@@ -589,18 +408,6 @@ func (h *OIDCHandler) mustBuildAuthorizeCaptcha(ctx context.Context, organizatio
 		return nil
 	}
 	return captcha
-}
-
-func buildAuthorizeCaptchaToken(r *http.Request) string {
-	if strings.TrimSpace(r.Form.Get("captcha_provider")) != "default" {
-		return strings.TrimSpace(r.Form.Get("captcha_token"))
-	}
-	challengeToken := strings.TrimSpace(r.Form.Get("captcha_challenge_token"))
-	answer := strings.TrimSpace(r.Form.Get("captcha_answer"))
-	if challengeToken == "" || answer == "" {
-		return ""
-	}
-	return coreservice.BuildDefaultCaptchaResponseToken(challengeToken, answer)
 }
 
 func buildAuthorizeMFAOptions(methods []string) []authorizeUIMethodOption {
@@ -631,25 +438,159 @@ func buildAuthorizeMFAOptions(methods []string) []authorizeUIMethodOption {
 	return options
 }
 
-func buildAuthorizeAppShell(bootstrap authorizeUIBootstrap) ([]byte, error) {
-	payload, err := json.Marshal(bootstrap)
-	if err != nil {
-		return nil, err
-	}
+func buildAuthorizeAppShell(title string) ([]byte, error) {
 	html := `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PPVT ` + bootstrap.Title + `</title>
-  <link rel="stylesheet" href="/auth/authorize/shared.css" />
+  <title>PPVT ` + title + `</title>
   <link rel="stylesheet" href="/auth/authorize/app.css" />
 </head>
 <body>
   <div id="app"></div>
-  <script>window.__PPVT_OAUTH_BOOTSTRAP__ = ` + string(payload) + `;</script>
   <script type="module" src="/auth/authorize/app.js"></script>
 </body>
 </html>`
 	return []byte(html), nil
+}
+
+func deviceCodeLoginTarget(view *authservice.DeviceAuthorizationView) *coreservice.LoginTarget {
+	if view == nil {
+		return nil
+	}
+	return &coreservice.LoginTarget{
+		OrganizationID:           view.Organization.ID,
+		OrganizationName:         view.Organization.Name,
+		DisplayName:              view.Organization.Name,
+		OrganizationDisplayNames: map[string]string{},
+		WebsiteURL:               "",
+		TermsOfServiceURL:        view.Organization.TOSURL,
+		PrivacyPolicyURL:         view.Organization.PrivacyPolicyURL,
+		ProjectID:                view.Project.ID,
+		ProjectName:              view.Project.Name,
+		ApplicationID:            view.Application.ID,
+		ApplicationName:          view.Application.Name,
+		ApplicationDisplayNames: map[string]string{},
+		ExternalIDPs:             nil,
+	}
+}
+
+func (h *OIDCHandler) queryDeviceCodeInteraction(w http.ResponseWriter, r *http.Request, userCode string) (authorizeInteractionResponse, error) {
+	view, err := h.oidc.DeviceAuthorizationByUserCode(r.Context(), userCode)
+	if err != nil {
+		return authorizeInteractionResponse{
+			Action:        "render",
+			FlowType:      "device_code",
+			Stage:         "done",
+			ResultStatus:  "error",
+			ResultMessage: err.Error(),
+		}, nil
+	}
+	target := deviceCodeLoginTarget(view)
+	now := time.Now()
+	if view.Authorization.ExpiresAt.Before(now) {
+		return authorizeInteractionResponse{
+			Action:        "render",
+			FlowType:      "device_code",
+			Stage:         "done",
+			ResultStatus:  "error",
+			ResultMessage: "device code has expired",
+			Target:        target,
+		}, nil
+	}
+	switch view.Authorization.Status {
+	case "approved", "consumed":
+		var currentUser *authorizeCurrentUser
+		if strings.TrimSpace(view.Authorization.SessionID) != "" {
+			if user, _, err := h.oidc.GetSessionUser(r.Context(), view.Authorization.SessionID); err == nil {
+				currentUser = &authorizeCurrentUser{
+					ID:          user.ID,
+					Username:    user.Username,
+					Name:        user.Name,
+					Email:       user.Email,
+					PhoneNumber: user.PhoneNumber,
+				}
+			}
+		}
+		return authorizeInteractionResponse{
+			Action:        "render",
+			FlowType:      "device_code",
+			Stage:         "done",
+			ResultStatus:  "success",
+			ResultMessage: "You have successfully authorized this client.",
+			Target:        target,
+			CurrentUser:   currentUser,
+		}, nil
+	case "denied":
+		return authorizeInteractionResponse{
+			Action:        "render",
+			FlowType:      "device_code",
+			Stage:         "done",
+			ResultStatus:  "error",
+			ResultMessage: "The authorization request has been denied.",
+			Target:        target,
+		}, nil
+	}
+	sessionID := strings.TrimSpace(sharedhandler.ReadPortalSessionCookie(r))
+	if sessionID == "" {
+		sessionID = strings.TrimSpace(sharedhandler.ReadPendingLoginChallengeCookie(r))
+	}
+	if sessionID != "" {
+		if session, err := h.oidc.GetSession(r.Context(), sessionID); err == nil {
+			switch session.State {
+			case "authenticated":
+				user, _, userErr := h.oidc.GetSessionUser(r.Context(), sessionID)
+				if userErr != nil {
+					return authorizeInteractionResponse{}, userErr
+				}
+				return authorizeInteractionResponse{
+					Action:   "render",
+					FlowType: "device_code",
+					Stage:    "account",
+					Target:   target,
+					CurrentUser: &authorizeCurrentUser{
+						ID:          user.ID,
+						Username:    user.Username,
+						Name:        user.Name,
+						Email:       user.Email,
+						PhoneNumber: user.PhoneNumber,
+					},
+				}, nil
+			case "confirmation_required":
+				mfaOptions, mfaErr := h.oidc.AvailableMFAMethodsForSession(r.Context(), sessionID)
+				if mfaErr != nil {
+					return authorizeInteractionResponse{}, mfaErr
+				}
+				return authorizeInteractionResponse{
+					Action:             "render",
+					FlowType:           "device_code",
+					Stage:              "confirmation",
+					Target:             target,
+					SecondFactorMethod: session.SecondFactorMethod,
+					MFAOptions:         mfaOptions,
+				}, nil
+			case "mfa_required":
+				mfaOptions, mfaErr := h.oidc.AvailableMFAMethodsForSession(r.Context(), sessionID)
+				if mfaErr != nil {
+					return authorizeInteractionResponse{}, mfaErr
+				}
+				return authorizeInteractionResponse{
+					Action:             "render",
+					FlowType:           "device_code",
+					Stage:              "mfa",
+					Target:             target,
+					SecondFactorMethod: session.SecondFactorMethod,
+					MFAOptions:         mfaOptions,
+				}, nil
+			}
+		}
+	}
+	return authorizeInteractionResponse{
+		Action:   "render",
+		FlowType: "device_code",
+		Stage:    "login",
+		Target:   target,
+		Captcha:  h.mustBuildAuthorizeCaptcha(r.Context(), target.OrganizationID),
+	}, nil
 }

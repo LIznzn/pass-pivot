@@ -1,8 +1,12 @@
 import { createApp } from 'vue'
-import { createBootstrap } from 'bootstrap-vue-next'
+import { createPinia } from 'pinia'
 import 'bootstrap/dist/css/bootstrap.css'
 import 'bootstrap-vue-next/dist/bootstrap-vue-next.css'
 import '../../shared/styles/main.css'
 import App from './App.vue'
+import router from './router'
 
-createApp(App).use(createBootstrap()).mount('#app')
+createApp(App)
+    .use(createPinia())
+    .use(router)
+    .mount('#app')

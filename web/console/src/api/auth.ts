@@ -1,4 +1,4 @@
-import { requestPost } from '../util/request'
+import { requestPost } from '@/utils/request'
 
 const authBaseUrl = import.meta.env.PPVT_CONSOLE_AUTH_BASE_URL ?? 'http://localhost:8091'
 const consoleApplicationId = import.meta.env.PPVT_CONSOLE_APPLICATION_ID ?? ''

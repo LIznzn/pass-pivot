@@ -1,6 +1,6 @@
 import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
-import router from '../router'
+import router from '@/router'
 import { useConsoleStore } from './console'
 import { useUserStore } from './user'
 import { useRoleStore } from './role'
@@ -11,7 +11,7 @@ import {
   disableOrganization as apiDisableOrganization,
   queryOrganizations as apiQueryOrganizations,
   updateOrganization as apiUpdateOrganization
-} from '../api/manage/organization'
+} from '@/api/manage/organization'
 
 export const useOrganizationStore = defineStore('organization', () => {
   const console = useConsoleStore()
@@ -26,7 +26,10 @@ export const useOrganizationStore = defineStore('organization', () => {
     const response = await apiQueryOrganizations()
     organizations.value = response.items
     if (response.items.length === 0) {
-      console.setMessage('当前没有可用组织', 'danger')
+      console.setMessage('当前没有可用组织', 'danger', {
+        source: 'console/organizationStore.loadOrganizations',
+        trigger: 'loadOrganizations'
+      })
     }
   }
 
@@ -128,9 +131,16 @@ export const useOrganizationStore = defineStore('organization', () => {
   async function withFeedback(fn: () => Promise<void>, successMessage = '操作成功') {
     try {
       await fn()
-      console.setMessage(successMessage, 'success')
+      console.setMessage(successMessage, 'success', {
+        source: 'console/organizationStore.withFeedback',
+        trigger: 'withFeedback'
+      })
     } catch (error) {
-      console.setMessage(String(error), 'danger')
+      console.setMessage(String(error), 'danger', {
+        source: 'console/organizationStore.withFeedback',
+        trigger: 'withFeedback',
+        error
+      })
     }
   }
 

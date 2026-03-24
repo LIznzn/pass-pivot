@@ -1,7 +1,7 @@
 import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { checkPolicy as apiCheckPolicy, createPolicy as apiCreatePolicy, deletePolicy as apiDeletePolicy, queryPolicies as apiQueryPolicies, updatePolicy as apiUpdatePolicy } from '../api/manage/policy'
-import { createRole as apiCreateRole, deleteRoles as apiDeleteRoles, queryRoles as apiQueryRoles, updateRole as apiUpdateRole } from '../api/manage/role'
+import { checkPolicy as apiCheckPolicy, createPolicy as apiCreatePolicy, deletePolicy as apiDeletePolicy, queryPolicies as apiQueryPolicies, updatePolicy as apiUpdatePolicy } from '@/api/manage/policy'
+import { createRole as apiCreateRole, deleteRoles as apiDeleteRoles, queryRoles as apiQueryRoles, updateRole as apiUpdateRole } from '@/api/manage/role'
 import { useConsoleStore } from './console'
 import { useOrganizationStore } from './organization'
 

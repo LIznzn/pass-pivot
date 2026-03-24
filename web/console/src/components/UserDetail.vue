@@ -286,9 +286,9 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { BButton, BForm, BFormInput, BFormSelect, BModal } from 'bootstrap-vue-next'
-import RightSide from '../layout/RightSide.vue'
-import { useAuditStore } from '../stores/audit'
-import { useConsoleStore } from '../stores/console'
+import RightSide from '@/layout/RightSide.vue'
+import { useAuditStore } from '@/stores/audit'
+import { useConsoleStore } from '@/stores/console'
 
 type MFAMethod = 'totp' | 'email_code' | 'sms_code' | 'u2f' | 'recovery_code'
 

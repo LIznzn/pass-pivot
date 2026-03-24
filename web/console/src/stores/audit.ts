@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { queryAuditLogs as apiQueryAuditLogs } from '../api/manage/audit'
+import { queryAuditLogs as apiQueryAuditLogs } from '@/api/manage/audit'
 import { useConsoleStore } from './console'
 
 export const useAuditStore = defineStore('audit', () => {

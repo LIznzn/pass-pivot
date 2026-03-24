@@ -15,8 +15,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { queryOrganizations } from '../api/manage/organization'
-import { getCurrentAccessToken, startConsoleAuthorization } from '../api/auth'
+import { queryOrganizations } from '@/api/manage/organization'
+import { getCurrentAccessToken, startConsoleAuthorization } from '@/api/auth'
 
 const route = useRoute()
 const message = ref('正在准备控制台登录流程。')

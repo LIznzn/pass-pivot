@@ -14,7 +14,7 @@ import (
 	"pass-pivot/internal/config"
 	"pass-pivot/internal/model"
 	coreservice "pass-pivot/internal/server/core/service"
-	"pass-pivot/util"
+	"pass-pivot/utils"
 )
 
 type OIDCService struct {
@@ -273,7 +273,7 @@ func (s *OIDCService) Authorize(ctx context.Context, in AuthorizeInput) (*model.
 	if session.State != "authenticated" {
 		return nil, errors.New("session is not authenticated")
 	}
-	codeValue, err := util.RandomToken(24)
+	codeValue, err := utils.RandomToken(24)
 	if err != nil {
 		return nil, err
 	}
@@ -456,7 +456,7 @@ func buildOIDCMetadata(issuer string) OIDCMetadata {
 		Issuer:                                     issuer,
 		AuthorizationEndpoint:                      issuer + "/auth/authorize",
 		TokenEndpoint:                              issuer + "/auth/token",
-		DeviceAuthorizationEndpoint:                issuer + "/auth/device_authorization",
+		DeviceAuthorizationEndpoint:                issuer + "/auth/device/code",
 		UserInfoEndpoint:                           issuer + "/auth/userinfo",
 		JWKSURI:                                    issuer + "/auth/keys",
 		EndSessionEndpoint:                         issuer + "/auth/end_session",

@@ -10,7 +10,7 @@ import (
 
 	"pass-pivot/internal/model"
 	coreservice "pass-pivot/internal/server/core/service"
-	"pass-pivot/util"
+	"pass-pivot/utils"
 
 	"gorm.io/gorm"
 )
@@ -48,7 +48,7 @@ func (s *OIDCService) CreateDeviceAuthorization(ctx context.Context, audience, c
 	if !coreservice.AppGrantTypesContain(app.GrantType, "device_code") {
 		return nil, errors.New("device_code grant is not enabled for this application")
 	}
-	deviceCode, err := util.RandomToken(32)
+	deviceCode, err := utils.RandomToken(32)
 	if err != nil {
 		return nil, err
 	}
@@ -69,12 +69,12 @@ func (s *OIDCService) CreateDeviceAuthorization(ctx context.Context, audience, c
 	if err := s.db.WithContext(ctx).Create(&record).Error; err != nil {
 		return nil, err
 	}
-	verificationURI := strings.TrimRight(s.cfg.AuthURL, "/") + "/auth/device"
+	verificationURI := strings.TrimRight(s.cfg.AuthURL, "/") + "/auth/authorize?type=device_code"
 	return &DeviceAuthorizationResponse{
 		DeviceCode:              record.DeviceCode,
 		UserCode:                record.UserCode,
 		VerificationURI:         verificationURI,
-		VerificationURIComplete: verificationURI + "?user_code=" + record.UserCode,
+		VerificationURIComplete: verificationURI + "&user_code=" + record.UserCode,
 		ExpiresIn:               int64(deviceAuthorizationTTL / time.Second),
 		Interval:                record.IntervalSeconds,
 	}, nil

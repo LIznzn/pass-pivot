@@ -66,98 +66,33 @@ body {
   box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.04);
 }
 
-.ppvt-toast-stack {
-  position: fixed;
-  top: 1.2rem;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 2000;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.75rem;
-  pointer-events: none;
-}
-
 .ppvt-toast {
-  min-width: 280px;
-  max-width: min(92vw, 520px);
-  display: inline-flex;
-  align-items: center;
-  gap: 0.7rem;
-  padding: 0.85rem 1rem;
-  border-radius: 0.75rem;
-  background: rgba(255, 255, 255, 0.96);
-  border: 1px solid rgba(33, 37, 41, 0.08);
-  box-shadow: 0 0.75rem 1.75rem rgba(15, 23, 42, 0.14);
-  color: #1f2937;
-  font-size: 0.95rem;
-  line-height: 1.35;
-  pointer-events: auto;
+  width: min(92vw, 42rem);
+  border: 1px solid rgba(31, 35, 40, 0.08);
+  border-radius: 0.9rem;
+  box-shadow: 0 0.9rem 2.2rem rgba(31, 35, 40, 0.16);
+  backdrop-filter: blur(10px);
+  overflow: hidden;
 }
 
-.ppvt-toast.is-success {
-  border-color: rgba(25, 135, 84, 0.18);
+.ppvt-toast .toast-body,
+.ppvt-toast-body {
+  padding: 1rem 1.15rem;
+  font-size: 0.98rem;
+  font-weight: 600;
+  line-height: 1.45;
 }
 
-.ppvt-toast.is-danger {
-  border-color: rgba(220, 53, 69, 0.18);
+.ppvt-toast.ppvt-toast-danger {
+  background: rgba(207, 34, 46, 0.9);
+  border-color: rgba(207, 34, 46, 0.28);
+  color: #fff;
 }
 
-.ppvt-toast.is-warning {
-  border-color: rgba(255, 193, 7, 0.2);
-}
-
-.ppvt-toast.is-info {
-  border-color: rgba(13, 110, 253, 0.16);
-}
-
-.ppvt-toast-icon {
-  width: 1.4rem;
-  height: 1.4rem;
-  flex: 0 0 1.4rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  background: #f8f9fa;
-  font-size: 0.82rem;
-  font-weight: 700;
-}
-
-.ppvt-toast.is-success .ppvt-toast-icon {
-  background: #e8f7ee;
-  color: #198754;
-}
-
-.ppvt-toast.is-danger .ppvt-toast-icon {
-  background: #fcebec;
-  color: #dc3545;
-}
-
-.ppvt-toast.is-warning .ppvt-toast-icon {
-  background: #fff6dd;
-  color: #ad7a00;
-}
-
-.ppvt-toast.is-info .ppvt-toast-icon {
-  background: #e8f1fe;
-  color: #0d6efd;
-}
-
-.ppvt-toast-message {
-  flex: 1 1 auto;
-}
-
-.ppvt-toast-enter-active,
-.ppvt-toast-leave-active {
-  transition: opacity 0.18s ease, transform 0.18s ease;
-}
-
-.ppvt-toast-enter-from,
-.ppvt-toast-leave-to {
-  opacity: 0;
-  transform: translateY(-8px) scale(0.98);
+.ppvt-toast.ppvt-toast-success {
+  background: rgba(26, 127, 55, 0.9);
+  border-color: rgba(26, 127, 55, 0.28);
+  color: #fff;
 }
 
 .admin-classic {

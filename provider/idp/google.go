@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"pass-pivot/util"
+	"pass-pivot/utils"
 
 	"github.com/nyaruka/phonenumbers"
 	"golang.org/x/oauth2"
@@ -80,7 +80,7 @@ func (idp *GoogleIdProvider) GetToken(code string) (*oauth2.Token, error) {
 		if err := json.Unmarshal([]byte(code), &googleIdToken); err != nil {
 			return nil, err
 		}
-		expiry := int64(util.ParseInt(googleIdToken.Exp))
+		expiry := int64(utils.ParseInt(googleIdToken.Exp))
 		token := &oauth2.Token{
 			AccessToken: fmt.Sprintf("%v-%v", GoogleIdTokenKey, googleIdToken.Sub),
 			TokenType:   "Bearer",

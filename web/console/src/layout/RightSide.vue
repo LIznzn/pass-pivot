@@ -16,7 +16,7 @@
 </template>
 
 <script setup lang="ts">
-import { useConsoleStore } from '../stores/console'
+import { useConsoleStore } from '@/stores/console'
 
 defineProps<{
   items: any[]

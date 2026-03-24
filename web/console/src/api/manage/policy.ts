@@ -1,4 +1,4 @@
-import { requestPost } from '../../util/request'
+import { requestPost } from '@/utils/request'
 
 export function queryPolicies(payload: any) {
   return requestPost<{ items: any[] }>('/api/manage/v1/policy/query', payload)

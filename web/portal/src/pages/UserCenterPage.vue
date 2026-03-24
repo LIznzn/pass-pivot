@@ -13,8 +13,6 @@
     </header>
 
     <main class="container-fluid py-4">
-      <ToastHost />
-
       <div class="row g-4">
         <aside class="col-lg-3">
           <div class="console-module-sidebar">
@@ -283,15 +281,15 @@ import {
   BForm,
   BFormInput,
   BFormSelect,
-  BModal
+  BModal,
+  useToast
 } from 'bootstrap-vue-next'
 import QRCode from 'qrcode'
-import { normalizeCreationOptions, serializeCredential } from '@shared/api/webauthn'
-import ToastHost from '@shared/components/ToastHost.vue'
-import { useToast } from '@shared/composables/toast'
+import { normalizeCreationOptions, serializeCredential } from '@shared/utils/webauthn'
 import { formatDateTime as formatSharedDateTime } from '@shared/utils/datetime'
-import { apiPost } from '../api/client'
-import { startPortalLogout } from '../auth'
+import { notifyToast } from '@shared/utils/notify'
+import { apiPost } from '@/api/client'
+import { startPortalLogout } from '@/auth'
 
 type DetailData = {
   user: {
@@ -324,6 +322,30 @@ type ProfileData = {
 const toast = useToast()
 const detail = ref<DetailData | null>(null)
 const setting = ref<SettingData | null>(null)
+
+function showToast(
+  message: string,
+  variant: 'success' | 'danger',
+  options: {
+    source: string
+    trigger?: string
+    error?: unknown
+    metadata?: Record<string, unknown>
+  } = {
+    source: 'portal/UserCenterPage'
+  }
+) {
+  notifyToast({
+    toast,
+    message,
+    variant,
+    source: options.source,
+    trigger: options.trigger,
+    error: options.error,
+    metadata: options.metadata
+  })
+}
+
 const profile = reactive({
   username: '',
   name: '',
@@ -439,13 +461,17 @@ async function loadPortalData() {
       bindingForm.issuer = detailResponse.externalIdps[0].issuer
     }
   } catch (error) {
-    toast.error(String(error))
+    showToast(String(error), 'danger', {
+      source: 'portal/UserCenterPage.loadPortalData',
+      trigger: 'loadPortalData',
+      error
+    })
   }
 }
 
 async function saveProfile() {
   await apiPost('/api/user/v1/profile/update', { ...profile })
-  toast.success('基本信息已保存')
+  showToast('基本信息已保存', 'success')
   await loadPortalData()
 }
 
@@ -453,7 +479,7 @@ async function savePassword() {
   await apiPost('/api/user/v1/setting/update', { ...passwordForm })
   passwordForm.currentPassword = ''
   passwordForm.newPassword = ''
-  toast.success('密码已更新')
+  showToast('密码已更新', 'success')
 }
 
 async function registerSecureKey(purpose: 'webauthn' | 'u2f') {
@@ -468,19 +494,19 @@ async function registerSecureKey(purpose: 'webauthn' | 'u2f') {
     challengeId: begin.challengeId,
     response: serializeCredential(credential as PublicKeyCredential)
   })
-  toast.success(purpose === 'webauthn' ? '通行密钥已注册' : '安全密钥已注册')
+  showToast(purpose === 'webauthn' ? '通行密钥已注册' : '安全密钥已注册', 'success')
   await loadPortalData()
 }
 
 async function deleteSecureKey(credentialId: string) {
   await apiPost('/api/user/v1/securekey/delete', { credentialId })
-  toast.success('密钥已删除')
+  showToast('密钥已删除', 'success')
   await loadPortalData()
 }
 
 async function updateSecureKey(credentialId: string, identifier: string) {
   await apiPost('/api/user/v1/securekey/update', { credentialId, identifier })
-  toast.success('密钥名称已更新')
+  showToast('密钥名称已更新', 'success')
   await loadPortalData()
 }
 
@@ -490,7 +516,7 @@ async function toggleWebAuthnLogin(enabled: boolean) {
     return
   }
   await apiPost('/api/user/v1/mfa_method/update', { method: 'webauthn', enabled })
-  toast.success(enabled ? '已启用通行密钥登录' : '已关闭通行密钥登录')
+  showToast(enabled ? '已启用通行密钥登录' : '已关闭通行密钥登录', 'success')
   await loadPortalData()
 }
 
@@ -502,13 +528,13 @@ function syncBindingIssuer() {
 async function createBinding() {
   await apiPost('/api/user/v1/external_identity_binding/create', { ...bindingForm })
   bindingForm.subject = ''
-  toast.success('账号绑定已新增')
+  showToast('账号绑定已新增', 'success')
   await loadPortalData()
 }
 
 async function deleteBinding(bindingId: string) {
   await apiPost('/api/user/v1/external_identity_binding/delete', { bindingId })
-  toast.success('账号绑定已删除')
+  showToast('账号绑定已删除', 'success')
   await loadPortalData()
 }
 
@@ -518,7 +544,7 @@ async function toggleSimpleMFA(method: string, enabled: boolean) {
     return
   }
   await apiPost('/api/user/v1/mfa_method/update', { method, enabled })
-  toast.success(enabled ? '已开启' : '已关闭')
+  showToast(enabled ? '已开启' : '已关闭', 'success')
   await loadPortalData()
 }
 
@@ -532,7 +558,7 @@ async function toggleMFAEnabled(enabled: boolean) {
   } else {
     recoveryCodes.value = []
   }
-  toast.success(enabled ? '已更新多因素验证主开关，并已准备备用验证码' : '已关闭多因素验证')
+  showToast(enabled ? '已更新多因素验证主开关，并已准备备用验证码' : '已关闭多因素验证', 'success')
   await loadPortalData()
 }
 
@@ -610,14 +636,14 @@ async function verifyTotp() {
     enrollmentId: totpEnrollment.enrollmentId,
     code: totpCode.value
   })
-  toast.success('身份验证器已启用')
+  showToast('身份验证器已启用', 'success')
   showMFAModal.value = false
   await loadPortalData()
 }
 
 async function disableTotp() {
   await apiPost('/api/user/v1/mfa_enrollment/delete', { method: 'totp' })
-  toast.success('身份验证器已关闭')
+  showToast('身份验证器已关闭', 'success')
   showMFAModal.value = false
   await loadPortalData()
 }
@@ -625,13 +651,13 @@ async function disableTotp() {
 async function generateRecoveryCodes() {
   const result = await apiPost<{ codes: string[] }>('/api/user/v1/recovery_code/generate', {})
   recoveryCodes.value = result.codes
-  toast.success('已重新生成备用验证码')
+  showToast('已重新生成备用验证码', 'success')
   await loadPortalData()
 }
 
 async function untrustDevice(deviceId: string) {
   await apiPost('/api/user/v1/device/untrust', { deviceId })
-  toast.success('设备已取消可信')
+  showToast('设备已取消可信', 'success')
   await loadPortalData()
 }
 

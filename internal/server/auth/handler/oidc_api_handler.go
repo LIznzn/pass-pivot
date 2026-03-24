@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"gorm.io/gorm"
@@ -16,15 +17,51 @@ import (
 )
 
 type authorizeInteractionResponse struct {
-	Action             string                   `json:"action"`
-	RedirectTarget     string                   `json:"redirectTarget,omitempty"`
-	Stage              string                   `json:"stage,omitempty"`
-	SessionRef         string                   `json:"sessionRef,omitempty"`
-	SecondFactorMethod string                   `json:"secondFactorMethod,omitempty"`
-	MFAOptions         []string                 `json:"mfaOptions,omitempty"`
-	Target             *coreservice.LoginTarget `json:"target,omitempty"`
-	CurrentUser        *authorizeCurrentUser    `json:"currentUser,omitempty"`
+	Action             string                                 `json:"action"`
+	RedirectTarget     string                                 `json:"redirectTarget,omitempty"`
+	Stage              string                                 `json:"stage,omitempty"`
+	FlowType           string                                 `json:"flowType,omitempty"`
+	ResultStatus       string                                 `json:"resultStatus,omitempty"`
+	ResultMessage      string                                 `json:"resultMessage,omitempty"`
+	SessionRef         string                                 `json:"sessionRef,omitempty"`
+	SecondFactorMethod string                                 `json:"secondFactorMethod,omitempty"`
+	MFAOptions         []string                               `json:"mfaOptions,omitempty"`
+	Target             *coreservice.LoginTarget               `json:"target,omitempty"`
+	CurrentUser        *authorizeCurrentUser                  `json:"currentUser,omitempty"`
 	Captcha            *authservice.AuthorizeCaptchaBootstrap `json:"captcha,omitempty"`
+}
+
+type authorizeInteractionRequest struct {
+	SessionID            string `json:"sessionId"`
+	FlowType             string `json:"flowType"`
+	UserCode             string `json:"userCode"`
+	ClientID             string `json:"clientId"`
+	ResponseType         string `json:"responseType"`
+	RedirectURI          string `json:"redirectUri"`
+	Scope                string `json:"scope"`
+	State                string `json:"state"`
+	Nonce                string `json:"nonce"`
+	CodeChallenge        string `json:"codeChallenge"`
+	CodeChallengeMethod  string `json:"codeChallengeMethod"`
+	Prompt               string `json:"prompt"`
+	SkipAccountSelection bool   `json:"skipAccountSelection"`
+}
+
+type authorizeContextResponse struct {
+	Action             string                                   `json:"action"`
+	RedirectTarget     string                                   `json:"redirectTarget,omitempty"`
+	Stage              string                                   `json:"stage,omitempty"`
+	FlowType           string                                   `json:"flowType,omitempty"`
+	ResultStatus       string                                   `json:"resultStatus,omitempty"`
+	ResultMessage      string                                   `json:"resultMessage,omitempty"`
+	Error              string                                   `json:"error,omitempty"`
+	AuthorizeReturnURL string                                   `json:"authorizeReturnUrl,omitempty"`
+	Target             *coreservice.LoginTarget                 `json:"target,omitempty"`
+	CurrentUser        *authorizeCurrentUser                    `json:"currentUser,omitempty"`
+	ApplicationID      string                                   `json:"applicationId,omitempty"`
+	SecondFactorMethod string                                   `json:"secondFactorMethod,omitempty"`
+	MFAOptions         []authorizeUIMethodOption                `json:"mfaOptions,omitempty"`
+	Captcha            *authservice.AuthorizeCaptchaBootstrap   `json:"captcha,omitempty"`
 }
 
 type authorizeCurrentUser struct {
@@ -54,22 +91,260 @@ func (h *OIDCHandler) QueryKeysAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *OIDCHandler) QueryAuthorizeInteractionAPI(w http.ResponseWriter, r *http.Request) {
+	var payload authorizeInteractionRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
+		return
+	}
+	response, err := h.queryAuthorizeInteractionFromPayload(w, r, payload)
+	if err != nil {
+		authnapi.WriteKnown(w, err)
+		return
+	}
+	sharedweb.JSON(w, http.StatusOK, response)
+}
+
+func (h *OIDCHandler) QueryAuthorizeContextAPI(w http.ResponseWriter, r *http.Request) {
+	var payload authorizeInteractionRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
+		return
+	}
+	response, err := h.queryAuthorizeInteractionFromCore(w, r, payload)
+	if err != nil {
+		authnapi.WriteKnown(w, err)
+		return
+	}
+	if response.Action == "redirect" {
+		sharedweb.JSON(w, http.StatusOK, authorizeContextResponse{
+			Action:         response.Action,
+			RedirectTarget: response.RedirectTarget,
+		})
+		return
+	}
+	if response.Target == nil && response.Stage != "done" {
+		sharedweb.JSON(w, http.StatusBadRequest, authorizeContextResponse{
+			Action: "error",
+			Error:  "login target is not available",
+		})
+		return
+	}
+	applicationID := ""
+	if response.Target != nil {
+		applicationID = response.Target.ApplicationID
+	}
+	sharedweb.JSON(w, http.StatusOK, authorizeContextResponse{
+		Action:             "render",
+		Stage:              response.Stage,
+		FlowType:           response.FlowType,
+		ResultStatus:       response.ResultStatus,
+		ResultMessage:      response.ResultMessage,
+		AuthorizeReturnURL: buildAuthorizeReturnURLFromPayload(payload),
+		Target:             response.Target,
+		CurrentUser:        response.CurrentUser,
+		ApplicationID:      applicationID,
+		SecondFactorMethod: response.SecondFactorMethod,
+		MFAOptions:         buildAuthorizeMFAOptions(response.MFAOptions),
+		Captcha:            response.Captcha,
+	})
+}
+
+func (h *OIDCHandler) queryAuthorizeInteractionFromCore(w http.ResponseWriter, r *http.Request, payload authorizeInteractionRequest) (authorizeInteractionResponse, error) {
+	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/authorize/interaction/query", map[string]any{
+		"sessionId":            strings.TrimSpace(payload.SessionID),
+		"flowType":             strings.TrimSpace(payload.FlowType),
+		"userCode":             strings.TrimSpace(payload.UserCode),
+		"clientId":             strings.TrimSpace(payload.ClientID),
+		"responseType":         strings.TrimSpace(payload.ResponseType),
+		"redirectUri":          strings.TrimSpace(payload.RedirectURI),
+		"scope":                strings.TrimSpace(payload.Scope),
+		"state":                strings.TrimSpace(payload.State),
+		"nonce":                strings.TrimSpace(payload.Nonce),
+		"codeChallenge":        strings.TrimSpace(payload.CodeChallenge),
+		"codeChallengeMethod":  strings.TrimSpace(payload.CodeChallengeMethod),
+		"prompt":               strings.TrimSpace(payload.Prompt),
+		"skipAccountSelection": payload.SkipAccountSelection,
+	})
+	if err != nil {
+		return authorizeInteractionResponse{}, err
+	}
+	var response authorizeInteractionResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return authorizeInteractionResponse{}, err
+	}
+	if strings.TrimSpace(response.Stage) == "" && response.Action != "redirect" {
+		response.Stage = "login"
+	}
+	return response, nil
+}
+
+func buildAuthorizeReturnURLFromPayload(in authorizeInteractionRequest) string {
+	query := url.Values{}
+	if value := strings.TrimSpace(in.SessionID); value != "" {
+		query.Set("ppvt_session_id", value)
+	}
+	if value := strings.TrimSpace(in.FlowType); value != "" {
+		query.Set("type", value)
+	}
+	if value := strings.TrimSpace(in.UserCode); value != "" {
+		query.Set("user_code", value)
+	}
+	if value := strings.TrimSpace(in.ClientID); value != "" {
+		query.Set("client_id", value)
+	}
+	if value := strings.TrimSpace(in.ResponseType); value != "" {
+		query.Set("response_type", value)
+	}
+	if value := strings.TrimSpace(in.RedirectURI); value != "" {
+		query.Set("redirect_uri", value)
+	}
+	if value := strings.TrimSpace(in.Scope); value != "" {
+		query.Set("scope", value)
+	}
+	if value := strings.TrimSpace(in.State); value != "" {
+		query.Set("state", value)
+	}
+	if value := strings.TrimSpace(in.Nonce); value != "" {
+		query.Set("nonce", value)
+	}
+	if value := strings.TrimSpace(in.CodeChallenge); value != "" {
+		query.Set("code_challenge", value)
+	}
+	if value := strings.TrimSpace(in.CodeChallengeMethod); value != "" {
+		query.Set("code_challenge_method", value)
+	}
+	if value := strings.TrimSpace(in.Prompt); value != "" {
+		query.Set("prompt", value)
+	}
+	u := &url.URL{Path: "/auth/authorize"}
+	u.RawQuery = query.Encode()
+	return u.String()
+}
+
+func (h *OIDCHandler) CreateAuthorizeSessionAPI(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
-		SessionID           string `json:"sessionId"`
-		ClientID            string `json:"clientId"`
-		ResponseType        string `json:"responseType"`
-		RedirectURI         string `json:"redirectUri"`
-		Scope               string `json:"scope"`
-		State               string `json:"state"`
-		Nonce               string `json:"nonce"`
-		CodeChallenge       string `json:"codeChallenge"`
-		CodeChallengeMethod string `json:"codeChallengeMethod"`
-		Prompt              string `json:"prompt"`
-		SkipAccountSelection bool  `json:"skipAccountSelection"`
+		OrganizationID        string `json:"organizationId"`
+		ApplicationID         string `json:"applicationId"`
+		Identifier            string `json:"identifier"`
+		Secret                string `json:"secret"`
+		CaptchaProvider       string `json:"captchaProvider"`
+		CaptchaToken          string `json:"captchaToken"`
+		CaptchaChallengeToken string `json:"captchaChallengeToken"`
+		CaptchaAnswer         string `json:"captchaAnswer"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
 		return
+	}
+	captchaToken := strings.TrimSpace(payload.CaptchaToken)
+	if strings.TrimSpace(payload.CaptchaProvider) == "default" {
+		captchaToken = coreservice.BuildDefaultCaptchaResponseToken(strings.TrimSpace(payload.CaptchaChallengeToken), strings.TrimSpace(payload.CaptchaAnswer))
+	}
+	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/session/create", map[string]any{
+		"organizationId":  strings.TrimSpace(payload.OrganizationID),
+		"applicationId":   strings.TrimSpace(payload.ApplicationID),
+		"identifier":      strings.TrimSpace(payload.Identifier),
+		"secret":          payload.Secret,
+		"captchaProvider": strings.TrimSpace(payload.CaptchaProvider),
+		"captchaToken":    captchaToken,
+	})
+	if err != nil {
+		authnapi.Write(w, http.StatusBadRequest, "", err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(body)
+}
+
+func (h *OIDCHandler) CompleteDeviceAuthorizationAPI(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		UserCode string `json:"userCode"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
+		return
+	}
+	sessionID := strings.TrimSpace(sharedhandler.ReadPortalSessionCookie(r))
+	if sessionID == "" {
+		authnapi.Write(w, http.StatusUnauthorized, "", "session is not authenticated")
+		return
+	}
+	if _, err := h.oidc.ApproveDeviceAuthorization(r.Context(), strings.TrimSpace(payload.UserCode), sessionID); err != nil {
+		authnapi.Write(w, http.StatusBadRequest, "", err.Error())
+		return
+	}
+	user, _, err := h.oidc.GetSessionUser(r.Context(), sessionID)
+	if err != nil {
+		authnapi.Write(w, http.StatusBadRequest, "", err.Error())
+		return
+	}
+	sharedweb.JSON(w, http.StatusOK, map[string]any{
+		"ok": true,
+		"currentUser": authorizeCurrentUser{
+			ID:          user.ID,
+			Username:    user.Username,
+			Name:        user.Name,
+			Email:       user.Email,
+			PhoneNumber: user.PhoneNumber,
+		},
+	})
+}
+
+func (h *OIDCHandler) SwitchAuthorizeAccountAPI(w http.ResponseWriter, r *http.Request) {
+	sharedhandler.ClearPendingLoginChallengeCookie(w, r)
+	sharedhandler.ClearPortalSessionCookie(w, r)
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (h *OIDCHandler) ConfirmAuthorizeSessionAPI(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		Accept      bool `json:"accept"`
+		TrustDevice bool `json:"trustDevice"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
+		return
+	}
+	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/session/confirm", map[string]any{
+		"sessionId":   resolveLoginSessionRef(r),
+		"accept":      payload.Accept,
+		"trustDevice": payload.TrustDevice,
+	})
+	if err != nil {
+		authnapi.Write(w, http.StatusBadRequest, "", err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(body)
+}
+
+func (h *OIDCHandler) VerifyAuthorizeMFAAPI(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		Method      string `json:"method"`
+		Code        string `json:"code"`
+		TrustDevice bool   `json:"trustDevice"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
+		return
+	}
+	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/session/verify_mfa", map[string]any{
+		"sessionId":   resolveLoginSessionRef(r),
+		"method":      strings.TrimSpace(payload.Method),
+		"code":        strings.TrimSpace(payload.Code),
+		"trustDevice": payload.TrustDevice,
+	})
+	if err != nil {
+		authnapi.Write(w, http.StatusBadRequest, "", err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(body)
+}
+
+func (h *OIDCHandler) queryAuthorizeInteractionFromPayload(w http.ResponseWriter, r *http.Request, payload authorizeInteractionRequest) (authorizeInteractionResponse, error) {
+	if strings.EqualFold(strings.TrimSpace(payload.FlowType), "device_code") {
+		return h.queryDeviceCodeInteraction(w, r, strings.TrimSpace(payload.UserCode))
 	}
 	in := authservice.StandardAuthorizeRequest{
 		SessionID:           strings.TrimSpace(payload.SessionID),
@@ -85,31 +360,30 @@ func (h *OIDCHandler) QueryAuthorizeInteractionAPI(w http.ResponseWriter, r *htt
 	}
 	_, redirectError, err := h.oidc.ValidateAuthorizationRequest(r.Context(), in)
 	if err != nil {
-		authnapi.WriteKnown(w, err)
-		return
+		return authorizeInteractionResponse{}, err
 	}
 	if redirectError != "" {
-		sharedweb.JSON(w, http.StatusOK, authorizeInteractionResponse{
+		return authorizeInteractionResponse{
 			Action:         "redirect",
 			RedirectTarget: redirectError,
-		})
-		return
+		}, nil
 	}
 	target, err := h.platform.GetLoginTarget(r.Context(), in.ClientID)
 	if err != nil {
-		authnapi.WriteKnown(w, err)
-		return
+		return authorizeInteractionResponse{}, err
 	}
 	sessionID := in.SessionID
 	if sessionID == "" {
 		sessionID = sharedhandler.ReadPortalSessionCookie(r)
 	}
 	pendingChallenge := ""
-	if sessionID == "" && strings.TrimSpace(r.URL.Query().Get(loginChallengeQueryKey)) != "" {
+	if sessionID == "" {
 		pendingChallenge = sharedhandler.ReadPendingLoginChallengeCookie(r)
-		sessionID = pendingChallenge
-	} else if sessionID == "" {
-		sharedhandler.ClearPendingLoginChallengeCookie(w, r)
+		if pendingChallenge != "" {
+			sessionID = pendingChallenge
+		} else {
+			sharedhandler.ClearPendingLoginChallengeCookie(w, r)
+		}
 	}
 	if sessionID != "" {
 		if session, err := h.oidc.GetSession(r.Context(), sessionID); err == nil {
@@ -122,21 +396,18 @@ func (h *OIDCHandler) QueryAuthorizeInteractionAPI(w http.ResponseWriter, r *htt
 					in.SessionID = sessionID
 					redirectTarget, redirectErr := h.oidc.BuildAuthorizationRedirect(r.Context(), in)
 					if redirectErr != nil {
-						authnapi.WriteKnown(w, redirectErr)
-						return
+						return authorizeInteractionResponse{}, redirectErr
 					}
-					sharedweb.JSON(w, http.StatusOK, authorizeInteractionResponse{
+					return authorizeInteractionResponse{
 						Action:         "redirect",
 						RedirectTarget: redirectTarget,
-					})
-					return
+					}, nil
 				}
 				user, _, userErr := h.oidc.GetSessionUser(r.Context(), sessionID)
 				if userErr != nil {
-					authnapi.WriteKnown(w, userErr)
-					return
+					return authorizeInteractionResponse{}, userErr
 				}
-				sharedweb.JSON(w, http.StatusOK, authorizeInteractionResponse{
+				return authorizeInteractionResponse{
 					Action: "render",
 					Stage:  "account",
 					Target: target,
@@ -147,54 +418,48 @@ func (h *OIDCHandler) QueryAuthorizeInteractionAPI(w http.ResponseWriter, r *htt
 						Email:       user.Email,
 						PhoneNumber: user.PhoneNumber,
 					},
-				})
-				return
+				}, nil
 			case "confirmation_required":
 				mfaOptions, mfaErr := h.oidc.AvailableMFAMethodsForSession(r.Context(), sessionID)
 				if mfaErr != nil {
-					authnapi.WriteKnown(w, mfaErr)
-					return
+					return authorizeInteractionResponse{}, mfaErr
 				}
-				sharedweb.JSON(w, http.StatusOK, authorizeInteractionResponse{
+				return authorizeInteractionResponse{
 					Action:             "render",
 					Stage:              "confirmation",
 					SessionRef:         session.LoginChallenge,
 					SecondFactorMethod: session.SecondFactorMethod,
 					MFAOptions:         mfaOptions,
 					Target:             target,
-				})
-				return
+				}, nil
 			case "mfa_required":
 				mfaOptions, mfaErr := h.oidc.AvailableMFAMethodsForSession(r.Context(), sessionID)
 				if mfaErr != nil {
-					authnapi.WriteKnown(w, mfaErr)
-					return
+					return authorizeInteractionResponse{}, mfaErr
 				}
-				sharedweb.JSON(w, http.StatusOK, authorizeInteractionResponse{
+				return authorizeInteractionResponse{
 					Action:             "render",
 					Stage:              "mfa",
 					SessionRef:         session.LoginChallenge,
 					SecondFactorMethod: session.SecondFactorMethod,
 					MFAOptions:         mfaOptions,
 					Target:             target,
-				})
-				return
+				}, nil
 			}
 		}
 	}
 	if strings.EqualFold(in.Prompt, "none") {
-		sharedweb.JSON(w, http.StatusOK, authorizeInteractionResponse{
+		return authorizeInteractionResponse{
 			Action:         "redirect",
 			RedirectTarget: redirectErrorOrDefault(redirectError, in.RedirectURI, in.State),
-		})
-		return
+		}, nil
 	}
-	sharedweb.JSON(w, http.StatusOK, authorizeInteractionResponse{
+	return authorizeInteractionResponse{
 		Action: "render",
 		Stage:  "login",
 		Target: target,
 		Captcha: h.mustBuildAuthorizeCaptcha(r.Context(), target.OrganizationID),
-	})
+	}, nil
 }
 
 func (h *OIDCHandler) ExchangeTokenAPI(w http.ResponseWriter, r *http.Request) {

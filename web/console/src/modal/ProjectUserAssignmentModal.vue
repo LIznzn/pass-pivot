@@ -60,7 +60,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { BButton, BModal } from 'bootstrap-vue-next'
-import { useUserStore } from '../stores/user'
+import { useUserStore } from '@/stores/user'
 
 const props = defineProps<{
   visible: boolean

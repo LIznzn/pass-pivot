@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"pass-pivot/util"
+	"pass-pivot/utils"
 )
 
 const (
@@ -56,7 +56,7 @@ func CreateDefaultCaptcha(secret string, now time.Time) (*DefaultCaptchaChalleng
 	if err != nil {
 		return nil, err
 	}
-	nonce, err := util.RandomToken(12)
+	nonce, err := utils.RandomToken(12)
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +210,7 @@ func randomDefaultCaptchaAnswer(length int) (string, error) {
 	if length <= 0 {
 		return "", fmt.Errorf("default captcha length must be positive")
 	}
-	token, err := util.RandomToken(length + 8)
+	token, err := utils.RandomToken(length + 8)
 	if err != nil {
 		return "", err
 	}

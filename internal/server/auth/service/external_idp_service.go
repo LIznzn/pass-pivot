@@ -13,7 +13,7 @@ import (
 
 	"pass-pivot/internal/config"
 	"pass-pivot/internal/model"
-	"pass-pivot/util"
+	"pass-pivot/utils"
 )
 
 type ExternalIDPService struct {
@@ -46,15 +46,15 @@ func (s *ExternalIDPService) StartLogin(ctx context.Context, providerID, applica
 	if err := s.db.WithContext(ctx).First(&provider, "id = ?", providerID).Error; err != nil {
 		return nil, err
 	}
-	state, err := util.RandomToken(24)
+	state, err := utils.RandomToken(24)
 	if err != nil {
 		return nil, err
 	}
-	nonce, err := util.RandomToken(24)
+	nonce, err := utils.RandomToken(24)
 	if err != nil {
 		return nil, err
 	}
-	verifier, err := util.RandomToken(32)
+	verifier, err := utils.RandomToken(32)
 	if err != nil {
 		return nil, err
 	}

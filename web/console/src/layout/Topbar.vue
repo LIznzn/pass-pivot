@@ -68,8 +68,8 @@
 <script setup lang="ts">
 import { BDropdown, BDropdownDivider, BDropdownItem } from 'bootstrap-vue-next'
 import { computed } from 'vue'
-import { useConsoleStore } from '../stores/console'
-import { useOrganizationStore } from '../stores/organization'
+import { useConsoleStore } from '@/stores/console'
+import { useOrganizationStore } from '@/stores/organization'
 
 const consoleStore = useConsoleStore()
 const organizationStore = useOrganizationStore()

@@ -1,4 +1,4 @@
-import { requestPost } from '../../util/request'
+import { requestPost } from '@/utils/request'
 
 export function queryOrganizations() {
   return requestPost<{ items: any[] }>('/api/manage/v1/organization/query', {})

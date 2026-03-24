@@ -142,9 +142,9 @@
 import { computed, ref, watch, watchEffect } from 'vue'
 import { useRouter } from 'vue-router'
 import { BButton, BFormSelect } from 'bootstrap-vue-next'
-import { useConsoleStore } from '../stores/console'
-import { useOrganizationStore } from '../stores/organization'
-import { useProjectStore } from '../stores/project'
+import { useConsoleStore } from '@/stores/console'
+import { useOrganizationStore } from '@/stores/organization'
+import { useProjectStore } from '@/stores/project'
 
 const router = useRouter()
 const consoleStore = useConsoleStore()

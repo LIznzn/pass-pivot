@@ -71,7 +71,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { BButton, BForm, BFormInput, BFormSelect, BModal } from 'bootstrap-vue-next'
-import { useConsoleStore } from '../stores/console'
+import { useConsoleStore } from '@/stores/console'
 
 const props = defineProps<{
   visible: boolean

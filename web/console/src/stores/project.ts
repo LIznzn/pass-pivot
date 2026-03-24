@@ -7,7 +7,7 @@ import {
   queryProjects as apiQueryProjects,
   updateProject as apiUpdateProject,
   updateProjectUserAssignments as apiUpdateProjectUserAssignments
-} from '../api/manage/project'
+} from '@/api/manage/project'
 import { useConsoleStore } from './console'
 import { useOrganizationStore } from './organization'
 

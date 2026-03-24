@@ -16,7 +16,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { clearPortalAuthSession, finishPortalAuthorization, startPortalAuthorization } from '../auth'
+import { clearPortalAuthSession, finishPortalAuthorization, startPortalAuthorization } from '@/auth'
 
 const route = useRoute()
 const message = ref('正在交换授权码并建立用户中心会话。')

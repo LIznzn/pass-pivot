@@ -10,7 +10,7 @@ import (
 	"github.com/go-webauthn/webauthn/webauthn"
 
 	"pass-pivot/internal/model"
-	"pass-pivot/util"
+	"pass-pivot/utils"
 )
 
 type webauthnChallengeRecord struct {
@@ -28,7 +28,7 @@ func (s *Service) storeWebAuthnSession(_ context.Context, organizationID, userID
 	if err != nil {
 		return "", nil, err
 	}
-	challengeID, err := util.RandomToken(20)
+	challengeID, err := utils.RandomToken(20)
 	if err != nil {
 		return "", nil, err
 	}

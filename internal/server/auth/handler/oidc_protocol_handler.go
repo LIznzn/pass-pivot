@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"pass-pivot/internal/config"
@@ -74,7 +75,20 @@ func (h *OIDCHandler) JWKS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *OIDCHandler) Authorize(w http.ResponseWriter, r *http.Request) {
+	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("type")), "device_code") {
+		h.writeAuthorizeApp(w, http.StatusOK, "设备授权", "")
+		return
+	}
 	h.renderAuthorizeInteraction(w, r, "")
+}
+
+func (h *OIDCHandler) DeviceVerificationRedirect(w http.ResponseWriter, r *http.Request) {
+	query := url.Values{}
+	query.Set("type", "device_code")
+	if userCode := strings.TrimSpace(r.URL.Query().Get("user_code")); userCode != "" {
+		query.Set("user_code", userCode)
+	}
+	http.Redirect(w, r, "/auth/authorize?"+query.Encode(), http.StatusMovedPermanently)
 }
 
 func (h *OIDCHandler) Token(w http.ResponseWriter, r *http.Request) {

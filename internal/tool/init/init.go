@@ -18,7 +18,7 @@ import (
 	authservice "pass-pivot/internal/server/auth/service"
 	coreservice "pass-pivot/internal/server/core/service"
 	sharedhandler "pass-pivot/internal/server/shared/handler"
-	"pass-pivot/util"
+	"pass-pivot/utils"
 
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
@@ -284,7 +284,7 @@ func initSchema(database *gorm.DB) error {
 }
 
 func seed(ctx context.Context, database *gorm.DB, cfg config.Config) error {
-	passwordHash, err := util.HashSecret("ChangeMe123!")
+	passwordHash, err := utils.HashSecret("ChangeMe123!")
 	if err != nil {
 		return err
 	}

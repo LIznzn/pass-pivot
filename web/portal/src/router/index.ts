@@ -1,8 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import UserCenterPage from '../pages/UserCenterPage.vue'
-import PortalCallbackPage from '../pages/PortalCallbackPage.vue'
-import LogoutPage from '../pages/LogoutPage.vue'
-import { getCurrentAccessToken } from '../auth'
+import UserCenterPage from '@/pages/UserCenterPage.vue'
+import PortalCallbackPage from '@/pages/PortalCallbackPage.vue'
+import LogoutPage from '@/pages/LogoutPage.vue'
+import { getCurrentAccessToken } from '@/auth'
 
 const router = createRouter({
   history: createWebHistory(),

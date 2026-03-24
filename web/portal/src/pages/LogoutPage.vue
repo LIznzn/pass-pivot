@@ -1,18 +1,19 @@
 <template>
-  <PageShell>
-    <div class="mb-4">
-      <div class="eyebrow">PPVT Authentication</div>
-      <h1 class="display-title">退出登录</h1>
-      <p class="text-secondary mb-0">{{ message }}</p>
+  <div class="shell">
+    <div class="shell-panel">
+      <div class="mb-4">
+        <div class="eyebrow">PPVT Authentication</div>
+        <h1 class="display-title">退出登录</h1>
+        <p class="text-secondary mb-0">{{ message }}</p>
+      </div>
     </div>
-  </PageShell>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import PageShell from '@shared/components/PageShell.vue'
-import { clearPortalAuthSession, getCurrentAccessToken, getCurrentRefreshToken } from '../auth'
+import { clearPortalAuthSession, getCurrentAccessToken, getCurrentRefreshToken } from '@/auth'
 
 const route = useRoute()
 const message = ref('正在结束当前登录会话。')

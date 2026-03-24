@@ -1,6 +1,6 @@
 import axios from 'axios'
 import type { AxiosError, AxiosInstance, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios'
-import { clearConsoleAuthSession, getCurrentAccessToken } from '../api/auth'
+import { clearConsoleAuthSession, getCurrentAccessToken } from '@/api/auth'
 
 const baseURL = import.meta.env.PPVT_CONSOLE_API_BASE_URL ?? 'http://localhost:8090'
 

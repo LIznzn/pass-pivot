@@ -15,7 +15,7 @@ import (
 
 	"pass-pivot/internal/model"
 	coreservice "pass-pivot/internal/server/core/service"
-	"pass-pivot/util"
+	"pass-pivot/utils"
 )
 
 type StandardAuthorizeRequest struct {
@@ -147,7 +147,7 @@ func (s *OIDCService) BuildAuthorizationRedirect(ctx context.Context, in Standar
 		}
 		return buildImplicitRedirect(in.RedirectURI, in.State, tokens, idToken)
 	}
-	codeValue, err := util.RandomToken(24)
+	codeValue, err := utils.RandomToken(24)
 	if err != nil {
 		return "", err
 	}
@@ -351,7 +351,7 @@ func (s *OIDCService) BuildNamedClientAssertion(ctx context.Context, application
 	if err != nil {
 		return "", "", err
 	}
-	jti, err := util.RandomToken(18)
+	jti, err := utils.RandomToken(18)
 	if err != nil {
 		return "", "", err
 	}
@@ -382,7 +382,7 @@ func (s *OIDCService) validateClientAuthentication(ctx context.Context, audience
 	case "none":
 		return app, nil
 	case "client_secret_basic", "client_secret_post":
-		if app.ClientSecretHash == "" || clientSecret == "" || !util.CheckSecret(app.ClientSecretHash, clientSecret) {
+		if app.ClientSecretHash == "" || clientSecret == "" || !utils.CheckSecret(app.ClientSecretHash, clientSecret) {
 			return app, errors.New("invalid client")
 		}
 		return app, nil

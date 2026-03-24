@@ -12,6 +12,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      '@': path.resolve(__dirname, 'src'),
       '@shared': path.resolve(__dirname, '../shared')
     }
   },
@@ -21,8 +22,7 @@ export default defineConfig({
     cssCodeSplit: true,
     rollupOptions: {
       input: {
-        auth: path.resolve(__dirname, 'index.html'),
-        device: path.resolve(__dirname, 'device.html')
+        auth: path.resolve(__dirname, 'index.html')
       },
       output: {
         entryFileNames: '[name].js',
