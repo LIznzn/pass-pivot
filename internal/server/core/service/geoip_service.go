@@ -5,7 +5,7 @@ import (
 )
 
 type GeoIPService struct {
-	provider providergeoip.GeoipProvider
+	provider providergeoip.Provider
 }
 
 func NewGeoIPService(dbPath string) *GeoIPService {

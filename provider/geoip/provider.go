@@ -2,11 +2,11 @@ package geoip
 
 import "fmt"
 
-type GeoipProvider interface {
+type Provider interface {
 	LookupLocation(ipAddress string) (string, error)
 }
 
-func GetGeoipProvider(geoipType string) GeoipProvider {
+func GetGeoipProvider(geoipType string) Provider {
 	switch geoipType {
 	default:
 		return nil

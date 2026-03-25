@@ -11,10 +11,10 @@ import (
 	"pass-pivot/internal/model"
 	authservice "pass-pivot/internal/server/auth/service"
 	coreservice "pass-pivot/internal/server/core/service"
-	captchaprovider "pass-pivot/provider/captcha"
 	sharedauthn "pass-pivot/internal/server/shared/authn"
 	sharedfido "pass-pivot/internal/server/shared/fido"
 	sharedhandler "pass-pivot/internal/server/shared/handler"
+	captchaprovider "pass-pivot/provider/captcha"
 	"pass-pivot/utils"
 
 	"gorm.io/gorm"
@@ -918,8 +918,7 @@ func (s *AuthnService) RevokeToken(ctx context.Context, tokenValue, reason strin
 	if err := s.db.WithContext(ctx).Where("token = ?", tokenValue).First(&token).Error; err != nil {
 		return err
 	}
-	now := time.Now()
-	token.RevokedAt = &now
+	token.RevokedAt = new(time.Now())
 	token.RevocationNote = reason
 	if err := s.db.WithContext(ctx).Save(&token).Error; err != nil {
 		return err

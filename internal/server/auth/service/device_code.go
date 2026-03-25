@@ -136,8 +136,7 @@ func (s *OIDCService) ExchangeDeviceCode(ctx context.Context, audience, clientID
 	}
 	idToken := ""
 	if applicationReturnsIDToken(app.TokenType) {
-		authTime := session.CreatedAt
-		idToken, err = s.signIDToken(ctx, app.ID, user, app.ID, record.Scope, "", &authTime, session.ID)
+		idToken, err = s.signIDToken(ctx, app.ID, user, app.ID, record.Scope, "", new(session.CreatedAt), session.ID)
 		if err != nil {
 			return nil, "", err
 		}
@@ -245,10 +244,10 @@ func (s *OIDCService) DenyDeviceAuthorization(ctx context.Context, userCode, ses
 	view.Authorization.SessionID = session.ID
 	view.Authorization.DeniedAt = &now
 	if err := s.db.WithContext(ctx).Model(&view.Authorization).Updates(map[string]any{
-		"status":      view.Authorization.Status,
-		"user_id":     view.Authorization.UserID,
-		"session_id":  view.Authorization.SessionID,
-		"denied_at":   now,
+		"status":     view.Authorization.Status,
+		"user_id":    view.Authorization.UserID,
+		"session_id": view.Authorization.SessionID,
+		"denied_at":  now,
 	}).Error; err != nil {
 		return nil, err
 	}

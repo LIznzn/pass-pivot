@@ -89,8 +89,7 @@ func FromError(err error) *APIError {
 	if err == nil {
 		return New(http.StatusInternalServerError, CodeInternalError, "internal error")
 	}
-	var apiErr *APIError
-	if errors.As(err, &apiErr) {
+	if apiErr, ok := errors.AsType[*APIError](err); ok {
 		return apiErr
 	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {

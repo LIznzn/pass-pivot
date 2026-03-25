@@ -174,7 +174,6 @@ func (s *MFAService) VerifyTOTPEnrollment(ctx context.Context, userID, enrollmen
 	if !totp.Validate(code, pending.Secret) {
 		return errors.New("invalid TOTP code")
 	}
-	now := time.Now()
 	enrollment := model.MFAEnrollment{
 		OrganizationID: pending.OrganizationID,
 		UserID:         pending.UserID,
@@ -182,7 +181,7 @@ func (s *MFAService) VerifyTOTPEnrollment(ctx context.Context, userID, enrollmen
 		Label:          "Authenticator App",
 		Secret:         pending.Secret,
 		Status:         "active",
-		LastUsedAt:     &now,
+		LastUsedAt:     new(time.Now()),
 	}
 	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("user_id = ? AND method = ?", pending.UserID, "totp").Delete(&model.MFAEnrollment{}).Error; err != nil {
@@ -350,8 +349,7 @@ func (s *MFAService) Verify(ctx context.Context, sessionID, method, code string)
 		}
 		for _, enrollment := range enrollments {
 			if totp.Validate(code, enrollment.Secret) {
-				now := time.Now()
-				_ = s.db.WithContext(ctx).Model(&enrollment).Update("last_used_at", &now).Error
+				_ = s.db.WithContext(ctx).Model(&enrollment).Update("last_used_at", new(time.Now())).Error
 				clearMFAVerificationAttempts(session.ID, method)
 				return nil
 			}
@@ -393,9 +391,8 @@ func (s *MFAService) Verify(ctx context.Context, sessionID, method, code string)
 		}
 		for _, item := range codes {
 			if strings.TrimSpace(item.Code) == code || (strings.TrimSpace(item.Code) == "" && utils.CheckSecret(item.CodeHash, code)) {
-				now := time.Now()
 				clearMFAVerificationAttempts(session.ID, method)
-				return s.db.WithContext(ctx).Model(&item).Update("consumed_at", &now).Error
+				return s.db.WithContext(ctx).Model(&item).Update("consumed_at", new(time.Now())).Error
 			}
 		}
 		incrementMFAVerificationAttempt(session.ID, method, time.Now().Add(mfaAttemptWindow))

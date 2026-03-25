@@ -164,8 +164,7 @@ func (s *OIDCService) BuildAuthorizationRedirect(ctx context.Context, in Standar
 		}
 		idToken := ""
 		if response.NeedsIDToken {
-			authTime := session.CreatedAt
-			idToken, err = s.signIDToken(ctx, app.ID, *user, app.ID, strings.TrimSpace(in.Scope), strings.TrimSpace(in.Nonce), &authTime, session.ID)
+			idToken, err = s.signIDToken(ctx, app.ID, *user, app.ID, strings.TrimSpace(in.Scope), strings.TrimSpace(in.Nonce), new(session.CreatedAt), session.ID)
 			if err != nil {
 				return "", err
 			}
@@ -282,9 +281,8 @@ func (s *OIDCService) ExchangeRefreshToken(ctx context.Context, audience, client
 	if session.State != "authenticated" {
 		return nil, "", errors.New("session is not active")
 	}
-	now := time.Now()
 	if err := s.db.WithContext(ctx).Model(&refresh).Updates(map[string]any{
-		"revoked_at":      &now,
+		"revoked_at":      new(time.Now()),
 		"revocation_note": "refresh_token_rotated",
 	}).Error; err != nil {
 		return nil, "", err
@@ -299,8 +297,7 @@ func (s *OIDCService) ExchangeRefreshToken(ctx context.Context, audience, client
 	}
 	var idToken string
 	if applicationReturnsIDToken(app.TokenType) {
-		authTime := session.CreatedAt
-		idToken, err = s.signIDToken(ctx, app.ID, user, app.ID, tokenScope, "", &authTime, session.ID)
+		idToken, err = s.signIDToken(ctx, app.ID, user, app.ID, tokenScope, "", new(session.CreatedAt), session.ID)
 		if err != nil {
 			return nil, "", err
 		}
@@ -341,10 +338,9 @@ func (s *OIDCService) EndSession(ctx context.Context, sessionID, postLogoutRedir
 	if sessionID != "" {
 		var session model.Session
 		if err := s.db.WithContext(ctx).First(&session, "id = ?", sessionID).Error; err == nil {
-			now := time.Now()
 			_ = s.db.WithContext(ctx).Model(&model.Token{}).
 				Where("session_id = ? AND revoked_at IS NULL", session.ID).
-				Updates(map[string]any{"revoked_at": &now, "revocation_note": reason}).Error
+				Updates(map[string]any{"revoked_at": new(time.Now()), "revocation_note": reason}).Error
 			_ = s.db.WithContext(ctx).Where("id = ?", session.ID).Delete(&model.Session{}).Error
 		}
 	}

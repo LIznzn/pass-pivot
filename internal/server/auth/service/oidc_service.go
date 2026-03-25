@@ -330,8 +330,7 @@ func (s *OIDCService) ExchangeCode(ctx context.Context, audience, clientID, clie
 	}
 	var idToken string
 	if applicationReturnsIDToken(app.TokenType) {
-		authTime := session.CreatedAt
-		idToken, err = s.signIDToken(ctx, app.ID, user, app.ID, code.Scope, code.Nonce, &authTime, session.ID)
+		idToken, err = s.signIDToken(ctx, app.ID, user, app.ID, code.Scope, code.Nonce, new(session.CreatedAt), session.ID)
 		if err != nil {
 			return nil, "", err
 		}

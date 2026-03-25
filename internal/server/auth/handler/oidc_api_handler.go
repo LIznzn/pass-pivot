@@ -17,54 +17,54 @@ import (
 )
 
 type authorizeInteractionResponse struct {
-	Action             string                                 `json:"action"`
-	RedirectTarget     string                                 `json:"redirectTarget,omitempty"`
-	Stage              string                                 `json:"stage,omitempty"`
-	FlowType           string                                 `json:"flowType,omitempty"`
-	ResultStatus       string                                 `json:"resultStatus,omitempty"`
-	ResultMessage      string                                 `json:"resultMessage,omitempty"`
-	SessionRef         string                                 `json:"sessionRef,omitempty"`
-	SecondFactorMethod string                                 `json:"secondFactorMethod,omitempty"`
-	MFAOptions         []string                               `json:"mfaOptions,omitempty"`
-	Target             *coreservice.LoginTarget               `json:"target,omitempty"`
-	CurrentUser        *authorizeCurrentUser                  `json:"currentUser,omitempty"`
-	DeviceAuthorization *authorizeDeviceAuthorization         `json:"deviceAuthorization,omitempty"`
-	Captcha            *authservice.AuthorizeCaptchaBootstrap `json:"captcha,omitempty"`
+	Action              string                                 `json:"action"`
+	RedirectTarget      string                                 `json:"redirectTarget,omitempty"`
+	Stage               string                                 `json:"stage,omitempty"`
+	FlowType            string                                 `json:"flowType,omitempty"`
+	ResultStatus        string                                 `json:"resultStatus,omitempty"`
+	ResultMessage       string                                 `json:"resultMessage,omitempty"`
+	SessionRef          string                                 `json:"sessionRef,omitempty"`
+	SecondFactorMethod  string                                 `json:"secondFactorMethod,omitempty"`
+	MFAOptions          []string                               `json:"mfaOptions,omitempty"`
+	Target              *coreservice.LoginTarget               `json:"target,omitempty"`
+	CurrentUser         *authorizeCurrentUser                  `json:"currentUser,omitempty"`
+	DeviceAuthorization *authorizeDeviceAuthorization          `json:"deviceAuthorization,omitempty"`
+	Captcha             *authservice.AuthorizeCaptchaBootstrap `json:"captcha,omitempty"`
 }
 
 type authorizeInteractionRequest struct {
-	SessionID            string `json:"sessionId"`
-	FlowType             string `json:"flowType"`
-	UserCode             string `json:"userCode"`
+	SessionID             string `json:"sessionId"`
+	FlowType              string `json:"flowType"`
+	UserCode              string `json:"userCode"`
 	DeviceReviewConfirmed bool   `json:"deviceReviewConfirmed"`
-	ClientID             string `json:"clientId"`
-	ResponseType         string `json:"responseType"`
-	RedirectURI          string `json:"redirectUri"`
-	Scope                string `json:"scope"`
-	State                string `json:"state"`
-	Nonce                string `json:"nonce"`
-	CodeChallenge        string `json:"codeChallenge"`
-	CodeChallengeMethod  string `json:"codeChallengeMethod"`
-	Prompt               string `json:"prompt"`
-	SkipAccountSelection bool   `json:"skipAccountSelection"`
+	ClientID              string `json:"clientId"`
+	ResponseType          string `json:"responseType"`
+	RedirectURI           string `json:"redirectUri"`
+	Scope                 string `json:"scope"`
+	State                 string `json:"state"`
+	Nonce                 string `json:"nonce"`
+	CodeChallenge         string `json:"codeChallenge"`
+	CodeChallengeMethod   string `json:"codeChallengeMethod"`
+	Prompt                string `json:"prompt"`
+	SkipAccountSelection  bool   `json:"skipAccountSelection"`
 }
 
 type authorizeContextResponse struct {
-	Action             string                                 `json:"action"`
-	RedirectTarget     string                                 `json:"redirectTarget,omitempty"`
-	Stage              string                                 `json:"stage,omitempty"`
-	FlowType           string                                 `json:"flowType,omitempty"`
-	ResultStatus       string                                 `json:"resultStatus,omitempty"`
-	ResultMessage      string                                 `json:"resultMessage,omitempty"`
-	Error              string                                 `json:"error,omitempty"`
-	AuthorizeReturnURL string                                 `json:"authorizeReturnUrl,omitempty"`
-	Target             *coreservice.LoginTarget               `json:"target,omitempty"`
-	CurrentUser        *authorizeCurrentUser                  `json:"currentUser,omitempty"`
-	DeviceAuthorization *authorizeDeviceAuthorization         `json:"deviceAuthorization,omitempty"`
-	ApplicationID      string                                 `json:"applicationId,omitempty"`
-	SecondFactorMethod string                                 `json:"secondFactorMethod,omitempty"`
-	MFAOptions         []authorizeUIMethodOption              `json:"mfaOptions,omitempty"`
-	Captcha            *authservice.AuthorizeCaptchaBootstrap `json:"captcha,omitempty"`
+	Action              string                                 `json:"action"`
+	RedirectTarget      string                                 `json:"redirectTarget,omitempty"`
+	Stage               string                                 `json:"stage,omitempty"`
+	FlowType            string                                 `json:"flowType,omitempty"`
+	ResultStatus        string                                 `json:"resultStatus,omitempty"`
+	ResultMessage       string                                 `json:"resultMessage,omitempty"`
+	Error               string                                 `json:"error,omitempty"`
+	AuthorizeReturnURL  string                                 `json:"authorizeReturnUrl,omitempty"`
+	Target              *coreservice.LoginTarget               `json:"target,omitempty"`
+	CurrentUser         *authorizeCurrentUser                  `json:"currentUser,omitempty"`
+	DeviceAuthorization *authorizeDeviceAuthorization          `json:"deviceAuthorization,omitempty"`
+	ApplicationID       string                                 `json:"applicationId,omitempty"`
+	SecondFactorMethod  string                                 `json:"secondFactorMethod,omitempty"`
+	MFAOptions          []authorizeUIMethodOption              `json:"mfaOptions,omitempty"`
+	Captcha             *authservice.AuthorizeCaptchaBootstrap `json:"captcha,omitempty"`
 }
 
 type authorizeCurrentUser struct {
@@ -150,19 +150,19 @@ func (h *OIDCHandler) QueryAuthorizeContextAPI(w http.ResponseWriter, r *http.Re
 		applicationID = response.Target.ApplicationID
 	}
 	sharedweb.JSON(w, http.StatusOK, authorizeContextResponse{
-		Action:             "render",
-		Stage:              response.Stage,
-		FlowType:           response.FlowType,
-		ResultStatus:       response.ResultStatus,
-		ResultMessage:      response.ResultMessage,
-		AuthorizeReturnURL: buildAuthorizeReturnURLFromPayload(payload),
-		Target:             response.Target,
-		CurrentUser:        response.CurrentUser,
+		Action:              "render",
+		Stage:               response.Stage,
+		FlowType:            response.FlowType,
+		ResultStatus:        response.ResultStatus,
+		ResultMessage:       response.ResultMessage,
+		AuthorizeReturnURL:  buildAuthorizeReturnURLFromPayload(payload),
+		Target:              response.Target,
+		CurrentUser:         response.CurrentUser,
 		DeviceAuthorization: response.DeviceAuthorization,
-		ApplicationID:      applicationID,
-		SecondFactorMethod: response.SecondFactorMethod,
-		MFAOptions:         buildAuthorizeMFAOptions(response.MFAOptions),
-		Captcha:            response.Captcha,
+		ApplicationID:       applicationID,
+		SecondFactorMethod:  response.SecondFactorMethod,
+		MFAOptions:          buildAuthorizeMFAOptions(response.MFAOptions),
+		Captcha:             response.Captcha,
 	})
 }
 
@@ -588,8 +588,7 @@ func (h *OIDCHandler) ExchangeTokenAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		idToken := ""
 		if coreservice.AppTokenTypesContain(app.TokenType, "id_token") {
-			authTime := session.CreatedAt
-			idToken, err = h.oidc.SignIDTokenForApplication(r.Context(), app.ID, *user, app.ID, payload.Scope, "", &authTime, session.ID)
+			idToken, err = h.oidc.SignIDTokenForApplication(r.Context(), app.ID, *user, app.ID, payload.Scope, "", new(session.CreatedAt), session.ID)
 			if err != nil {
 				authnapi.WriteKnown(w, err)
 				return

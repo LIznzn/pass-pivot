@@ -38,13 +38,13 @@ type ProviderInfo struct {
 	UserMapping map[string]string
 }
 
-type IdProvider interface {
+type Provider interface {
 	SetHttpClient(client *http.Client)
 	GetToken(code string) (*oauth2.Token, error)
 	GetUserInfo(token *oauth2.Token) (*UserInfo, error)
 }
 
-func GetIdProvider(idpInfo *ProviderInfo, redirectUrl string) (IdProvider, error) {
+func GetIdProvider(idpInfo *ProviderInfo, redirectUrl string) (Provider, error) {
 	switch idpInfo.Type {
 	case "GitHub":
 		return NewGithubIdProvider(idpInfo.ClientId, idpInfo.ClientSecret, redirectUrl), nil

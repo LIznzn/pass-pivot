@@ -484,8 +484,7 @@ func (s *Service) CreateOrganization(ctx context.Context, org model.Organization
 	}); err != nil {
 		return nil, err
 	}
-	settings := coreservice.NormalizeOrganizationConsoleSettings(org.ConsoleSettings)
-	org.ConsoleSettings = &settings
+	org.ConsoleSettings = new(coreservice.NormalizeOrganizationConsoleSettings(org.ConsoleSettings))
 	_ = s.audit.Record(ctx, coreservice.AuditEvent{
 		OrganizationID: org.ID,
 		ActorType:      "admin",
@@ -706,9 +705,8 @@ func (s *Service) VerifyOrganizationDomain(ctx context.Context, organizationID, 
 	if err := verifyOrganizationDomainChallenge(*domain); err != nil {
 		return nil, err
 	}
-	now := time.Now()
 	settings.Domains[domainIndex].Verified = true
-	settings.Domains[domainIndex].VerifiedAt = &now
+	settings.Domains[domainIndex].VerifiedAt = new(time.Now())
 	if err := s.db.WithContext(ctx).Model(&organization).Select("Domains").Updates(model.Organization{
 		Domains: settings.Domains,
 	}).Error; err != nil {
@@ -870,8 +868,7 @@ func lookupTXTRecords(recordName string) ([]string, error) {
 		records, err := item.resolver.LookupTXT(ctx, recordName)
 		cancel()
 		if err != nil {
-			var dnsErr *net.DNSError
-			if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
+			if dnsErr, ok := errors.AsType[*net.DNSError](err); ok && dnsErr.IsNotFound {
 				notFoundCount += 1
 				continue
 			}
@@ -1109,11 +1106,10 @@ func (s *Service) attachOrganizationSettings(ctx context.Context, organizations 
 		current := organizations[index]
 		organizations[index].Metadata = coreservice.NormalizeOrganizationMetadata(current.Metadata, nil)
 		if legacy := coreservice.ParseLegacyOrganizationConsoleSettings(current); legacy != nil {
-			settings := coreservice.NormalizeOrganizationConsoleSettings(legacy)
-			organizations[index].ConsoleSettings = &settings
+			organizations[index].ConsoleSettings = new(coreservice.NormalizeOrganizationConsoleSettings(legacy))
 			continue
 		}
-		settings := coreservice.NormalizeOrganizationConsoleSettings(&model.OrganizationSetting{
+		organizations[index].ConsoleSettings = new(coreservice.NormalizeOrganizationConsoleSettings(&model.OrganizationSetting{
 			SupportEmail:   current.SupportEmail,
 			LogoURL:        current.LogoURL,
 			Domains:        current.Domains,
@@ -1121,8 +1117,7 @@ func (s *Service) attachOrganizationSettings(ctx context.Context, organizations 
 			PasswordPolicy: current.PasswordPolicy,
 			MFAPolicy:      current.MFAPolicy,
 			Captcha:        current.Captcha,
-		})
-		organizations[index].ConsoleSettings = &settings
+		}))
 	}
 	return nil
 }
@@ -2179,8 +2174,7 @@ func (s *Service) GetUserDetail(ctx context.Context, userID string) (*coreservic
 	recoverySummary := coreservice.UserDetailRecoverySummary{Total: len(recoveryCodes)}
 	for _, item := range recoveryCodes {
 		if recoverySummary.LastGeneratedAt == nil || item.CreatedAt.After(*recoverySummary.LastGeneratedAt) {
-			createdAt := item.CreatedAt
-			recoverySummary.LastGeneratedAt = &createdAt
+			recoverySummary.LastGeneratedAt = new(item.CreatedAt)
 		}
 		if item.ConsumedAt == nil {
 			recoverySummary.Available++
@@ -3320,15 +3314,12 @@ func buildUserDevices(devices []model.Device, recentSessions []model.Session) []
 		}
 		entry.Trusted = device.Trusted
 		if device.FirstSeenAt != nil {
-			first := *device.FirstSeenAt
-			entry.FirstLoginAt = &first
+			entry.FirstLoginAt = new(*device.FirstSeenAt)
 		} else {
-			first := device.CreatedAt
-			entry.FirstLoginAt = &first
+			entry.FirstLoginAt = new(device.CreatedAt)
 		}
 		if !device.LastSeenAt.IsZero() {
-			last := device.LastSeenAt
-			entry.LastLoginAt = &last
+			entry.LastLoginAt = new(device.LastSeenAt)
 		}
 		deviceMap[key] = entry
 		order = append(order, key)
@@ -3354,12 +3345,10 @@ func buildUserDevices(devices []model.Device, recentSessions []model.Session) []
 		sessionCreatedAt := session.CreatedAt
 		sessionUpdatedAt := session.UpdatedAt
 		if entry.FirstLoginAt == nil || sessionCreatedAt.Before(*entry.FirstLoginAt) {
-			first := sessionCreatedAt
-			entry.FirstLoginAt = &first
+			entry.FirstLoginAt = new(sessionCreatedAt)
 		}
 		if entry.LastLoginAt == nil || sessionUpdatedAt.After(*entry.LastLoginAt) {
-			last := sessionUpdatedAt
-			entry.LastLoginAt = &last
+			entry.LastLoginAt = new(sessionUpdatedAt)
 			entry.LastLoginIP = session.IPAddress
 			entry.UserAgent = session.UserAgent
 			entry.Online = now.Sub(sessionUpdatedAt) <= 5*time.Minute

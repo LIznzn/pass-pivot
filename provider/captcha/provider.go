@@ -2,11 +2,11 @@ package captcha
 
 import "fmt"
 
-type CaptchaProvider interface {
+type Provider interface {
 	VerifyCaptcha(token, clientId, clientSecret string) (bool, error)
 }
 
-func GetCaptchaProvider(captchaType string) CaptchaProvider {
+func GetCaptchaProvider(captchaType string) Provider {
 	switch captchaType {
 	default:
 		return nil
