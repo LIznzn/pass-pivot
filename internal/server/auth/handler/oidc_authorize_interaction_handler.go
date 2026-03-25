@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -17,6 +19,15 @@ import (
 )
 
 const loginChallengeQueryKey = "ppvt_login_challenge"
+
+var authnAPIHTTPClient = &http.Client{
+	Timeout: 10 * time.Second,
+	Transport: &http.Transport{
+		MaxIdleConns:        50,
+		MaxIdleConnsPerHost: 20,
+		IdleConnTimeout:     30 * time.Second,
+	},
+}
 
 type authorizeUIMethodOption struct {
 	Value string `json:"value"`
@@ -37,12 +48,20 @@ func (h *OIDCHandler) callAuthnAPIWithHeaders(w http.ResponseWriter, r *http.Req
 	if err != nil {
 		return nil, err
 	}
-	audience := strings.TrimRight(h.cfg.CoreURL, "/") + "/api/authn"
+	baseURL, err := url.Parse(strings.TrimSpace(h.cfg.CoreURL))
+	if err != nil {
+		return nil, err
+	}
+	if baseURL.Scheme != "http" && baseURL.Scheme != "https" {
+		return nil, errAuthorizeAPI("invalid core api url")
+	}
+	targetURL := baseURL.ResolveReference(&url.URL{Path: path})
+	audience := baseURL.ResolveReference(&url.URL{Path: "/api/authn"}).String()
 	clientID, assertion, err := h.BuildNamedClientAssertion(r.Context(), "authn-api", audience)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, strings.TrimRight(h.cfg.CoreURL, "/")+path, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, targetURL.String(), bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +79,7 @@ func (h *OIDCHandler) callAuthnAPIWithHeaders(w http.ResponseWriter, r *http.Req
 			req.Header.Set(key, value)
 		}
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := authnAPIHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -289,7 +308,7 @@ func (h *OIDCHandler) renderAuthorizeInteraction(w http.ResponseWriter, r *http.
 		h.writeAuthorizeErrorPage(w, http.StatusBadRequest, "login target is not available")
 		return
 	}
-	h.writeAuthorizeApp(w, http.StatusOK, authorizePageTitle(response.Stage), bannerError)
+	h.writeAuthorizeApp(w, http.StatusOK, bannerError)
 }
 
 func (h *OIDCHandler) queryAuthorizeInteraction(w http.ResponseWriter, r *http.Request) (*authorizeInteractionResponse, error) {
@@ -329,8 +348,8 @@ func (h *OIDCHandler) queryAuthorizeInteraction(w http.ResponseWriter, r *http.R
 	return &response, nil
 }
 
-func (h *OIDCHandler) writeAuthorizeApp(w http.ResponseWriter, status int, title string, _ string) {
-	body, err := buildAuthorizeAppShell(title)
+func (h *OIDCHandler) writeAuthorizeApp(w http.ResponseWriter, status int, _ string) {
+	body, err := buildAuthorizeAppShell()
 	if err != nil {
 		h.writeAuthorizeErrorPage(w, http.StatusInternalServerError, err.Error())
 		return
@@ -416,23 +435,6 @@ func redirectErrorOrDefault(redirectError, redirectURI, state string) string {
 	return redirect.String()
 }
 
-func authorizePageTitle(stage string) string {
-	title := "登录"
-	switch stage {
-	case "user_code":
-		title = "输入设备码"
-	case "device_review":
-		title = "确认设备授权"
-	case "account":
-		title = "选择账号"
-	case "confirmation":
-		title = "设备确认"
-	case "mfa":
-		title = "多因素认证"
-	}
-	return title
-}
-
 func (h *OIDCHandler) mustBuildAuthorizeCaptcha(ctx context.Context, organizationID string) *authservice.AuthorizeCaptchaBootstrap {
 	captcha, err := h.oidc.BuildAuthorizeCaptchaBootstrap(ctx, organizationID)
 	if err != nil {
@@ -469,21 +471,15 @@ func buildAuthorizeMFAOptions(methods []string) []authorizeUIMethodOption {
 	return options
 }
 
-func buildAuthorizeAppShell(title string) ([]byte, error) {
-	html := `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PPVT ` + title + `</title>
-  <link rel="stylesheet" href="/auth/authorize/app.css" />
-</head>
-<body>
-  <div id="app"></div>
-  <script type="module" src="/auth/authorize/app.js"></script>
-</body>
-</html>`
-	return []byte(html), nil
+func buildAuthorizeAppShell() ([]byte, error) {
+	document, err := os.ReadFile(filepath.Join("web", "auth", "dist", "index.html"))
+	if err != nil {
+		return nil, err
+	}
+	content := string(document)
+	content = strings.ReplaceAll(content, `src="/assets/`, `src="/auth/assets/`)
+	content = strings.ReplaceAll(content, `href="/assets/`, `href="/auth/assets/`)
+	return []byte(content), nil
 }
 
 func deviceCodeLoginTarget(view *authservice.DeviceAuthorizationView) *coreservice.LoginTarget {
@@ -546,12 +542,12 @@ func (h *OIDCHandler) queryDeviceCodeInteraction(w http.ResponseWriter, r *http.
 	now := time.Now()
 	if view.Authorization.ExpiresAt.Before(now) {
 		return authorizeInteractionResponse{
-			Action:        "render",
-			FlowType:      "device_code",
-			Stage:         "done",
-			ResultStatus:  "error",
-			ResultMessage: "device code has expired",
-			Target:        target,
+			Action:              "render",
+			FlowType:            "device_code",
+			Stage:               "done",
+			ResultStatus:        "error",
+			ResultMessage:       "device code has expired",
+			Target:              target,
 			DeviceAuthorization: deviceAuthorization,
 		}, nil
 	}
@@ -570,33 +566,33 @@ func (h *OIDCHandler) queryDeviceCodeInteraction(w http.ResponseWriter, r *http.
 			}
 		}
 		return authorizeInteractionResponse{
-			Action:        "render",
-			FlowType:      "device_code",
-			Stage:         "done",
-			ResultStatus:  "success",
-			ResultMessage: "You have successfully authorized this client.",
-			Target:        target,
-			CurrentUser:   currentUser,
+			Action:              "render",
+			FlowType:            "device_code",
+			Stage:               "done",
+			ResultStatus:        "success",
+			ResultMessage:       "You have successfully authorized this client.",
+			Target:              target,
+			CurrentUser:         currentUser,
 			DeviceAuthorization: deviceAuthorization,
 		}, nil
 	case "consumed":
 		return authorizeInteractionResponse{
-			Action:        "render",
-			FlowType:      "device_code",
-			Stage:         "done",
-			ResultStatus:  "error",
-			ResultMessage: "device authorization has already been used",
-			Target:        target,
+			Action:              "render",
+			FlowType:            "device_code",
+			Stage:               "done",
+			ResultStatus:        "error",
+			ResultMessage:       "device authorization has already been used",
+			Target:              target,
 			DeviceAuthorization: deviceAuthorization,
 		}, nil
 	case "denied":
 		return authorizeInteractionResponse{
-			Action:        "render",
-			FlowType:      "device_code",
-			Stage:         "done",
-			ResultStatus:  "error",
-			ResultMessage: "The authorization request has been denied.",
-			Target:        target,
+			Action:              "render",
+			FlowType:            "device_code",
+			Stage:               "done",
+			ResultStatus:        "error",
+			ResultMessage:       "The authorization request has been denied.",
+			Target:              target,
 			DeviceAuthorization: deviceAuthorization,
 		}, nil
 	}
@@ -622,10 +618,10 @@ func (h *OIDCHandler) queryDeviceCodeInteraction(w http.ResponseWriter, r *http.
 					return authorizeInteractionResponse{}, userErr
 				}
 				return authorizeInteractionResponse{
-					Action:   "render",
-					FlowType: "device_code",
-					Stage:    "account",
-					Target:   target,
+					Action:              "render",
+					FlowType:            "device_code",
+					Stage:               "account",
+					Target:              target,
 					DeviceAuthorization: deviceAuthorization,
 					CurrentUser: &authorizeCurrentUser{
 						ID:          user.ID,
@@ -641,13 +637,13 @@ func (h *OIDCHandler) queryDeviceCodeInteraction(w http.ResponseWriter, r *http.
 					return authorizeInteractionResponse{}, mfaErr
 				}
 				return authorizeInteractionResponse{
-					Action:             "render",
-					FlowType:           "device_code",
-					Stage:              "confirmation",
-					Target:             target,
+					Action:              "render",
+					FlowType:            "device_code",
+					Stage:               "confirmation",
+					Target:              target,
 					DeviceAuthorization: deviceAuthorization,
-					SecondFactorMethod: session.SecondFactorMethod,
-					MFAOptions:         mfaOptions,
+					SecondFactorMethod:  session.SecondFactorMethod,
+					MFAOptions:          mfaOptions,
 				}, nil
 			case "mfa_required":
 				mfaOptions, mfaErr := h.oidc.AvailableMFAMethodsForSession(r.Context(), sessionID)
@@ -655,23 +651,23 @@ func (h *OIDCHandler) queryDeviceCodeInteraction(w http.ResponseWriter, r *http.
 					return authorizeInteractionResponse{}, mfaErr
 				}
 				return authorizeInteractionResponse{
-					Action:             "render",
-					FlowType:           "device_code",
-					Stage:              "mfa",
-					Target:             target,
+					Action:              "render",
+					FlowType:            "device_code",
+					Stage:               "mfa",
+					Target:              target,
 					DeviceAuthorization: deviceAuthorization,
-					SecondFactorMethod: session.SecondFactorMethod,
-					MFAOptions:         mfaOptions,
+					SecondFactorMethod:  session.SecondFactorMethod,
+					MFAOptions:          mfaOptions,
 				}, nil
 			}
 		}
 	}
 	return authorizeInteractionResponse{
-		Action:   "render",
-		FlowType: "device_code",
-		Stage:    "login",
-		Target:   target,
+		Action:              "render",
+		FlowType:            "device_code",
+		Stage:               "login",
+		Target:              target,
 		DeviceAuthorization: deviceAuthorization,
-		Captcha:  h.mustBuildAuthorizeCaptcha(r.Context(), target.OrganizationID),
+		Captcha:             h.mustBuildAuthorizeCaptcha(r.Context(), target.OrganizationID),
 	}, nil
 }

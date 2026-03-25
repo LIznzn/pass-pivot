@@ -145,10 +145,13 @@ func (h *Handler) CreateMFAChallenge(w http.ResponseWriter, r *http.Request) {
 		authnapi.WriteKnown(w, err)
 		return
 	}
-	sharedweb.JSON(w, http.StatusOK, map[string]any{
+	response := map[string]any{
 		"challenge": challenge,
-		"demoCode":  demoCode,
-	})
+	}
+	if demoCode != "" {
+		response["demoCode"] = demoCode
+	}
+	sharedweb.JSON(w, http.StatusOK, response)
 }
 
 func (h *Handler) EnrollTOTP(w http.ResponseWriter, r *http.Request) {
@@ -275,6 +278,13 @@ func (h *Handler) GenerateRecoveryCodes(w http.ResponseWriter, r *http.Request) 
 		codes []string
 		err   error
 	)
+	if strings.HasPrefix(r.URL.Path, "/api/manage/v1/") {
+		identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r)
+		if !ok || identity.User == nil {
+			authnapi.Write(w, http.StatusForbidden, authnapi.CodeForbidden, "user context is required")
+			return
+		}
+	}
 	if identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r); ok && identity.User != nil {
 		targetUserID, allowed := sharedhandler.CurrentUserIDOrTarget(identity, payload.UserID)
 		if !allowed {
@@ -324,6 +334,13 @@ func (h *Handler) QueryRecoveryCodes(w http.ResponseWriter, r *http.Request) {
 		codes []string
 		err   error
 	)
+	if strings.HasPrefix(r.URL.Path, "/api/manage/v1/") {
+		identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r)
+		if !ok || identity.User == nil {
+			authnapi.Write(w, http.StatusForbidden, authnapi.CodeForbidden, "user context is required")
+			return
+		}
+	}
 	if identity, ok := sharedhandler.AccessTokenIdentityFromRequest(r); ok && identity.User != nil {
 		targetUserID, allowed := sharedhandler.CurrentUserIDOrTarget(identity, payload.UserID)
 		if !allowed {

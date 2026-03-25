@@ -20,13 +20,15 @@ export default defineConfig({
     outDir: path.resolve(__dirname, 'dist'),
     emptyOutDir: true,
     cssCodeSplit: true,
+    assetsDir: 'assets',
     rollupOptions: {
       input: {
         auth: path.resolve(__dirname, 'index.html')
       },
       output: {
-        entryFileNames: '[name].js',
-        assetFileNames: '[name][extname]'
+        entryFileNames: 'assets/[name].js',
+        chunkFileNames: 'assets/[name].js',
+        assetFileNames: 'assets/[name][extname]'
       }
     }
   }

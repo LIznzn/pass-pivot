@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"pass-pivot/internal/config"
 	authservice "pass-pivot/internal/server/auth/service"
@@ -15,6 +16,15 @@ import (
 type OAuthHandler struct {
 	cfg  config.Config
 	oidc *authservice.OIDCService
+}
+
+var oauthUpstreamHTTPClient = &http.Client{
+	Timeout: 10 * time.Second,
+	Transport: &http.Transport{
+		MaxIdleConns:        50,
+		MaxIdleConnsPerHost: 20,
+		IdleConnTimeout:     30 * time.Second,
+	},
 }
 
 func NewOAuthHandler(cfg config.Config, oidc *authservice.OIDCService) *OAuthHandler {
@@ -107,7 +117,7 @@ func (h *OAuthHandler) callAuthnIntrospect(r *http.Request, token string) (map[s
 	req.Header.Set("X-PPVT-Client-ID", clientID)
 	req.Header.Set("X-PPVT-Client-Assertion-Type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
 	req.Header.Set("X-PPVT-Client-Assertion", assertion)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := oauthUpstreamHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +169,7 @@ func (h *OAuthHandler) callAuthnAPI(r *http.Request, path string, payload any) (
 	req.Header.Set("X-PPVT-Client-ID", clientID)
 	req.Header.Set("X-PPVT-Client-Assertion-Type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
 	req.Header.Set("X-PPVT-Client-Assertion", assertion)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := oauthUpstreamHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +205,7 @@ func (h *OAuthHandler) callAuthzSubjectPolicyQuery(r *http.Request, subjectType,
 	req.Header.Set("X-PPVT-Client-ID", clientID)
 	req.Header.Set("X-PPVT-Client-Assertion-Type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
 	req.Header.Set("X-PPVT-Client-Assertion", assertion)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := oauthUpstreamHTTPClient.Do(req)
 	if err != nil {
 		return nil, nil, err
 	}

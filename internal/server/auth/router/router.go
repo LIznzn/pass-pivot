@@ -10,9 +10,8 @@ import (
 func NewAuthRouter(oidc *authhandler.OIDCHandler, staticAssetHandler func(string) http.HandlerFunc, cors func(http.Handler) http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	oauth := authhandler.NewOAuthHandler(oidc.Config(), oidc.Service())
-	mux.HandleFunc("GET /auth/authorize/app.js", staticAssetHandler("auth.js"))
-	mux.HandleFunc("GET /auth/authorize/app.css", staticAssetHandler("auth.css"))
-	mux.HandleFunc("GET /auth/authorize/assets/", authhandler.StaticAssetPrefixHandler("/auth/authorize/assets/", "assets"))
+	_ = staticAssetHandler
+	mux.HandleFunc("GET /auth/assets/", authhandler.StaticAssetPrefixHandler("/auth/assets/", "assets"))
 	mux.HandleFunc("GET /auth/authorize/", func(w http.ResponseWriter, r *http.Request) {
 		target := "/auth/authorize"
 		if rawQuery := strings.TrimSpace(r.URL.RawQuery); rawQuery != "" {
