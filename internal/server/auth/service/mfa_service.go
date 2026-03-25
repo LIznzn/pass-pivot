@@ -35,6 +35,12 @@ type MFAService struct {
 	webAuthnRuntime webAuthnMFARuntime
 }
 
+const (
+	maxMFAVerificationAttempts = 5
+	mfaAttemptWindow           = 5 * time.Minute
+	mfaChallengeTTL            = 5 * time.Minute
+)
+
 type u2fFIDOService interface {
 	BeginAssertionForSession(ctx context.Context, sessionID, usage string) (string, any, error)
 	FinishAssertion(ctx context.Context, challengeID string, payload json.RawMessage) (*sharedfido.AssertionResult, error)
@@ -270,7 +276,7 @@ func (s *MFAService) CreateDeliveryChallenge(ctx context.Context, sessionID, met
 		Method:          method,
 		CodeHash:        hash,
 		Target:          target,
-		ExpiresAt:       time.Now().Add(10 * time.Minute),
+		ExpiresAt:       time.Now().Add(mfaChallengeTTL),
 		DeliveryMessage: fmt.Sprintf("OTP sent to %s", maskTarget(method, target)),
 	}
 	challenge.CreatedAt = time.Now()
@@ -282,7 +288,7 @@ func (s *MFAService) CreateDeliveryChallenge(ctx context.Context, sessionID, met
 			return nil, "", err
 		}
 		subject := "PPVT MFA Verification Code"
-		body := fmt.Sprintf("Your PPVT verification code is %s. It expires in 10 minutes.", code)
+		body := fmt.Sprintf("Your PPVT verification code is %s. It expires in 5 minutes.", code)
 		if err := mailer.Send(ctx, target, subject, body); err != nil {
 			return nil, "", err
 		}
@@ -299,12 +305,11 @@ func (s *MFAService) CreateDeliveryChallenge(ctx context.Context, sessionID, met
 		TargetType:     "mfa_challenge",
 		TargetID:       challenge.ID,
 		Detail: map[string]any{
-			"method":   method,
-			"target":   maskTarget(method, target),
-			"demoCode": code,
+			"method": method,
+			"target": maskTarget(method, target),
 		},
 	})
-	return challenge, code, nil
+	return challenge, "", nil
 }
 
 func (s *MFAService) mailerForOrganization(ctx context.Context, organizationID string) (notify.Mailer, error) {
@@ -334,6 +339,9 @@ func (s *MFAService) Verify(ctx context.Context, sessionID, method, code string)
 	if err := s.db.WithContext(ctx).First(&user, "id = ?", session.UserID).Error; err != nil {
 		return err
 	}
+	if loadMFAVerificationAttemptCount(session.ID, method) >= maxMFAVerificationAttempts {
+		return errors.New("mfa challenge max attempts exceeded")
+	}
 	switch method {
 	case "totp":
 		var enrollments []model.MFAEnrollment
@@ -344,9 +352,11 @@ func (s *MFAService) Verify(ctx context.Context, sessionID, method, code string)
 			if totp.Validate(code, enrollment.Secret) {
 				now := time.Now()
 				_ = s.db.WithContext(ctx).Model(&enrollment).Update("last_used_at", &now).Error
+				clearMFAVerificationAttempts(session.ID, method)
 				return nil
 			}
 		}
+		incrementMFAVerificationAttempt(session.ID, method, time.Now().Add(mfaAttemptWindow))
 		return errors.New("invalid TOTP code")
 	case "email_code", "sms_code":
 		challenge, ok := latestActiveMFAChallenge(session.ID, method)
@@ -356,16 +366,25 @@ func (s *MFAService) Verify(ctx context.Context, sessionID, method, code string)
 		if time.Now().After(challenge.ExpiresAt) {
 			return errors.New("MFA challenge expired")
 		}
+		if challenge.AttemptCount >= maxMFAVerificationAttempts {
+			now := time.Now()
+			challenge.ConsumedAt = &now
+			challenge.UpdatedAt = now
+			updateMFAChallenge(challenge)
+			return errors.New("mfa challenge max attempts exceeded")
+		}
 		if !utils.CheckSecret(challenge.CodeHash, code) {
 			challenge.AttemptCount++
 			challenge.UpdatedAt = time.Now()
 			updateMFAChallenge(challenge)
+			incrementMFAVerificationAttempt(session.ID, method, challenge.ExpiresAt)
 			return errors.New("invalid challenge code")
 		}
 		now := time.Now()
 		challenge.ConsumedAt = &now
 		challenge.UpdatedAt = now
 		updateMFAChallenge(challenge)
+		clearMFAVerificationAttempts(session.ID, method)
 		return nil
 	case "recovery_code":
 		var codes []model.MFARecoveryCode
@@ -375,9 +394,11 @@ func (s *MFAService) Verify(ctx context.Context, sessionID, method, code string)
 		for _, item := range codes {
 			if strings.TrimSpace(item.Code) == code || (strings.TrimSpace(item.Code) == "" && utils.CheckSecret(item.CodeHash, code)) {
 				now := time.Now()
+				clearMFAVerificationAttempts(session.ID, method)
 				return s.db.WithContext(ctx).Model(&item).Update("consumed_at", &now).Error
 			}
 		}
+		incrementMFAVerificationAttempt(session.ID, method, time.Now().Add(mfaAttemptWindow))
 		return errors.New("invalid recovery code")
 	default:
 		return errors.New("unsupported MFA method")

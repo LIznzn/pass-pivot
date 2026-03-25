@@ -41,6 +41,7 @@ const (
 	CodeMFAEmailNotConfigured         = "authn.mfa_email_not_configured"
 	CodeMFAChallengeNotFound          = "authn.mfa_challenge_not_found"
 	CodeMFAChallengeExpired           = "authn.mfa_challenge_expired"
+	CodeMFAChallengeAttemptsExceeded  = "authn.mfa_challenge_attempts_exceeded"
 	CodeMFACodeInvalid                = "authn.mfa_code_invalid"
 	CodeTOTPEnrollmentNotFound        = "authn.totp_enrollment_not_found"
 	CodeWebAuthnChallengeNotFound     = "authn.webauthn_challenge_not_found"
@@ -162,6 +163,8 @@ func FromError(err error) *APIError {
 		return New(http.StatusNotFound, CodeMFAChallengeNotFound, message)
 	case "MFA challenge expired":
 		return New(http.StatusGone, CodeMFAChallengeExpired, message)
+	case "mfa challenge max attempts exceeded":
+		return New(http.StatusTooManyRequests, CodeMFAChallengeAttemptsExceeded, message)
 	case "webauthn challenge not found":
 		return New(http.StatusNotFound, CodeWebAuthnChallengeNotFound, message)
 	case "webauthn challenge expired":
