@@ -2,10 +2,13 @@ package config
 
 import (
 	"bufio"
+	"log"
 	"os"
 	"strconv"
 	"strings"
 )
+
+const defaultSecretValue = "ppvt-dev-secret"
 
 type Config struct {
 	HTTPAddr         string
@@ -50,7 +53,7 @@ func LoadInit() Config {
 }
 
 func loadFromEnv() Config {
-	return Config{
+	cfg := Config{
 		HTTPAddr:               getenv("PPVT_HTTP_ADDR", "0.0.0.0:8090"),
 		AuthURL:                getenv("PPVT_AUTH_URL", "http://localhost:8091"),
 		CoreURL:                getenv("PPVT_CORE_URL", "http://localhost:8090"),
@@ -66,7 +69,7 @@ func loadFromEnv() Config {
 		RedisPassword:          getenv("PPVT_REDIS_PASSWORD", ""),
 		RedisDB:                getenvInt("PPVT_REDIS_DB", 0),
 		LogLevel:               getenv("PPVT_LOG_LEVEL", "INFO"),
-		Secret:                 getenv("PPVT_SECRET", "ppvt-dev-secret"),
+		Secret:                 getenv("PPVT_SECRET", defaultSecretValue),
 		InternalOrganizationID: getenv("PPVT_INTERNAL_ORGANIZATION_ID", ""),
 		SystemProjectID:        getenv("PPVT_SYSTEM_PROJECT_ID", ""),
 		ManageAPIApplicationID: getenv("PPVT_MANAGE_API_APPLICATION_ID", ""),
@@ -78,6 +81,10 @@ func loadFromEnv() Config {
 		ConsoleAdminRoleID:     getenv("PPVT_CONSOLE_ADMIN_ROLE_ID", ""),
 		AdminUserID:            getenv("PPVT_ADMIN_USER_ID", ""),
 	}
+	if cfg.Secret == defaultSecretValue {
+		log.Printf("WARNING: PPVT_SECRET is using the default development value %q; set a strong secret before running in shared or production environments", defaultSecretValue)
+	}
+	return cfg
 }
 
 func loadDotEnv(path string) {

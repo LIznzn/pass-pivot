@@ -3,7 +3,6 @@ package handler
 import (
 	"bytes"
 	"encoding/json"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -122,7 +121,7 @@ func (h *OAuthHandler) callAuthnIntrospect(r *http.Request, token string) (map[s
 		return nil, err
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	body, err := readUpstreamResponseBody(resp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -174,7 +173,7 @@ func (h *OAuthHandler) callAuthnAPI(r *http.Request, path string, payload any) (
 		return nil, err
 	}
 	defer resp.Body.Close()
-	bodyBytes, err := io.ReadAll(resp.Body)
+	bodyBytes, err := readUpstreamResponseBody(resp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +209,7 @@ func (h *OAuthHandler) callAuthzSubjectPolicyQuery(r *http.Request, subjectType,
 		return nil, nil, err
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	body, err := readUpstreamResponseBody(resp.Body)
 	if err != nil {
 		return nil, nil, err
 	}

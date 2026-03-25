@@ -68,6 +68,11 @@ PPVT 是一个控制面导向的 IAM 平台实现。
 
 示例见 [`.env.example`](.env.example)。
 
+说明：
+
+- 若未显式设置 `PPVT_SECRET`，程序会使用默认开发密钥，并在启动时输出 warning。
+- Redis 相关配置当前保留，但默认不启用。
+
 初始化专用环境变量读取根目录 [`.init`](.init)。
 
 这部分只供 `ppvt-init` 使用，主要包含：
@@ -85,35 +90,41 @@ PPVT 是一个控制面导向的 IAM 平台实现。
 
 ## 启动方式
 
+安装前端依赖：
+
+```bash
+cd web
+npm install
+```
+
 数据库初始化：
 
 ```bash
-GOCACHE=$(pwd)/.gocache GOMODCACHE=$(pwd)/.gomodcache go run ./cmd/ppvt-init
+go run ./cmd/ppvt-init
 ```
 
 强制重建数据库：
 
 ```bash
-GOCACHE=$(pwd)/.gocache GOMODCACHE=$(pwd)/.gomodcache go run ./cmd/ppvt-init --force
+go run ./cmd/ppvt-init --force
 ```
 
 ppvt-core：
 
 ```bash
-GOCACHE=$(pwd)/.gocache GOMODCACHE=$(pwd)/.gomodcache go run ./cmd/ppvt-core
+go run ./cmd/ppvt-core
 ```
 
 ppvt-auth：
 
 ```bash
-GOCACHE=$(pwd)/.gocache GOMODCACHE=$(pwd)/.gomodcache go run ./cmd/ppvt-auth
+go run ./cmd/ppvt-auth
 ```
 
 portal：
 
 ```bash
 cd web
-npm install
 npm run dev:portal
 ```
 
@@ -176,7 +187,7 @@ npm run dev:console
 - 本地 `web/console/.env` 中的 `PPVT_CONSOLE_APPLICATION_ID` 需要与 `console-web` 的 `Application ID` 对齐
 - `portal` 是用户中心站点，不再作为默认登录页
 - `/auth/authorize` 直接返回登录、二次确认和 MFA 交互页
-- `/auth/authorize` 的页面资源由 `web/auth` 构建产物提供，后端直接以 `/auth/authorize/app.js` 与 `/auth/authorize/app.css` 加载
+- `/auth/authorize` 当前直接返回 `web/auth/dist/index.html`，并将静态资源路径重写到 `/auth/assets/*`
 - discovery 导入链路当前已从运行代码中移除，仅保留设计草案
 - 当前访问控制系统采用 `Role + Policy + Policy Check` 模型
 

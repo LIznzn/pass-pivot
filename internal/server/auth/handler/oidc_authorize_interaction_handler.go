@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -87,7 +86,7 @@ func (h *OIDCHandler) callAuthnAPIWithHeaders(w http.ResponseWriter, r *http.Req
 	for _, value := range resp.Header.Values("Set-Cookie") {
 		w.Header().Add("Set-Cookie", value)
 	}
-	responseBody, err := io.ReadAll(resp.Body)
+	responseBody, err := readUpstreamResponseBody(resp.Body)
 	if err != nil {
 		return nil, err
 	}

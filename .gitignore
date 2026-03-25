@@ -1,13 +1,29 @@
+# Go build and module caches
 .gocache/
 .gomodcache/
+
+# JavaScript dependencies and build outputs
 node_modules/
 web/node_modules/
 web/*/dist/
+
+# Runtime logs
 .logs/
 *.log
-.DS_Store
-.idea/
+
+# Local environment and initialization files
 .env
 .init
-provider/geoip/resource/*.mmdb
 web/*/.env
+
+# IDE and OS metadata
+.idea/
+.vscode/
+.DS_Store
+._*
+.directory
+*~
+Thumbs.db
+
+# Local GeoIP database resources
+provider/geoip/resource/*.mmdb
