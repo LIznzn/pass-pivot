@@ -136,6 +136,26 @@ function getDefaultTarget() {
   return `${window.location.origin}/console`
 }
 
+function normalizeConsoleAuthorizationTarget(target?: string) {
+  const fallback = getDefaultTarget()
+  const raw = String(target || '').trim()
+  if (!raw) {
+    if (window.location.pathname === '/console/callback') {
+      return fallback
+    }
+    return window.location.href
+  }
+  try {
+    const url = new URL(raw, window.location.origin)
+    if (url.pathname === '/console/callback') {
+      return fallback
+    }
+    return url.toString()
+  } catch {
+    return fallback
+  }
+}
+
 function clearLegacyOAuthHandshake() {
   removeSessionValue('state')
   removeSessionValue('verifier')
@@ -197,16 +217,17 @@ export async function buildConsoleAuthorizationUrl(target?: string) {
   const state = randomBase64Url(24)
   const nonce = randomBase64Url(24)
 
+  const finalTarget = normalizeConsoleAuthorizationTarget(target)
   storeOAuthHandshake(state, {
     verifier,
     nonce,
-    target: target || window.location.href,
+    target: finalTarget,
     createdAt: Date.now()
   })
   setSessionValue('verifier', verifier)
   setSessionValue('state', state)
   setSessionValue('nonce', nonce)
-  setSessionValue('target', target || window.location.href)
+  setSessionValue('target', finalTarget)
 
   const url = new URL(`${authBaseUrl}/auth/authorize`)
   url.searchParams.set('client_id', consoleApplicationId)

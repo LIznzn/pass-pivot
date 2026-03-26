@@ -32,6 +32,7 @@ const router = createRouter({
         { path: '/console/organization/:organizationId', name: 'console-organization', component: Organization },
         {
           path: '/console/organization/:organizationId/project',
+          name: 'console-project-list',
           component: Project,
           children: [
             { path: ':projectId', name: 'console-project-detail', component: ProjectDetail },
@@ -40,6 +41,7 @@ const router = createRouter({
         },
         {
           path: '/console/organization/:organizationId/user',
+          name: 'console-user-list',
           component: User,
           children: [
             { path: ':userId', name: 'console-user-detail', component: UserDetail }
@@ -47,6 +49,7 @@ const router = createRouter({
         },
         {
           path: '/console/organization/:organizationId/role',
+          name: 'console-role-list',
           component: Role,
           children: [
             { path: ':roleId', name: 'console-role-detail', component: RoleDetail }

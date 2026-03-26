@@ -8,6 +8,9 @@ const errorAliases: Record<string, string> = {
   'invalid TOTP code': 'authn.mfa_code_invalid',
   'invalid challenge code': 'authn.mfa_code_invalid',
   'invalid recovery code': 'authn.recovery_code_invalid',
+  'invalid password reset code': 'authn.password_reset_code_invalid',
+  'password reset contact does not match': 'authn.password_reset_contact_invalid',
+  'no reachable password reset target': 'authn.password_reset_target_unavailable',
   'webauthn challenge not found': 'authn.webauthn_challenge_not_found',
   'webauthn challenge expired': 'authn.webauthn_challenge_expired'
 }

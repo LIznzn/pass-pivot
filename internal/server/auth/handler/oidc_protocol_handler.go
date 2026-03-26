@@ -79,6 +79,10 @@ func (h *OIDCHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 	h.renderAuthorizeInteraction(w, r, "")
 }
 
+func (h *OIDCHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	h.writeAuthorizeApp(w, http.StatusOK, "")
+}
+
 func (h *OIDCHandler) DeviceVerificationRedirect(w http.ResponseWriter, r *http.Request) {
 	query := url.Values{}
 	query.Set("type", "device_code")

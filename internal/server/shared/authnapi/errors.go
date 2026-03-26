@@ -11,55 +11,71 @@ import (
 )
 
 const (
-	CodeInvalidJSONBody               = "authn.invalid_json_body"
-	CodeMissingBearerToken            = "authn.missing_bearer_token"
-	CodeInvalidCredentials            = "authn.invalid_credentials"
-	CodeUserInactive                  = "authn.user_inactive"
-	CodeOrganizationDisabled          = "authn.organization_disabled"
-	CodeApplicationDisabled           = "authn.application_disabled"
-	CodeApplicationAccessDenied       = "authn.application_access_denied"
-	CodeGrantTypeUnsupported          = "authn.grant_type_unsupported"
-	CodeGrantTypeDisabled             = "authn.grant_type_disabled"
-	CodeClientAuthenticationInvalid   = "authn.client_authentication_invalid"
-	CodeClientAssertionInvalid        = "authn.client_assertion_invalid"
-	CodeClientIDInvalid               = "authn.client_id_invalid"
-	CodeRedirectURIInvalid            = "authn.redirect_uri_invalid"
-	CodePKCERequired                  = "authn.pkce_required"
-	CodePKCEVerifierMismatch          = "authn.pkce_verifier_mismatch"
-	CodeAuthorizationCodeInvalid      = "authn.authorization_code_invalid"
-	CodeRefreshTokenInvalid           = "authn.refresh_token_invalid"
-	CodeRefreshTokenExpired           = "authn.refresh_token_expired"
-	CodeAccessTokenInvalid            = "authn.access_token_invalid"
-	CodeSessionRequired               = "authn.session_required"
-	CodeSessionNotAuthenticated       = "authn.session_not_authenticated"
-	CodeConfirmationRejected          = "authn.confirmation_rejected"
-	CodeSessionIDRequired             = "authn.session_id_required"
-	CodeSessionNotFound               = "authn.session_not_found"
-	CodeSessionStateInvalid           = "authn.session_state_invalid"
-	CodeMFAMethodUnsupported          = "authn.mfa_method_unsupported"
-	CodeMFATargetUnreachable          = "authn.mfa_target_unreachable"
-	CodeMFAEmailNotConfigured         = "authn.mfa_email_not_configured"
-	CodeMFAChallengeNotFound          = "authn.mfa_challenge_not_found"
-	CodeMFAChallengeExpired           = "authn.mfa_challenge_expired"
-	CodeMFAChallengeAttemptsExceeded  = "authn.mfa_challenge_attempts_exceeded"
-	CodeMFACodeInvalid                = "authn.mfa_code_invalid"
-	CodeTOTPEnrollmentNotFound        = "authn.totp_enrollment_not_found"
-	CodeWebAuthnChallengeNotFound     = "authn.webauthn_challenge_not_found"
-	CodeWebAuthnChallengeExpired      = "authn.webauthn_challenge_expired"
-	CodeWebAuthnLoginDisabled         = "authn.webauthn_login_disabled"
-	CodeWebAuthnUsageUnsupported      = "authn.webauthn_usage_unsupported"
-	CodeUseWebAuthnCompletionEndpoint = "authn.webauthn_use_completion_endpoint"
-	CodeExternalIDPStateNotFound      = "authn.external_idp_state_not_found"
-	CodeExternalIDPStateExpired       = "authn.external_idp_state_expired"
-	CodeExternalIDPIdentityUnbound    = "authn.external_idp_identity_unbound"
-	CodeExternalIDPMissingIDToken     = "authn.external_idp_missing_id_token"
-	CodeExternalIDPMissingSubject     = "authn.external_idp_missing_subject"
-	CodeFIDONotConfigured             = "authn.fido_not_configured"
-	CodeRuntimeNotConfigured          = "authn.runtime_not_configured"
-	CodeFIDOUsageMismatch             = "authn.fido_usage_mismatch"
-	CodeForbidden                     = "authn.forbidden"
-	CodeResourceNotFound              = "authn.resource_not_found"
-	CodeInternalError                 = "authn.internal_error"
+	CodeInvalidJSONBody                = "authn.invalid_json_body"
+	CodeIdentifierRequired             = "authn.identifier_required"
+	CodeMissingBearerToken             = "authn.missing_bearer_token"
+	CodeInvalidCredentials             = "authn.invalid_credentials"
+	CodeUserInactive                   = "authn.user_inactive"
+	CodeOrganizationDisabled           = "authn.organization_disabled"
+	CodeProjectDisabled                = "authn.project_disabled"
+	CodeApplicationDisabled            = "authn.application_disabled"
+	CodeApplicationAccessDenied        = "authn.application_access_denied"
+	CodeGrantTypeUnsupported           = "authn.grant_type_unsupported"
+	CodeGrantTypeDisabled              = "authn.grant_type_disabled"
+	CodeClientAuthenticationInvalid    = "authn.client_authentication_invalid"
+	CodeClientAssertionInvalid         = "authn.client_assertion_invalid"
+	CodeClientIDInvalid                = "authn.client_id_invalid"
+	CodeRedirectURIInvalid             = "authn.redirect_uri_invalid"
+	CodePKCERequired                   = "authn.pkce_required"
+	CodePKCEVerifierMismatch           = "authn.pkce_verifier_mismatch"
+	CodeAuthorizationCodeInvalid       = "authn.authorization_code_invalid"
+	CodeRefreshTokenInvalid            = "authn.refresh_token_invalid"
+	CodeRefreshTokenExpired            = "authn.refresh_token_expired"
+	CodeAccessTokenInvalid             = "authn.access_token_invalid"
+	CodeSessionRequired                = "authn.session_required"
+	CodeSessionNotAuthenticated        = "authn.session_not_authenticated"
+	CodeConfirmationRejected           = "authn.confirmation_rejected"
+	CodeSessionIDRequired              = "authn.session_id_required"
+	CodeSessionNotFound                = "authn.session_not_found"
+	CodeSessionStateInvalid            = "authn.session_state_invalid"
+	CodeMFAMethodUnsupported           = "authn.mfa_method_unsupported"
+	CodeMFATargetUnreachable           = "authn.mfa_target_unreachable"
+	CodeMFAEmailNotConfigured          = "authn.mfa_email_not_configured"
+	CodeMFAChallengeNotFound           = "authn.mfa_challenge_not_found"
+	CodeMFAChallengeExpired            = "authn.mfa_challenge_expired"
+	CodeMFAChallengeAttemptsExceeded   = "authn.mfa_challenge_attempts_exceeded"
+	CodeMFACodeInvalid                 = "authn.mfa_code_invalid"
+	CodeCaptchaRequired                = "authn.captcha_required"
+	CodeCaptchaInvalid                 = "authn.captcha_invalid"
+	CodePasswordResetUnavailable       = "authn.password_reset_unavailable"
+	CodePasswordResetScopeRequired     = "authn.password_reset_scope_required"
+	CodePasswordResetMethodRequired    = "authn.password_reset_method_required"
+	CodePasswordResetContactRequired   = "authn.password_reset_contact_required"
+	CodePasswordResetContactInvalid    = "authn.password_reset_contact_invalid"
+	CodePasswordResetTargetUnavailable = "authn.password_reset_target_unavailable"
+	CodePasswordResetChallengeNotFound = "authn.password_reset_challenge_not_found"
+	CodePasswordResetChallengeExpired  = "authn.password_reset_challenge_expired"
+	CodePasswordResetAttemptsExceeded  = "authn.password_reset_attempts_exceeded"
+	CodePasswordResetCodeRequired      = "authn.password_reset_code_required"
+	CodePasswordResetCodeInvalid       = "authn.password_reset_code_invalid"
+	CodePasswordPolicyInvalid          = "authn.password_policy_invalid"
+	CodeTOTPEnrollmentNotFound         = "authn.totp_enrollment_not_found"
+	CodeWebAuthnChallengeNotFound      = "authn.webauthn_challenge_not_found"
+	CodeWebAuthnChallengeExpired       = "authn.webauthn_challenge_expired"
+	CodeWebAuthnLoginDisabled          = "authn.webauthn_login_disabled"
+	CodeWebAuthnUsageUnsupported       = "authn.webauthn_usage_unsupported"
+	CodeUseWebAuthnCompletionEndpoint  = "authn.webauthn_use_completion_endpoint"
+	CodeExternalIDPStateNotFound       = "authn.external_idp_state_not_found"
+	CodeExternalIDPStateExpired        = "authn.external_idp_state_expired"
+	CodeExternalIDPIdentityUnbound     = "authn.external_idp_identity_unbound"
+	CodeExternalIDPMissingIDToken      = "authn.external_idp_missing_id_token"
+	CodeExternalIDPMissingSubject      = "authn.external_idp_missing_subject"
+	CodeFIDONotConfigured              = "authn.fido_not_configured"
+	CodeRuntimeNotConfigured           = "authn.runtime_not_configured"
+	CodeFIDOUsageMismatch              = "authn.fido_usage_mismatch"
+	CodeForbidden                      = "authn.forbidden"
+	CodeResourceNotFound               = "authn.resource_not_found"
+	CodeInternalError                  = "authn.internal_error"
 )
 
 type APIError struct {
@@ -100,6 +116,8 @@ func FromError(err error) *APIError {
 	switch message {
 	case "invalid JSON body":
 		return New(http.StatusBadRequest, CodeInvalidJSONBody, message)
+	case "identifier is required":
+		return New(http.StatusBadRequest, CodeIdentifierRequired, message)
 	case "missing bearer token":
 		return New(http.StatusUnauthorized, CodeMissingBearerToken, message)
 	case "invalid credentials":
@@ -108,6 +126,8 @@ func FromError(err error) *APIError {
 		return New(http.StatusForbidden, CodeUserInactive, message)
 	case "organization is disabled":
 		return New(http.StatusForbidden, CodeOrganizationDisabled, message)
+	case "project is disabled":
+		return New(http.StatusForbidden, CodeProjectDisabled, message)
 	case "application is disabled":
 		return New(http.StatusForbidden, CodeApplicationDisabled, message)
 	case "unsupported grant_type", "unsupported grant_type: use authorization_code with code_verifier for PKCE", "unsupported grant_type: OAuth requires grant_type=authorization_code":
@@ -154,6 +174,34 @@ func FromError(err error) *APIError {
 		return New(http.StatusBadRequest, CodeMFATargetUnreachable, message)
 	case "email mfa is not configured for this organization":
 		return New(http.StatusBadRequest, CodeMFAEmailNotConfigured, message)
+	case "captcha is required":
+		return New(http.StatusBadRequest, CodeCaptchaRequired, message)
+	case "invalid captcha":
+		return New(http.StatusBadRequest, CodeCaptchaInvalid, message)
+	case "email password reset is not configured for this organization":
+		return New(http.StatusBadRequest, CodePasswordResetUnavailable, message)
+	case "password reset scope is not available":
+		return New(http.StatusBadRequest, CodePasswordResetScopeRequired, message)
+	case "password reset method is required":
+		return New(http.StatusBadRequest, CodePasswordResetMethodRequired, message)
+	case "password reset contact is required":
+		return New(http.StatusBadRequest, CodePasswordResetContactRequired, message)
+	case "password reset contact does not match":
+		return New(http.StatusBadRequest, CodePasswordResetContactInvalid, message)
+	case "no reachable password reset target":
+		return New(http.StatusBadRequest, CodePasswordResetTargetUnavailable, message)
+	case "password reset challenge not found":
+		return New(http.StatusNotFound, CodePasswordResetChallengeNotFound, message)
+	case "password reset challenge expired":
+		return New(http.StatusGone, CodePasswordResetChallengeExpired, message)
+	case "password reset challenge max attempts exceeded":
+		return New(http.StatusTooManyRequests, CodePasswordResetAttemptsExceeded, message)
+	case "password reset code is required":
+		return New(http.StatusBadRequest, CodePasswordResetCodeRequired, message)
+	case "invalid password reset code":
+		return New(http.StatusBadRequest, CodePasswordResetCodeInvalid, message)
+	case "password is required", "password does not meet minimum length requirement", "password must include an uppercase letter", "password must include a lowercase letter", "password must include a number", "password must include a symbol":
+		return New(http.StatusBadRequest, CodePasswordPolicyInvalid, message)
 	case "TOTP enrollment expired or not found":
 		return New(http.StatusNotFound, CodeTOTPEnrollmentNotFound, message)
 	case "invalid TOTP code", "invalid challenge code", "invalid recovery code":

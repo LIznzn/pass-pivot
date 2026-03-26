@@ -48,7 +48,6 @@ onMounted(async () => {
 })
 
 function restartLogin() {
-  const target = typeof route.query.target === 'string' ? route.query.target : `${window.location.origin}/portal/my`
-  void authStore.startAuthorization(target)
+  void authStore.startAuthorization(`${window.location.origin}/portal/my`)
 }
 </script>

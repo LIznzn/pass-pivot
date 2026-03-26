@@ -53,6 +53,6 @@ onMounted(async () => {
 })
 
 function restartLogin() {
-  void startConsoleAuthorization()
+  void startConsoleAuthorization(`${window.location.origin}/console`)
 }
 </script>

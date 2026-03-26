@@ -119,6 +119,26 @@ function getDefaultTarget() {
   return `${window.location.origin}/portal/my`
 }
 
+function normalizePortalAuthorizationTarget(target?: string) {
+  const fallback = getDefaultTarget()
+  const raw = String(target || '').trim()
+  if (!raw) {
+    if (window.location.pathname === '/portal/callback') {
+      return fallback
+    }
+    return window.location.href
+  }
+  try {
+    const url = new URL(raw, window.location.origin)
+    if (url.pathname === '/portal/callback') {
+      return fallback
+    }
+    return url.toString()
+  } catch {
+    return fallback
+  }
+}
+
 function clearLegacyOAuthHandshake() {
   removeSessionValue('state')
   removeSessionValue('verifier')
@@ -155,7 +175,7 @@ export async function startPortalAuthorization(target?: string) {
   const challenge = await sha256Base64Url(verifier)
   const state = randomBase64Url(24)
   const nonce = randomBase64Url(24)
-  const finalTarget = target || getDefaultTarget()
+  const finalTarget = normalizePortalAuthorizationTarget(target)
 
   storeOAuthHandshake(state, {
     verifier,

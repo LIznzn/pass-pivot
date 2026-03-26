@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import MainPage from '@/pages/MainPage.vue'
+import ForgotPasswordPage from '@/pages/ForgotPasswordPage.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -9,6 +10,11 @@ const router = createRouter({
       path: '/auth/authorize',
       name: 'auth-authorize',
       component: MainPage
+    },
+    {
+      path: '/auth/forgot-password',
+      name: 'auth-forgot-password',
+      component: ForgotPasswordPage
     }
   ]
 })

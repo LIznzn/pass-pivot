@@ -4,11 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"math/rand/v2"
+	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"pass-pivot/internal/config"
 	"pass-pivot/internal/model"
+	"pass-pivot/internal/notify"
 	authservice "pass-pivot/internal/server/auth/service"
 	coreservice "pass-pivot/internal/server/core/service"
 	sharedauthn "pass-pivot/internal/server/shared/authn"
@@ -19,6 +24,123 @@ import (
 
 	"gorm.io/gorm"
 )
+
+const (
+	passwordResetChallengeTTL = 10 * time.Minute
+	maxPasswordResetAttempts  = 5
+)
+
+var (
+	passwordNumberPattern = regexp.MustCompile(`[0-9]`)
+	passwordUpperPattern  = regexp.MustCompile(`[A-Z]`)
+	passwordLowerPattern  = regexp.MustCompile(`[a-z]`)
+	passwordSymbolPattern = regexp.MustCompile(`[^A-Za-z0-9]`)
+)
+
+type passwordResetChallengeRecord struct {
+	OrganizationID string
+	UserID         string
+	Identifier     string
+	Method         string
+	Target         string
+	CodeHash       string
+	ExpiresAt      time.Time
+	ConsumedAt     *time.Time
+	AttemptCount   int
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type passwordResetScopeInput struct {
+	OrganizationID string
+	ClientID       string
+	Domain         string
+}
+
+type PasswordResetMethodOption struct {
+	Method       string `json:"method"`
+	MaskedTarget string `json:"maskedTarget"`
+}
+
+type PasswordResetOptions struct {
+	Methods []PasswordResetMethodOption `json:"methods"`
+}
+
+var passwordResetStore = struct {
+	mu         sync.RWMutex
+	challenges map[string]passwordResetChallengeRecord
+}{
+	challenges: map[string]passwordResetChallengeRecord{},
+}
+
+func passwordResetKey(organizationID, identifier string) string {
+	return strings.TrimSpace(organizationID) + ":" + strings.TrimSpace(identifier)
+}
+
+func storePasswordResetChallenge(record passwordResetChallengeRecord) {
+	passwordResetStore.mu.Lock()
+	defer passwordResetStore.mu.Unlock()
+	passwordResetStore.challenges[passwordResetKey(record.OrganizationID, record.Identifier)] = record
+}
+
+func loadPasswordResetChallenge(organizationID, identifier string) (passwordResetChallengeRecord, bool) {
+	key := passwordResetKey(organizationID, identifier)
+	passwordResetStore.mu.RLock()
+	record, ok := passwordResetStore.challenges[key]
+	passwordResetStore.mu.RUnlock()
+	if !ok {
+		return passwordResetChallengeRecord{}, false
+	}
+	now := time.Now()
+	if record.ExpiresAt.Before(now) || record.ConsumedAt != nil {
+		deletePasswordResetChallenge(organizationID, identifier)
+		return passwordResetChallengeRecord{}, false
+	}
+	return record, true
+}
+
+func updatePasswordResetChallenge(record passwordResetChallengeRecord) {
+	passwordResetStore.mu.Lock()
+	defer passwordResetStore.mu.Unlock()
+	passwordResetStore.challenges[passwordResetKey(record.OrganizationID, record.Identifier)] = record
+}
+
+func deletePasswordResetChallenge(organizationID, identifier string) {
+	passwordResetStore.mu.Lock()
+	defer passwordResetStore.mu.Unlock()
+	delete(passwordResetStore.challenges, passwordResetKey(organizationID, identifier))
+}
+
+func deletePasswordResetChallengesByUser(userID string) {
+	passwordResetStore.mu.Lock()
+	defer passwordResetStore.mu.Unlock()
+	for key, record := range passwordResetStore.challenges {
+		if record.UserID == userID {
+			delete(passwordResetStore.challenges, key)
+		}
+	}
+}
+
+func cleanupPasswordResetChallenges() {
+	now := time.Now()
+	passwordResetStore.mu.Lock()
+	defer passwordResetStore.mu.Unlock()
+	for key, record := range passwordResetStore.challenges {
+		if record.ExpiresAt.Before(now) || record.ConsumedAt != nil {
+			delete(passwordResetStore.challenges, key)
+		}
+	}
+}
+
+func init() {
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			cleanupPasswordResetChallenges()
+		}
+	}()
+}
 
 type AuthnService struct {
 	db    *gorm.DB
@@ -282,6 +404,414 @@ func (s *AuthnService) LoginWithUserCredential(ctx context.Context, in sharedaut
 		"trustedDevice": trusted,
 	})
 	return &sharedauthn.LoginResult{Session: session, NextStep: "done", Fingerprint: fingerprint}, nil
+}
+
+func validatePasswordAgainstPolicy(password string, policy model.OrganizationPasswordPolicy) error {
+	if strings.TrimSpace(password) == "" {
+		return errors.New("password is required")
+	}
+	minLength := policy.MinLength
+	if minLength <= 0 {
+		minLength = 8
+	}
+	if len(password) < minLength {
+		return errors.New("password does not meet minimum length requirement")
+	}
+	if policy.RequireUppercase && !passwordUpperPattern.MatchString(password) {
+		return errors.New("password must include an uppercase letter")
+	}
+	if policy.RequireLowercase && !passwordLowerPattern.MatchString(password) {
+		return errors.New("password must include a lowercase letter")
+	}
+	if policy.RequireNumber && !passwordNumberPattern.MatchString(password) {
+		return errors.New("password must include a number")
+	}
+	if policy.RequireSymbol && !passwordSymbolPattern.MatchString(password) {
+		return errors.New("password must include a symbol")
+	}
+	return nil
+}
+
+func (s *AuthnService) passwordResetMailer(ctx context.Context, organizationID string) (notify.Mailer, error) {
+	_, settings, err := coreservice.LoadOrganizationConsoleSettings(ctx, s.db, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	channel := settings.MFAPolicy.EmailChannel
+	if !channel.Enabled {
+		return nil, errors.New("email password reset is not configured for this organization")
+	}
+	return notify.NewMailer(notify.SMTPConfig{
+		From:     strings.TrimSpace(channel.From),
+		Host:     strings.TrimSpace(channel.Host),
+		Port:     channel.Port,
+		Username: strings.TrimSpace(channel.Username),
+		Password: channel.Password,
+	}), nil
+}
+
+func (s *AuthnService) passwordResetMethodOptions(settings model.OrganizationSetting, user model.User) []PasswordResetMethodOption {
+	options := make([]PasswordResetMethodOption, 0, 2)
+	emailChannelReady := settings.MFAPolicy.EmailChannel.Enabled &&
+		strings.TrimSpace(settings.MFAPolicy.EmailChannel.From) != "" &&
+		strings.TrimSpace(settings.MFAPolicy.EmailChannel.Host) != "" &&
+		settings.MFAPolicy.EmailChannel.Port > 0
+	if emailChannelReady && strings.TrimSpace(user.Email) != "" {
+		options = append(options, PasswordResetMethodOption{
+			Method:       "email_code",
+			MaskedTarget: maskEmailForDisplay(user.Email),
+		})
+	}
+	if settings.MFAPolicy.AllowSmsCode && strings.TrimSpace(user.PhoneNumber) != "" {
+		options = append(options, PasswordResetMethodOption{
+			Method:       "sms_code",
+			MaskedTarget: maskPhoneForDisplay(user.PhoneNumber),
+		})
+	}
+	return options
+}
+
+func (s *AuthnService) QueryPasswordResetOptions(ctx context.Context, organizationID, clientID, identifier string) (*PasswordResetOptions, error) {
+	trimmedIdentifier := strings.TrimSpace(identifier)
+	if trimmedIdentifier == "" {
+		return nil, errors.New("identifier is required")
+	}
+	organization, err := s.resolvePasswordResetOrganization(ctx, passwordResetScopeInput{
+		OrganizationID: organizationID,
+		ClientID:       clientID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	settings := coreservice.NormalizeOrganizationConsoleSettings(&model.OrganizationSetting{
+		SupportEmail:   organization.SupportEmail,
+		LogoURL:        organization.LogoURL,
+		Domains:        organization.Domains,
+		LoginPolicy:    organization.LoginPolicy,
+		PasswordPolicy: organization.PasswordPolicy,
+		MFAPolicy:      organization.MFAPolicy,
+		Captcha:        organization.Captcha,
+	})
+	user, err := s.findUserByIdentifier(ctx, organization.ID, trimmedIdentifier)
+	if err != nil || user.Status != "active" {
+		return &PasswordResetOptions{Methods: []PasswordResetMethodOption{}}, nil
+	}
+	return &PasswordResetOptions{
+		Methods: s.passwordResetMethodOptions(settings, user),
+	}, nil
+}
+
+func (s *AuthnService) resolvePasswordResetOrganization(ctx context.Context, in passwordResetScopeInput) (model.Organization, error) {
+	if organizationID := strings.TrimSpace(in.OrganizationID); organizationID != "" {
+		var organization model.Organization
+		if err := s.db.WithContext(ctx).First(&organization, "id = ?", organizationID).Error; err != nil {
+			return model.Organization{}, err
+		}
+		if !organizationIsActive(organization) {
+			return model.Organization{}, errors.New("organization is disabled")
+		}
+		return organization, nil
+	}
+	if clientID := strings.TrimSpace(in.ClientID); clientID != "" {
+		var application model.Application
+		if err := s.db.WithContext(ctx).First(&application, "id = ?", clientID).Error; err != nil {
+			return model.Organization{}, err
+		}
+		if !applicationIsActive(application) {
+			return model.Organization{}, errors.New("application is disabled")
+		}
+		var project model.Project
+		if err := s.db.WithContext(ctx).First(&project, "id = ?", application.ProjectID).Error; err != nil {
+			return model.Organization{}, err
+		}
+		if strings.TrimSpace(project.Status) == "disabled" {
+			return model.Organization{}, errors.New("project is disabled")
+		}
+		var organization model.Organization
+		if err := s.db.WithContext(ctx).First(&organization, "id = ?", project.OrganizationID).Error; err != nil {
+			return model.Organization{}, err
+		}
+		if !organizationIsActive(organization) {
+			return model.Organization{}, errors.New("organization is disabled")
+		}
+		return organization, nil
+	}
+	if strings.TrimSpace(in.Domain) != "" {
+		// Reserve host/domain-based resolution here so the API contract can stay stable.
+	}
+	return model.Organization{}, errors.New("password reset scope is not available")
+}
+
+func (s *AuthnService) StartPasswordReset(ctx context.Context, organizationID, clientID, identifier, method, contact, captchaProvider, captchaToken string) error {
+	trimmedIdentifier := strings.TrimSpace(identifier)
+	if trimmedIdentifier == "" {
+		return errors.New("identifier is required")
+	}
+	trimmedMethod := strings.TrimSpace(method)
+	if trimmedMethod == "" {
+		return errors.New("password reset method is required")
+	}
+	trimmedContact := strings.TrimSpace(contact)
+	if trimmedContact == "" {
+		return errors.New("password reset contact is required")
+	}
+	organization, err := s.resolvePasswordResetOrganization(ctx, passwordResetScopeInput{
+		OrganizationID: organizationID,
+		ClientID:       clientID,
+	})
+	if err != nil {
+		return err
+	}
+	settings := coreservice.NormalizeOrganizationConsoleSettings(&model.OrganizationSetting{
+		SupportEmail:   organization.SupportEmail,
+		LogoURL:        organization.LogoURL,
+		Domains:        organization.Domains,
+		LoginPolicy:    organization.LoginPolicy,
+		PasswordPolicy: organization.PasswordPolicy,
+		MFAPolicy:      organization.MFAPolicy,
+		Captcha:        organization.Captcha,
+	})
+	if err := s.verifyLoginCaptcha(settings.Captcha, organization.ID, captchaProvider, captchaToken); err != nil {
+		return err
+	}
+	user, err := s.findUserByIdentifier(ctx, organization.ID, trimmedIdentifier)
+	if err != nil || user.Status != "active" {
+		return nil
+	}
+	options := s.passwordResetMethodOptions(settings, user)
+	selectedTarget := ""
+	selectedMaskedTarget := ""
+	for _, option := range options {
+		if option.Method != trimmedMethod {
+			continue
+		}
+		selectedMaskedTarget = option.MaskedTarget
+		switch trimmedMethod {
+		case "email_code":
+			selectedTarget = strings.TrimSpace(user.Email)
+		case "sms_code":
+			selectedTarget = strings.TrimSpace(user.PhoneNumber)
+		}
+		break
+	}
+	if selectedTarget == "" {
+		return nil
+	}
+	if !passwordResetContactMatches(trimmedMethod, selectedTarget, trimmedContact) {
+		return nil
+	}
+	code := fmt.Sprintf("%06d", rand.IntN(1000000))
+	hash, err := utils.HashSecret(code)
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	storePasswordResetChallenge(passwordResetChallengeRecord{
+		OrganizationID: organization.ID,
+		UserID:         user.ID,
+		Identifier:     trimmedIdentifier,
+		Method:         trimmedMethod,
+		Target:         selectedTarget,
+		CodeHash:       hash,
+		ExpiresAt:      now.Add(passwordResetChallengeTTL),
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	})
+	switch trimmedMethod {
+	case "email_code":
+		mailer, err := s.passwordResetMailer(ctx, organization.ID)
+		if err != nil {
+			return err
+		}
+		if err := mailer.Send(ctx, selectedTarget, "PPVT Password Reset Code", fmt.Sprintf("Your PPVT password reset code is %s. It expires in 10 minutes.", code)); err != nil {
+			return err
+		}
+	case "sms_code":
+		// SMS delivery is modeled as an optional channel. Keep the reset challenge active
+		// so the transport can be integrated later without changing the API contract.
+	}
+	_ = s.audit.Record(ctx, coreservice.AuditEvent{
+		OrganizationID: organization.ID,
+		ActorType:      "anonymous",
+		EventType:      "auth.password_reset.started",
+		Result:         "success",
+		TargetType:     "user",
+		TargetID:       user.ID,
+		Detail: map[string]any{
+			"identifier": trimmedIdentifier,
+			"method":     trimmedMethod,
+			"target":     selectedMaskedTarget,
+		},
+	})
+	return nil
+}
+
+func (s *AuthnService) FinishPasswordReset(ctx context.Context, organizationID, clientID, identifier, code, newPassword string) error {
+	trimmedIdentifier := strings.TrimSpace(identifier)
+	if trimmedIdentifier == "" {
+		return errors.New("identifier is required")
+	}
+	if strings.TrimSpace(code) == "" {
+		return errors.New("password reset code is required")
+	}
+	organization, err := s.resolvePasswordResetOrganization(ctx, passwordResetScopeInput{
+		OrganizationID: organizationID,
+		ClientID:       clientID,
+	})
+	if err != nil {
+		return err
+	}
+	challenge, ok := loadPasswordResetChallenge(organization.ID, trimmedIdentifier)
+	if !ok {
+		return errors.New("password reset challenge not found")
+	}
+	if time.Now().After(challenge.ExpiresAt) {
+		deletePasswordResetChallenge(organization.ID, trimmedIdentifier)
+		return errors.New("password reset challenge expired")
+	}
+	if challenge.AttemptCount >= maxPasswordResetAttempts {
+		now := time.Now()
+		challenge.ConsumedAt = &now
+		challenge.UpdatedAt = now
+		updatePasswordResetChallenge(challenge)
+		return errors.New("password reset challenge max attempts exceeded")
+	}
+	if !utils.CheckSecret(challenge.CodeHash, strings.TrimSpace(code)) {
+		challenge.AttemptCount++
+		challenge.UpdatedAt = time.Now()
+		updatePasswordResetChallenge(challenge)
+		return errors.New("invalid password reset code")
+	}
+	var user model.User
+	if err := s.db.WithContext(ctx).First(&user, "id = ?", challenge.UserID).Error; err != nil {
+		return err
+	}
+	var passwordPolicyOrganization model.Organization
+	if err := s.db.WithContext(ctx).Select("id", "password_policy").First(&passwordPolicyOrganization, "id = ?", user.OrganizationID).Error; err != nil {
+		return err
+	}
+	if err := validatePasswordAgainstPolicy(newPassword, passwordPolicyOrganization.PasswordPolicy); err != nil {
+		return err
+	}
+	hash, err := utils.HashSecret(newPassword)
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&user).Update("password_hash", hash).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&model.Token{}).
+			Where("user_id = ? AND revoked_at IS NULL", user.ID).
+			Updates(map[string]any{"revoked_at": now, "revocation_note": "password_recovered"}).Error; err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	challenge.ConsumedAt = &now
+	challenge.UpdatedAt = now
+	updatePasswordResetChallenge(challenge)
+	deletePasswordResetChallengesByUser(user.ID)
+	_ = s.audit.Record(ctx, coreservice.AuditEvent{
+		OrganizationID: user.OrganizationID,
+		ActorType:      "anonymous",
+		EventType:      "auth.password_reset.completed",
+		Result:         "success",
+		TargetType:     "user",
+		TargetID:       user.ID,
+		Detail: map[string]any{
+			"identifier": trimmedIdentifier,
+		},
+	})
+	return nil
+}
+
+func maskEmail(value string) string {
+	parts := strings.Split(strings.TrimSpace(value), "@")
+	if len(parts) != 2 {
+		return value
+	}
+	if len(parts[0]) <= 2 {
+		return parts[0] + "***@" + parts[1]
+	}
+	return parts[0][:2] + "***@" + parts[1]
+}
+
+func maskEmailForDisplay(value string) string {
+	parts := strings.Split(strings.TrimSpace(value), "@")
+	if len(parts) != 2 {
+		return value
+	}
+	local := parts[0]
+	domainParts := strings.Split(parts[1], ".")
+	domainSuffix := ""
+	if len(domainParts) > 1 {
+		domainSuffix = "." + domainParts[len(domainParts)-1]
+	}
+	if local == "" {
+		local = "*"
+	}
+	return local[:1] + "*****@*****" + domainSuffix
+}
+
+func normalizePhoneDigits(value string) string {
+	var builder strings.Builder
+	for _, r := range strings.TrimSpace(value) {
+		if r >= '0' && r <= '9' {
+			builder.WriteRune(r)
+		}
+	}
+	return builder.String()
+}
+
+func passwordResetContactMatches(method, actual, provided string) bool {
+	actual = strings.TrimSpace(actual)
+	provided = strings.TrimSpace(provided)
+	switch strings.TrimSpace(method) {
+	case "sms_code":
+		actualDigits := normalizePhoneDigits(actual)
+		providedDigits := normalizePhoneDigits(provided)
+		if len(actualDigits) < 4 || len(providedDigits) != 4 {
+			return false
+		}
+		return strings.HasSuffix(actualDigits, providedDigits)
+	default:
+		return strings.EqualFold(actual, provided)
+	}
+}
+
+func maskPhoneForDisplay(value string) string {
+	digits := normalizePhoneDigits(value)
+	if len(digits) < 5 {
+		return "****"
+	}
+	countryCode := ""
+	localDigits := digits
+	switch {
+	case strings.HasPrefix(digits, "86") && len(digits) >= 13:
+		countryCode = "+86 "
+		localDigits = digits[2:]
+	case strings.HasPrefix(digits, "81") && len(digits) >= 12:
+		countryCode = "+81 "
+		localDigits = digits[2:]
+	default:
+		if strings.HasPrefix(strings.TrimSpace(value), "+") && len(digits) > 10 {
+			countryCode = "+" + digits[:len(digits)-10] + " "
+			localDigits = digits[len(digits)-10:]
+		}
+	}
+	if len(localDigits) < 4 {
+		return countryCode + "****"
+	}
+	prefix := localDigits
+	if len(prefix) > 3 {
+		prefix = prefix[:3]
+	}
+	last := localDigits[len(localDigits)-1:]
+	return countryCode + prefix + " **** ***" + last
 }
 
 func (s *AuthnService) verifyLoginCaptcha(settings model.OrganizationCaptchaSettings, organizationID, providerName, token string) error {

@@ -37,7 +37,37 @@ export type TranslationShape = {
   identifierPlaceholder: string
   password: string
   passwordPlaceholder: string
+  newPassword: string
+  newPasswordPlaceholder: string
   signIn: string
+  forgotPassword: string
+  passwordRecoveryTitle: string
+  passwordRecoverySubtitle: string
+  passwordRecoveryTitleWithOrganization: (organizationName: string) => string
+  passwordRecoveryHint: string
+  passwordRecoverySendCode: string
+  passwordRecoveryCode: string
+  passwordRecoveryCodePlaceholder: string
+  passwordRecoveryComplete: string
+  passwordRecoveryNextStep: string
+  passwordRecoveryPrevStep: string
+  passwordRecoveryContact: string
+  passwordRecoveryContactPlaceholder: string
+  passwordRecoveryEmailPrompt: (maskedTarget: string) => string
+  passwordRecoverySmsPrompt: (maskedTarget: string) => string
+  passwordRecoveryEmailPlaceholder: string
+  passwordRecoverySmsPlaceholder: string
+  passwordRecoveryEmailSentIfMatched: string
+  passwordRecoverySmsSentIfMatched: string
+  passwordRecoveryStepAccount: string
+  passwordRecoveryStepVerify: string
+  passwordRecoveryStepPassword: string
+  passwordRecoveryStepAccountHint: string
+  passwordRecoveryStepVerifyHint: string
+  passwordRecoveryStepPasswordHint: string
+  passwordRecoveryBackToLogin: string
+  passwordRecoverySent: string
+  passwordRecoveryUpdated: string
   or: string
   continueWithProvider: (providerName: string) => string
   signInWithPasskey: string
@@ -161,7 +191,37 @@ export function buildLocaleText(locale: Locale): TranslationShape {
     identifierPlaceholder: resolveLocaleText('identifierPlaceholder', locale),
     password: resolveLocaleText('password', locale),
     passwordPlaceholder: resolveLocaleText('passwordPlaceholder', locale),
+    newPassword: resolveLocaleText('newPassword', locale),
+    newPasswordPlaceholder: resolveLocaleText('newPasswordPlaceholder', locale),
     signIn: resolveLocaleText('signIn', locale),
+    forgotPassword: resolveLocaleText('forgotPassword', locale),
+    passwordRecoveryTitle: resolveLocaleText('passwordRecoveryTitle', locale),
+    passwordRecoverySubtitle: resolveLocaleText('passwordRecoverySubtitle', locale),
+    passwordRecoveryTitleWithOrganization: (organizationName: string) => formatLocaleText('passwordRecoveryTitleWithOrganization', locale, { organizationName }),
+    passwordRecoveryHint: resolveLocaleText('passwordRecoveryHint', locale),
+    passwordRecoverySendCode: resolveLocaleText('passwordRecoverySendCode', locale),
+    passwordRecoveryCode: resolveLocaleText('passwordRecoveryCode', locale),
+    passwordRecoveryCodePlaceholder: resolveLocaleText('passwordRecoveryCodePlaceholder', locale),
+    passwordRecoveryComplete: resolveLocaleText('passwordRecoveryComplete', locale),
+    passwordRecoveryNextStep: resolveLocaleText('passwordRecoveryNextStep', locale),
+    passwordRecoveryPrevStep: resolveLocaleText('passwordRecoveryPrevStep', locale),
+    passwordRecoveryContact: resolveLocaleText('passwordRecoveryContact', locale),
+    passwordRecoveryContactPlaceholder: resolveLocaleText('passwordRecoveryContactPlaceholder', locale),
+    passwordRecoveryEmailPrompt: (maskedTarget: string) => formatLocaleText('passwordRecoveryEmailPrompt', locale, { maskedTarget }),
+    passwordRecoverySmsPrompt: (maskedTarget: string) => formatLocaleText('passwordRecoverySmsPrompt', locale, { maskedTarget }),
+    passwordRecoveryEmailPlaceholder: resolveLocaleText('passwordRecoveryEmailPlaceholder', locale),
+    passwordRecoverySmsPlaceholder: resolveLocaleText('passwordRecoverySmsPlaceholder', locale),
+    passwordRecoveryEmailSentIfMatched: resolveLocaleText('passwordRecoveryEmailSentIfMatched', locale),
+    passwordRecoverySmsSentIfMatched: resolveLocaleText('passwordRecoverySmsSentIfMatched', locale),
+    passwordRecoveryStepAccount: resolveLocaleText('passwordRecoveryStepAccount', locale),
+    passwordRecoveryStepVerify: resolveLocaleText('passwordRecoveryStepVerify', locale),
+    passwordRecoveryStepPassword: resolveLocaleText('passwordRecoveryStepPassword', locale),
+    passwordRecoveryStepAccountHint: resolveLocaleText('passwordRecoveryStepAccountHint', locale),
+    passwordRecoveryStepVerifyHint: resolveLocaleText('passwordRecoveryStepVerifyHint', locale),
+    passwordRecoveryStepPasswordHint: resolveLocaleText('passwordRecoveryStepPasswordHint', locale),
+    passwordRecoveryBackToLogin: resolveLocaleText('passwordRecoveryBackToLogin', locale),
+    passwordRecoverySent: resolveLocaleText('passwordRecoverySent', locale),
+    passwordRecoveryUpdated: resolveLocaleText('passwordRecoveryUpdated', locale),
     or: resolveLocaleText('or', locale),
     continueWithProvider: (providerName: string) => formatLocaleText('continueWithProvider', locale, { providerName }),
     signInWithPasskey: resolveLocaleText('signInWithPasskey', locale),

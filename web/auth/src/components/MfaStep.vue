@@ -11,12 +11,19 @@
 
     <label v-if="auth.showsCodeInput" class="auth-field">
       <span>{{ auth.text.verificationCode }}</span>
-      <div class="auth-inline-field">
-        <input v-model="code" name="code" :placeholder="auth.text.verificationCodePlaceholder" />
+      <div class="auth-inline-field auth-mfa-code-field">
+        <input
+          v-model="code"
+          name="code"
+          inputmode="numeric"
+          maxlength="6"
+          class="auth-mfa-code-input"
+          :placeholder="auth.text.verificationCodePlaceholder"
+        />
         <button
           v-if="auth.showsChallengeButton"
           type="button"
-          class="auth-button auth-button-secondary auth-inline-action"
+          class="auth-button auth-button-secondary auth-inline-action auth-mfa-code-action"
           @click="auth.sendVerificationChallenge"
         >
           {{ auth.text.sendVerificationCode }}
@@ -66,3 +73,27 @@ function submitMFA() {
   void auth.verifyMFA(code.value)
 }
 </script>
+
+<style scoped>
+.auth-mfa-code-field {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.auth-mfa-code-input {
+  width: 100%;
+  max-width: 10rem;
+}
+
+.auth-mfa-code-action {
+  min-width: 8.5rem;
+  white-space: nowrap;
+}
+
+@media (min-width: 640px) {
+  .auth-mfa-code-field {
+    grid-template-columns: minmax(0, 10rem) minmax(8.5rem, max-content);
+    align-items: center;
+  }
+}
+</style>

@@ -19,13 +19,25 @@ func NewAuthRouter(oidc *authhandler.OIDCHandler, staticAssetHandler func(string
 		}
 		http.Redirect(w, r, target, http.StatusMovedPermanently)
 	})
+	mux.HandleFunc("GET /auth/forgot-password/", func(w http.ResponseWriter, r *http.Request) {
+		target := "/auth/forgot-password"
+		if rawQuery := strings.TrimSpace(r.URL.RawQuery); rawQuery != "" {
+			target += "?" + rawQuery
+		}
+		http.Redirect(w, r, target, http.StatusMovedPermanently)
+	})
 	mux.HandleFunc("GET /.well-known/openid-configuration", oidc.Metadata)
 	mux.HandleFunc("GET /auth/keys", oidc.JWKS)
 	mux.HandleFunc("GET /auth/authorize", oidc.Authorize)
+	mux.HandleFunc("GET /auth/forgot-password", oidc.ForgotPassword)
 	mux.HandleFunc("GET /auth/device", oidc.DeviceVerificationRedirect)
 	mux.HandleFunc("POST /auth/device/code", oidc.DeviceAuthorization)
 	mux.HandleFunc("POST /auth/api/context/query", oidc.QueryAuthorizeContextAPI)
 	mux.HandleFunc("POST /auth/api/session/create", oidc.CreateAuthorizeSessionAPI)
+	mux.HandleFunc("POST /auth/api/password/reset/bootstrap", oidc.BootstrapPasswordResetAPI)
+	mux.HandleFunc("POST /auth/api/password/reset/options", oidc.QueryPasswordResetOptionsAPI)
+	mux.HandleFunc("POST /auth/api/password/reset/start", oidc.StartPasswordResetAPI)
+	mux.HandleFunc("POST /auth/api/password/reset/finish", oidc.FinishPasswordResetAPI)
 	mux.HandleFunc("POST /auth/api/device/complete", oidc.CompleteDeviceAuthorizationAPI)
 	mux.HandleFunc("POST /auth/api/session/confirm", oidc.ConfirmAuthorizeSessionAPI)
 	mux.HandleFunc("POST /auth/api/session/verify_mfa", oidc.VerifyAuthorizeMFAAPI)

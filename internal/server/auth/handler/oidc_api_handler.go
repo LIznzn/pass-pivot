@@ -67,6 +67,19 @@ type authorizeContextResponse struct {
 	Captcha             *authservice.AuthorizeCaptchaBootstrap `json:"captcha,omitempty"`
 }
 
+type forgotPasswordCaptchaResponse struct {
+	Provider       string `json:"provider"`
+	ClientKey      string `json:"client_key,omitempty"`
+	ImageDataURL   string `json:"imageDataUrl,omitempty"`
+	ChallengeToken string `json:"challengeToken,omitempty"`
+}
+
+type forgotPasswordBootstrapResponse struct {
+	ClientID string                         `json:"clientId,omitempty"`
+	Target   *coreservice.LoginTarget       `json:"target,omitempty"`
+	Captcha  *forgotPasswordCaptchaResponse `json:"captcha,omitempty"`
+}
+
 type authorizeCurrentUser struct {
 	ID          string `json:"id"`
 	Username    string `json:"username"`
@@ -271,6 +284,141 @@ func (h *OIDCHandler) CreateAuthorizeSessionAPI(w http.ResponseWriter, r *http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = w.Write(body)
+}
+
+func (h *OIDCHandler) StartPasswordResetAPI(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		OrganizationID        string `json:"organizationId"`
+		ClientID              string `json:"clientId"`
+		Identifier            string `json:"identifier"`
+		Method                string `json:"method"`
+		Contact               string `json:"contact"`
+		CaptchaProvider       string `json:"captchaProvider"`
+		CaptchaToken          string `json:"captchaToken"`
+		CaptchaChallengeToken string `json:"captchaChallengeToken"`
+		CaptchaAnswer         string `json:"captchaAnswer"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
+		return
+	}
+	captchaToken := strings.TrimSpace(payload.CaptchaToken)
+	if strings.TrimSpace(payload.CaptchaProvider) == "default" {
+		captchaToken = coreservice.BuildDefaultCaptchaResponseToken(strings.TrimSpace(payload.CaptchaChallengeToken), strings.TrimSpace(payload.CaptchaAnswer))
+	}
+	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/password/reset/start", map[string]any{
+		"organizationId":  strings.TrimSpace(payload.OrganizationID),
+		"clientId":        strings.TrimSpace(payload.ClientID),
+		"identifier":      strings.TrimSpace(payload.Identifier),
+		"method":          strings.TrimSpace(payload.Method),
+		"contact":         strings.TrimSpace(payload.Contact),
+		"captchaProvider": strings.TrimSpace(payload.CaptchaProvider),
+		"captchaToken":    captchaToken,
+	})
+	if err != nil {
+		authnapi.Write(w, http.StatusBadRequest, "", err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(body)
+}
+
+func (h *OIDCHandler) QueryPasswordResetOptionsAPI(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		OrganizationID string `json:"organizationId"`
+		ClientID       string `json:"clientId"`
+		Identifier     string `json:"identifier"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
+		return
+	}
+	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/password/reset/options", map[string]any{
+		"organizationId": strings.TrimSpace(payload.OrganizationID),
+		"clientId":       strings.TrimSpace(payload.ClientID),
+		"identifier":     strings.TrimSpace(payload.Identifier),
+	})
+	if err != nil {
+		authnapi.Write(w, http.StatusBadRequest, "", err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(body)
+}
+
+func (h *OIDCHandler) FinishPasswordResetAPI(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		OrganizationID string `json:"organizationId"`
+		ClientID       string `json:"clientId"`
+		Identifier     string `json:"identifier"`
+		Code           string `json:"code"`
+		NewPassword    string `json:"newPassword"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
+		return
+	}
+	body, err := h.callAuthnAPI(w, r, "/api/authn/v1/password/reset/finish", map[string]any{
+		"organizationId": strings.TrimSpace(payload.OrganizationID),
+		"clientId":       strings.TrimSpace(payload.ClientID),
+		"identifier":     strings.TrimSpace(payload.Identifier),
+		"code":           strings.TrimSpace(payload.Code),
+		"newPassword":    payload.NewPassword,
+	})
+	if err != nil {
+		authnapi.Write(w, http.StatusBadRequest, "", err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(body)
+}
+
+func (h *OIDCHandler) BootstrapPasswordResetAPI(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		ClientID string `json:"clientId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
+		return
+	}
+	clientID := strings.TrimSpace(payload.ClientID)
+	if clientID == "" {
+		authnapi.WriteKnown(w, errors.New("password reset scope is not available"))
+		return
+	}
+	target, err := h.platform.GetLoginTarget(r.Context(), clientID)
+	if err != nil {
+		authnapi.WriteKnown(w, err)
+		return
+	}
+	var captcha *forgotPasswordCaptchaResponse
+	bootstrap, err := h.oidc.BuildAuthorizeCaptchaBootstrap(r.Context(), target.OrganizationID)
+	if err != nil {
+		authnapi.WriteKnown(w, err)
+		return
+	}
+	if bootstrap != nil {
+		captcha = &forgotPasswordCaptchaResponse{
+			Provider:  bootstrap.Provider,
+			ClientKey: bootstrap.ClientKey,
+		}
+		if strings.TrimSpace(bootstrap.Provider) == "default" {
+			challenge, err := h.oidc.BuildAuthorizeCaptchaChallengeBootstrap(r.Context(), target.OrganizationID)
+			if err != nil {
+				authnapi.WriteKnown(w, err)
+				return
+			}
+			if challenge != nil {
+				captcha.ImageDataURL = challenge.ImageDataURL
+				captcha.ChallengeToken = challenge.ChallengeToken
+			}
+		}
+	}
+	sharedweb.JSON(w, http.StatusOK, forgotPasswordBootstrapResponse{
+		ClientID: clientID,
+		Target:   target,
+		Captcha:  captcha,
+	})
 }
 
 func (h *OIDCHandler) CompleteDeviceAuthorizationAPI(w http.ResponseWriter, r *http.Request) {

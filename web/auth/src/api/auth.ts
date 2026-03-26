@@ -8,6 +8,22 @@ export function createAuthorizeSession(payload: any) {
   return requestPost<any>('/auth/api/session/create', payload)
 }
 
+export function bootstrapPasswordReset(payload: any) {
+  return requestPost<any>('/auth/api/password/reset/bootstrap', payload)
+}
+
+export function queryPasswordResetOptions(payload: any) {
+  return requestPost<any>('/auth/api/password/reset/options', payload)
+}
+
+export function startPasswordReset(payload: any) {
+  return requestPost<any>('/auth/api/password/reset/start', payload)
+}
+
+export function finishPasswordReset(payload: any) {
+  return requestPost<any>('/auth/api/password/reset/finish', payload)
+}
+
 export function completeDeviceAuthorization(payload: any) {
   return requestPost<any>('/auth/api/device/complete', payload)
 }

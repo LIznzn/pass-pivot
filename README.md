@@ -88,6 +88,12 @@ PPVT 是一个控制面导向的 IAM 平台实现。
 - portal: 复制 [`web/portal/.env.example`](web/portal/.env.example) 为本地 `web/portal/.env`
 - console: 复制 [`web/console/.env.example`](web/console/.env.example) 为本地 `web/console/.env`
 
+auth 前端构建与发布准备：
+
+- `cd web && npm run build:auth`：只构建 `web/auth/dist`
+- `cd web && npm run deploy:auth`：构建 `web/auth/dist`，并同步到 `internal/server/auth/ui/dist`
+- `ppvt-auth` 编译时会从 `internal/server/auth/ui/dist` 读取并 embed auth UI 产物
+
 ## 启动方式
 
 安装前端依赖：
@@ -95,6 +101,13 @@ PPVT 是一个控制面导向的 IAM 平台实现。
 ```bash
 cd web
 npm install
+```
+
+准备 auth UI embed 产物：
+
+```bash
+cd web
+npm run deploy:auth
 ```
 
 数据库初始化：
@@ -187,7 +200,8 @@ npm run dev:console
 - 本地 `web/console/.env` 中的 `PPVT_CONSOLE_APPLICATION_ID` 需要与 `console-web` 的 `Application ID` 对齐
 - `portal` 是用户中心站点，不再作为默认登录页
 - `/auth/authorize` 直接返回登录、二次确认和 MFA 交互页
-- `/auth/authorize` 当前直接返回 `web/auth/dist/index.html`，并将静态资源路径重写到 `/auth/assets/*`
+- `/auth/authorize` 当前返回编译后的 auth UI 壳页面，并将静态资源路径重写到 `/auth/assets/*`
+- auth UI 发布链路为：`web/auth/dist` -> `internal/server/auth/ui/dist` -> `ppvt-auth` embed
 - discovery 导入链路当前已从运行代码中移除，仅保留设计草案
 - 当前访问控制系统采用 `Role + Policy + Policy Check` 模型
 

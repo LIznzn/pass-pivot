@@ -84,7 +84,7 @@ watch(
   () => auth.locale,
   (value) => {
     document.documentElement.lang = value
-    document.title = `Pass Pivot · ${auth.stageTitle}`
+    document.title = auth.stageTitle
   },
   { immediate: true }
 )
@@ -92,7 +92,7 @@ watch(
 watch(
   () => auth.stageTitle,
   (value) => {
-    document.title = `Pass Pivot · ${value}`
+    document.title = value
   },
   { immediate: true }
 )
@@ -303,6 +303,28 @@ body {
 .auth-field span {
   font-size: 0.87rem;
   font-weight: 600;
+}
+
+.auth-field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.auth-inline-link {
+  border: none;
+  background: transparent;
+  color: #0969da;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 500;
+  padding: 0;
+}
+
+.auth-inline-link:hover {
+  color: #0550ae;
 }
 
 .auth-field input,

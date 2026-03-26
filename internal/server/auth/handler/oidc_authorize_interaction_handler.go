@@ -6,12 +6,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
 	authservice "pass-pivot/internal/server/auth/service"
+	authui "pass-pivot/internal/server/auth/ui"
 	coreservice "pass-pivot/internal/server/core/service"
 	sharedauthn "pass-pivot/internal/server/shared/authn"
 	sharedhandler "pass-pivot/internal/server/shared/handler"
@@ -471,7 +470,7 @@ func buildAuthorizeMFAOptions(methods []string) []authorizeUIMethodOption {
 }
 
 func buildAuthorizeAppShell() ([]byte, error) {
-	document, err := os.ReadFile(filepath.Join("web", "auth", "dist", "index.html"))
+	document, err := authui.ReadIndex()
 	if err != nil {
 		return nil, err
 	}

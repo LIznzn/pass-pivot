@@ -8,10 +8,12 @@ import {
   completeDeviceAuthorization,
   confirmAuthorizeSession,
   createAuthorizeSession,
+  finishPasswordReset,
   finishSessionU2F,
   finishWebAuthnLogin,
   queryAuthContext,
   refreshCaptcha as requestRefreshCaptcha,
+  startPasswordReset,
   sendMFAChallenge,
   verifyAuthorizeMFA
 } from '@/api/auth'
@@ -383,6 +385,61 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function requestPasswordReset(identifier: string, captchaAnswer: string) {
+    const current = requireContext()
+    if (!current.target) {
+      throw new Error('missing auth target')
+    }
+    try {
+      await startPasswordReset({
+        organizationId: current.target.organizationId,
+        identifier,
+        captchaProvider: current.captcha?.provider || '',
+        captchaToken: current.captcha?.provider === 'default' ? '' : captchaToken.value,
+        captchaChallengeToken: captchaChallengeToken.value,
+        captchaAnswer
+      })
+      setMessage(text.value.passwordRecoverySent, 'success', {
+        source: 'auth/store.requestPasswordReset',
+        trigger: 'requestPasswordReset'
+      })
+      await reloadContext()
+    } catch (error) {
+      setMessage(formatError(error), 'danger', {
+        source: 'auth/store.requestPasswordReset',
+        trigger: 'requestPasswordReset',
+        error
+      })
+      await reloadContext()
+    }
+  }
+
+  async function completePasswordReset(identifier: string, code: string, newPassword: string) {
+    const current = requireContext()
+    if (!current.target) {
+      throw new Error('missing auth target')
+    }
+    try {
+      await finishPasswordReset({
+        organizationId: current.target.organizationId,
+        identifier,
+        code,
+        newPassword
+      })
+      setMessage(text.value.passwordRecoveryUpdated, 'success', {
+        source: 'auth/store.completePasswordReset',
+        trigger: 'completePasswordReset'
+      })
+      await reloadContext()
+    } catch (error) {
+      setMessage(formatError(error), 'danger', {
+        source: 'auth/store.completePasswordReset',
+        trigger: 'completePasswordReset',
+        error
+      })
+    }
+  }
+
   async function switchAccount() {
     try {
       setChallengeFeedback('')
@@ -716,6 +773,8 @@ export const useAuthStore = defineStore('auth', () => {
     confirmDeviceAuthorizationReview,
     cancelDeviceAuthorizationReview,
     createSession,
+    requestPasswordReset,
+    completePasswordReset,
     switchAccount,
     confirmSession,
     verifyMFA,

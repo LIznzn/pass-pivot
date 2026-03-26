@@ -54,8 +54,8 @@
       <div class="record-meta mb-3">当前有效备用验证码：{{ recoveryCodeList.length ? `共 ${recoveryCodeList.length} 个` : '暂无' }}</div>
       <div v-if="recoveryCodeList.length" class="detail-card mb-3">
         <div class="record-meta mb-2">以下为当前有效的备用验证码，请妥善保管。</div>
-        <div v-for="code in recoveryCodeList" :key="code" class="record-row">
-          <code>{{ code }}</code>
+        <div class="console-code-grid">
+          <code v-for="code in recoveryCodeList" :key="code" class="console-code-item">{{ code }}</code>
         </div>
       </div>
     </template>
@@ -119,3 +119,21 @@ const emit = defineEmits<{
   submit: []
 }>()
 </script>
+
+<style scoped>
+.console-code-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.75rem;
+}
+
+.console-code-item {
+  display: block;
+  padding: 0.65rem 0.8rem;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 0.5rem;
+  color: #d63384;
+  word-break: break-all;
+}
+</style>

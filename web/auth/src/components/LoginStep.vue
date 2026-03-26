@@ -11,7 +11,12 @@
     </label>
 
     <label class="auth-field">
-      <span>{{ auth.text.password }}</span>
+      <span class="auth-field-label-row">
+        <span>{{ auth.text.password }}</span>
+        <button type="button" class="auth-inline-link" @click="goToForgotPassword">
+          {{ auth.text.forgotPassword }}
+        </button>
+      </span>
       <input
         v-model="secret"
         name="secret"
@@ -31,8 +36,22 @@
       @update:answer="captchaAnswer = $event"
     />
 
-    <CloudflareCaptcha v-else-if="auth.context.captcha?.provider === 'cloudflare'" :text="auth.text" />
-    <GoogleCaptcha v-else-if="auth.context.captcha?.provider === 'google'" :text="auth.text" />
+    <CloudflareCaptcha
+      v-else-if="auth.context.captcha?.provider === 'cloudflare'"
+      :text="auth.text"
+      :client-key="auth.context.captcha.client_key || ''"
+      :reset-key="auth.stage"
+      @update:token="auth.setCaptchaToken"
+      @error="handleCaptchaError"
+    />
+    <GoogleCaptcha
+      v-else-if="auth.context.captcha?.provider === 'google'"
+      :text="auth.text"
+      :client-key="auth.context.captcha.client_key || ''"
+      :reset-key="auth.stage"
+      @update:token="auth.setCaptchaToken"
+      @error="handleCaptchaError"
+    />
 
     <button type="submit" class="auth-button auth-button-primary auth-button-block">
       {{ auth.text.signIn }}
@@ -63,6 +82,7 @@
     >
       {{ auth.text.signInWithPasskey }}
     </button>
+
   </form>
 </template>
 
@@ -85,5 +105,22 @@ if (auth.context?.captcha?.provider === 'default' && !auth.captchaImageDataUrl) 
 
 function submitLogin() {
   void auth.createSession(identifier.value, secret.value, captchaAnswer.value)
+}
+
+function goToForgotPassword() {
+  const url = new URL('/auth/forgot-password', window.location.origin)
+  const clientId = new URLSearchParams(window.location.search).get('client_id')
+  if (clientId) {
+    url.searchParams.set('clientId', clientId)
+  }
+  window.open(url.toString(), '_blank', 'noopener,noreferrer')
+}
+
+function handleCaptchaError(error: Error) {
+  auth.setMessage(auth.formatRequestError(error), 'danger', {
+    source: 'auth/LoginStep.captcha',
+    trigger: 'captcha.render',
+    error
+  })
 }
 </script>

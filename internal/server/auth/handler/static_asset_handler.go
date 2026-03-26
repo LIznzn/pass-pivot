@@ -1,26 +1,31 @@
 package handler
 
 import (
+	"bytes"
+	"mime"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
+	"time"
+
+	authui "pass-pivot/internal/server/auth/ui"
 )
 
 func StaticAssetHandler(filename string) http.HandlerFunc {
-	distDir := filepath.Join("web", "auth", "dist")
-	assetPath := filepath.Join(distDir, filename)
 	return func(w http.ResponseWriter, r *http.Request) {
-		if _, err := os.Stat(assetPath); err != nil {
-			http.Error(w, "auth ui assets are missing, run `cd web && npm run build:auth`", http.StatusServiceUnavailable)
+		content, err := authui.ReadAsset(filename)
+		if err != nil {
+			http.NotFound(w, r)
 			return
 		}
-		http.ServeFile(w, r, assetPath)
+		if contentType := mime.TypeByExtension(filepath.Ext(filename)); contentType != "" {
+			w.Header().Set("Content-Type", contentType)
+		}
+		http.ServeContent(w, r, filepath.Base(filename), staticAssetModTime, bytes.NewReader(content))
 	}
 }
 
 func StaticAssetPrefixHandler(routePrefix, distPrefix string) http.HandlerFunc {
-	distDir := filepath.Join("web", "auth", "dist")
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := strings.TrimPrefix(r.URL.Path, routePrefix)
 		name = strings.TrimPrefix(name, "/")
@@ -28,11 +33,24 @@ func StaticAssetPrefixHandler(routePrefix, distPrefix string) http.HandlerFunc {
 			http.NotFound(w, r)
 			return
 		}
-		assetPath := filepath.Join(distDir, distPrefix, name)
-		if _, err := os.Stat(assetPath); err != nil {
-			http.Error(w, "auth ui assets are missing, run `cd web && npm run build:auth`", http.StatusServiceUnavailable)
+		assetName := pathJoin(distPrefix, name)
+		content, err := authui.ReadAsset(assetName)
+		if err != nil {
+			http.NotFound(w, r)
 			return
 		}
-		http.ServeFile(w, r, assetPath)
+		if contentType := mime.TypeByExtension(filepath.Ext(assetName)); contentType != "" {
+			w.Header().Set("Content-Type", contentType)
+		}
+		http.ServeContent(w, r, filepath.Base(assetName), staticAssetModTime, bytes.NewReader(content))
 	}
+}
+
+var staticAssetModTime time.Time
+
+func pathJoin(prefix, name string) string {
+	if prefix == "" {
+		return name
+	}
+	return strings.TrimPrefix(prefix, "/") + "/" + strings.TrimPrefix(name, "/")
 }

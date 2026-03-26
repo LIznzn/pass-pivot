@@ -74,6 +74,64 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	sharedweb.JSON(w, http.StatusOK, result)
 }
 
+func (h *Handler) StartPasswordReset(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		OrganizationID  string `json:"organizationId"`
+		ClientID        string `json:"clientId"`
+		Identifier      string `json:"identifier"`
+		Method          string `json:"method"`
+		Contact         string `json:"contact"`
+		CaptchaProvider string `json:"captchaProvider"`
+		CaptchaToken    string `json:"captchaToken"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
+		return
+	}
+	if err := h.service.StartPasswordReset(r.Context(), payload.OrganizationID, payload.ClientID, payload.Identifier, payload.Method, payload.Contact, payload.CaptchaProvider, payload.CaptchaToken); err != nil {
+		authnapi.WriteKnown(w, err)
+		return
+	}
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"accepted": true})
+}
+
+func (h *Handler) QueryPasswordResetOptions(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		OrganizationID string `json:"organizationId"`
+		ClientID       string `json:"clientId"`
+		Identifier     string `json:"identifier"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
+		return
+	}
+	result, err := h.service.QueryPasswordResetOptions(r.Context(), payload.OrganizationID, payload.ClientID, payload.Identifier)
+	if err != nil {
+		authnapi.WriteKnown(w, err)
+		return
+	}
+	sharedweb.JSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) FinishPasswordReset(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		OrganizationID string `json:"organizationId"`
+		ClientID       string `json:"clientId"`
+		Identifier     string `json:"identifier"`
+		Code           string `json:"code"`
+		NewPassword    string `json:"newPassword"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		authnapi.Write(w, http.StatusBadRequest, authnapi.CodeInvalidJSONBody, "invalid JSON body")
+		return
+	}
+	if err := h.service.FinishPasswordReset(r.Context(), payload.OrganizationID, payload.ClientID, payload.Identifier, payload.Code, payload.NewPassword); err != nil {
+		authnapi.WriteKnown(w, err)
+		return
+	}
+	sharedweb.JSON(w, http.StatusOK, map[string]any{"updated": true})
+}
+
 func (h *Handler) Confirm(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		SessionID   string `json:"sessionId"`

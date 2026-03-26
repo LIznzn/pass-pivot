@@ -75,7 +75,97 @@ export const text = {
   identifierPlaceholder: { en: 'Enter your account', ja: 'アカウントを入力', chs: '请输入账号', cht: '請輸入帳號' },
   password: { en: 'Password', ja: 'パスワード', chs: '密码', cht: '密碼' },
   passwordPlaceholder: { en: 'Enter your password', ja: 'パスワードを入力', chs: '请输入密码', cht: '請輸入密碼' },
+  newPassword: { en: 'New password', ja: '新しいパスワード', chs: '新密码', cht: '新密碼' },
+  newPasswordPlaceholder: { en: 'Enter your new password', ja: '新しいパスワードを入力', chs: '请输入新密码', cht: '請輸入新密碼' },
   signIn: { en: 'Sign in', ja: 'サインイン', chs: '登录', cht: '登入' },
+  forgotPassword: { en: 'Forgot password?', ja: 'パスワードをお忘れですか？', chs: '忘记密码？', cht: '忘記密碼？' },
+  passwordRecoveryTitle: { en: 'Forgot password', ja: 'パスワードをお忘れですか', chs: '忘记密码', cht: '忘記密碼' },
+  passwordRecoverySubtitle: {
+    en: 'Reset your PassPivot password',
+    ja: 'PassPivot のパスワードをリセット',
+    chs: '重置您在PassPivot的密码',
+    cht: '重設您在PassPivot的密碼'
+  },
+  passwordRecoveryTitleWithOrganization: {
+    en: 'Reset your password for {organizationName}',
+    ja: '{organizationName} のパスワードをリセット',
+    chs: '重置您在 {organizationName} 的密码',
+    cht: '重設您在 {organizationName} 的密碼'
+  },
+  passwordRecoveryHint: { en: 'Enter your account. If the account exists, we will send a reset code to the registered email.', ja: 'アカウントを入力してください。該当アカウントが存在する場合、登録済みメールアドレスへリセットコードを送信します。', chs: '请输入账号。如果账号存在，我们会向绑定邮箱发送重置验证码。', cht: '請輸入帳號。如果帳號存在，我們會向綁定郵箱發送重設驗證碼。' },
+  passwordRecoverySendCode: { en: 'Send code', ja: 'コードを送信', chs: '发送验证码', cht: '發送驗證碼' },
+  passwordRecoveryCode: { en: 'Verification code', ja: '認証コード', chs: '验证码', cht: '驗證碼' },
+  passwordRecoveryCodePlaceholder: { en: 'Enter the verification code', ja: '認証コードを入力', chs: '请输入验证码', cht: '請輸入驗證碼' },
+  passwordRecoveryComplete: { en: 'Submit', ja: '送信', chs: '提交', cht: '提交' },
+  passwordRecoveryNextStep: { en: 'Continue', ja: '続行', chs: '继续', cht: '繼續' },
+  passwordRecoveryPrevStep: { en: 'Back', ja: '戻る', chs: '返回', cht: '返回' },
+  passwordRecoveryContact: { en: 'Email or phone', ja: 'メールまたは電話番号', chs: '邮箱或手机号', cht: '郵箱或手機號' },
+  passwordRecoveryContactPlaceholder: {
+    en: 'Enter your email or phone number',
+    ja: 'メールアドレスまたは電話番号を入力',
+    chs: '请输入邮箱或手机号',
+    cht: '請輸入郵箱或手機號'
+  },
+  passwordRecoveryEmailPrompt: {
+    en: 'Enter full email {maskedTarget}',
+    ja: '完全なメールアドレスを入力 {maskedTarget}',
+    chs: '请输入完整邮箱 {maskedTarget}',
+    cht: '請輸入完整郵箱 {maskedTarget}'
+  },
+  passwordRecoverySmsPrompt: {
+    en: 'Enter last 4 digits {maskedTarget}',
+    ja: '電話番号の下4桁を入力 {maskedTarget}',
+    chs: '请输入手机号后四位 {maskedTarget}',
+    cht: '請輸入手機號後四位 {maskedTarget}'
+  },
+  passwordRecoveryEmailPlaceholder: {
+    en: 'Enter full email',
+    ja: '完全なメールアドレスを入力',
+    chs: '请输入完整邮箱',
+    cht: '請輸入完整郵箱'
+  },
+  passwordRecoverySmsPlaceholder: {
+    en: 'Enter last 4 digits',
+    ja: '下4桁を入力',
+    chs: '请输入手机号后四位',
+    cht: '請輸入手機號後四位'
+  },
+  passwordRecoveryEmailSentIfMatched: {
+    en: 'If the information is correct, the verification code will be sent to your email.',
+    ja: '入力内容が正しければ、認証コードをメールアドレスに送信します。',
+    chs: '如果信息填写正确，验证码会发送到您的邮箱中。',
+    cht: '如果資訊填寫正確，驗證碼會發送到您的郵箱中。'
+  },
+  passwordRecoverySmsSentIfMatched: {
+    en: 'If the information is correct, the verification code will be sent to your phone.',
+    ja: '入力内容が正しければ、認証コードを携帯電話に送信します。',
+    chs: '如果信息填写正确，验证码会发送到您的手机中。',
+    cht: '如果資訊填寫正確，驗證碼會發送到您的手機中。'
+  },
+  passwordRecoveryStepAccount: { en: 'Account', ja: 'アカウント', chs: '输入账号', cht: '輸入帳號' },
+  passwordRecoveryStepVerify: { en: 'Verification', ja: '認証', chs: '验证验证码', cht: '驗證驗證碼' },
+  passwordRecoveryStepPassword: { en: 'New password', ja: '新しいパスワード', chs: '设置新密码', cht: '設定新密碼' },
+  passwordRecoveryStepAccountHint: {
+    en: 'Enter your account. If the account exists, we will send a reset code to the registered email.',
+    ja: 'アカウントを入力してください。該当アカウントが存在する場合、登録済みメールアドレスへリセットコードを送信します。',
+    chs: '请输入账号。如果账号存在，我们会向绑定邮箱发送重置验证码。',
+    cht: '請輸入帳號。如果帳號存在，我們會向綁定郵箱發送重設驗證碼。'
+  },
+  passwordRecoveryStepVerifyHint: {
+    en: 'Complete your email or phone, send the verification code, then enter it here.',
+    ja: 'メールまたは電話番号を補完し、認証コードを送信してからここに入力してください。',
+    chs: '请补全邮箱或手机号，发送验证码后，再输入收到的验证码。',
+    cht: '請補全郵箱或手機號，發送驗證碼後，再輸入收到的驗證碼。'
+  },
+  passwordRecoveryStepPasswordHint: {
+    en: 'Set a new password for this account.',
+    ja: 'このアカウントの新しいパスワードを設定してください。',
+    chs: '请为当前账号设置新的密码。',
+    cht: '請為目前帳號設定新的密碼。'
+  },
+  passwordRecoveryBackToLogin: { en: 'Back to sign in', ja: 'サインインへ戻る', chs: '返回登录', cht: '返回登入' },
+  passwordRecoverySent: { en: 'If the account exists, a reset code has been sent to the registered email.', ja: '該当アカウントが存在する場合、登録メールアドレスへリセットコードを送信しました。', chs: '如果账号存在，重置验证码已发送到绑定邮箱。', cht: '如果帳號存在，重設驗證碼已發送到綁定郵箱。' },
+  passwordRecoveryUpdated: { en: 'Password updated. Sign in with your new password.', ja: 'パスワードを更新しました。新しいパスワードでサインインしてください。', chs: '密码已更新，请使用新密码登录。', cht: '密碼已更新，請使用新密碼登入。' },
   or: { en: 'or', ja: 'または', chs: '或', cht: '或' },
   continueWithProvider: { en: 'Continue with {providerName}', ja: '{providerName} で続行', chs: '使用 {providerName} 继续', cht: '使用 {providerName} 繼續' },
   signInWithPasskey: { en: 'Sign in with a passkey', ja: 'パスキーでサインイン', chs: '使用通行密钥登录', cht: '使用通行密鑰登入' },
@@ -241,6 +331,90 @@ export const errorText = {
     ja: '画像認証の検証に失敗しました。',
     chs: '验证码校验失败。',
     cht: '驗證碼校驗失敗。'
+  },
+  'authn.identifier_required': {
+    en: 'Enter your account.',
+    ja: 'アカウントを入力してください。',
+    chs: '请输入账号。',
+    cht: '請輸入帳號。'
+  },
+  'authn.project_disabled': {
+    en: 'The project is disabled.',
+    ja: 'このプロジェクトは無効になっています。',
+    chs: '当前项目已被禁用。',
+    cht: '目前專案已被停用。'
+  },
+  'authn.password_reset_unavailable': {
+    en: 'Password recovery is not configured for this organization.',
+    ja: 'この組織ではパスワード復旧が設定されていません。',
+    chs: '当前组织尚未配置找回密码邮件通道。',
+    cht: '目前組織尚未配置找回密碼郵件通道。'
+  },
+  'authn.password_reset_scope_required': {
+    en: 'Invalid parameters.',
+    ja: 'パラメーターエラーです。',
+    chs: '参数错误',
+    cht: '參數錯誤'
+  },
+  'authn.password_reset_method_required': {
+    en: 'Choose a verification method.',
+    ja: '認証方法を選択してください。',
+    chs: '请选择验证方式。',
+    cht: '請選擇驗證方式。'
+  },
+  'authn.password_reset_contact_required': {
+    en: 'Complete your email or phone number.',
+    ja: 'メールアドレスまたは電話番号を補完してください。',
+    chs: '请补全邮箱或手机号。',
+    cht: '請補全郵箱或手機號。'
+  },
+  'authn.password_reset_contact_invalid': {
+    en: 'The email or phone number does not match this account.',
+    ja: 'メールアドレスまたは電話番号がこのアカウントと一致しません。',
+    chs: '补全的邮箱或手机号与该账号不匹配。',
+    cht: '補全的郵箱或手機號與該帳號不匹配。'
+  },
+  'authn.password_reset_target_unavailable': {
+    en: 'No available verification channel was found for this account.',
+    ja: 'このアカウントで利用できる認証チャネルが見つかりませんでした。',
+    chs: '当前账号没有可用的验证渠道。',
+    cht: '目前帳號沒有可用的驗證渠道。'
+  },
+  'authn.password_reset_challenge_not_found': {
+    en: 'No active password reset challenge was found.',
+    ja: '有効なパスワードリセットチャレンジが見つかりませんでした。',
+    chs: '未找到有效的密码重置挑战。',
+    cht: '未找到有效的密碼重設挑戰。'
+  },
+  'authn.password_reset_challenge_expired': {
+    en: 'The password reset code has expired.',
+    ja: 'パスワードリセットコードの有効期限が切れました。',
+    chs: '密码重置验证码已过期。',
+    cht: '密碼重設驗證碼已過期。'
+  },
+  'authn.password_reset_attempts_exceeded': {
+    en: 'Too many invalid reset attempts. Request a new code.',
+    ja: '無効な試行回数が上限に達しました。新しいコードを再取得してください。',
+    chs: '错误次数过多，请重新获取验证码。',
+    cht: '錯誤次數過多，請重新獲取驗證碼。'
+  },
+  'authn.password_reset_code_required': {
+    en: 'Enter the password reset code.',
+    ja: 'パスワードリセットコードを入力してください。',
+    chs: '请输入密码重置验证码。',
+    cht: '請輸入密碼重設驗證碼。'
+  },
+  'authn.password_reset_code_invalid': {
+    en: 'The password reset code is invalid.',
+    ja: 'パスワードリセットコードが正しくありません。',
+    chs: '密码重置验证码不正确。',
+    cht: '密碼重設驗證碼不正確。'
+  },
+  'authn.password_policy_invalid': {
+    en: 'The new password does not meet the password policy.',
+    ja: '新しいパスワードがポリシー要件を満たしていません。',
+    chs: '新密码不符合密码策略要求。',
+    cht: '新密碼不符合密碼策略要求。'
   },
   'authn.webauthn_challenge_not_found': {
     en: 'The passkey challenge was not found.',

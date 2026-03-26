@@ -6,7 +6,8 @@
   "scripts": {
     "dev:portal": "vite --config portal/vite.config.ts",
     "dev:console": "vite --config console/vite.config.ts",
-    "build:auth": "vue-tsc -p auth/tsconfig.json && vite build --config auth/vite.config.ts",
+    "build:auth": "vue-tsc -p auth/tsconfig.json && vite build --config auth/vite.config.ts && npm run sync:auth:embed",
+    "sync:auth:embed": "node ./scripts/sync-auth-embed.mjs",
     "build:portal": "vue-tsc -p portal/tsconfig.json && vite build --config portal/vite.config.ts",
     "build:console": "vue-tsc -p console/tsconfig.json && vite build --config console/vite.config.ts",
     "build": "npm run build:auth && npm run build:portal && npm run build:console"
