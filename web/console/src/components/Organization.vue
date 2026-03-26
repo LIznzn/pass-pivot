@@ -97,6 +97,67 @@
             </div>
           </div>
         </div>
+
+        <div id="organization-mail" class="info-card">
+          <div class="section-title">邮箱配置</div>
+          <BForm @submit.prevent="saveOrganizationMailSettings">
+            <div class="row g-3">
+              <div class="col-md-4">
+                <label class="form-label">邮件服务类型</label>
+                <BFormSelect v-model="organizationMailSettingForm.provider" :options="mailProviderOptions" />
+              </div>
+              <div v-if="organizationMailSettingForm.provider !== 'disabled'" class="col-md-8">
+                <label class="form-label">发件人邮箱</label>
+                <BFormInput v-model="organizationMailSettingForm.from" type="email" placeholder="例如 noreply@example.com" />
+              </div>
+
+              <template v-if="organizationMailSettingForm.provider === 'smtp'">
+                <div class="col-md-4">
+                  <label class="form-label">SMTP 主机</label>
+                  <BFormInput v-model="organizationMailSettingForm.smtpHost" />
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label">SMTP 端口</label>
+                  <BFormInput v-model="organizationMailSettingForm.smtpPort" type="number" min="1" />
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label">SMTP 用户名</label>
+                  <BFormInput v-model="organizationMailSettingForm.smtpUser" />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">SMTP 密码</label>
+                  <BFormInput v-model="organizationMailSettingForm.smtpPass" type="password" />
+                </div>
+              </template>
+
+              <template v-if="organizationMailSettingForm.provider === 'mailgun'">
+                <div class="col-md-4">
+                  <label class="form-label">Mailgun Domain</label>
+                  <BFormInput v-model="organizationMailSettingForm.mailgunDomain" placeholder="mg.example.com" />
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label">Mailgun API Key</label>
+                  <BFormInput v-model="organizationMailSettingForm.mailgunApiKey" type="password" />
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label">Mailgun API Base</label>
+                  <BFormInput v-model="organizationMailSettingForm.mailgunApiBase" placeholder="https://api.mailgun.net" />
+                </div>
+              </template>
+
+              <template v-if="organizationMailSettingForm.provider === 'sendgrid'">
+                <div class="col-md-6">
+                  <label class="form-label">SendGrid API Key</label>
+                  <BFormInput v-model="organizationMailSettingForm.sendgridApiKey" type="password" />
+                </div>
+              </template>
+            </div>
+            <div class="record-meta mt-3">支持 `mailgun`、`sendgrid`、`SMTP`。邮箱验证码和密码重置都会使用这里的组织级发信配置。</div>
+            <div class="d-flex justify-content-end mt-3">
+              <BButton type="submit" variant="primary">保存邮箱配置</BButton>
+            </div>
+          </BForm>
+        </div>
       </div>
       <RightSide :items="moduleRecentChanges" />
     </div>
@@ -105,7 +166,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch, watchEffect } from 'vue'
-import { BButton, BForm, BFormInput, useToast } from 'bootstrap-vue-next'
+import { BButton, BForm, BFormInput, BFormSelect, useToast } from 'bootstrap-vue-next'
 import RightSide from '@/layout/RightSide.vue'
 import { useAuditStore } from '@/stores/audit'
 import { useConsoleStore } from '@/stores/console'
@@ -156,10 +217,29 @@ const organizationBasicSettingForm = reactive({
   name: '',
   description: ''
 })
+const organizationMailSettingForm = reactive({
+  provider: 'disabled' as 'disabled' | 'smtp' | 'mailgun' | 'sendgrid',
+  from: '',
+  smtpHost: '',
+  smtpPort: 587,
+  smtpUser: '',
+  smtpPass: '',
+  mailgunDomain: '',
+  mailgunApiKey: '',
+  mailgunApiBase: '',
+  sendgridApiKey: ''
+})
+const mailProviderOptions = [
+  { value: 'disabled', text: '不开启' },
+  { value: 'smtp', text: 'SMTP' },
+  { value: 'mailgun', text: 'Mailgun' },
+  { value: 'sendgrid', text: 'SendGrid' }
+]
 
 const currentModulePanels = [
   { id: 'organization-basic', label: '基本设置' },
-  { id: 'organization-metadata', label: '维护元信息' }
+  { id: 'organization-metadata', label: '维护元信息' },
+  { id: 'organization-mail', label: '邮箱配置' }
 ]
 
 const currentModuleMetrics = computed(() => {
@@ -181,6 +261,17 @@ watch(
   (organization) => {
     organizationBasicSettingForm.name = organization?.name || ''
     organizationBasicSettingForm.description = organization?.description || ''
+    const mail = parseOrganizationMailSettings(organization?.consoleSettings)
+    organizationMailSettingForm.provider = mail.provider
+    organizationMailSettingForm.from = mail.from
+    organizationMailSettingForm.smtpHost = mail.smtpHost
+    organizationMailSettingForm.smtpPort = mail.smtpPort
+    organizationMailSettingForm.smtpUser = mail.smtpUser
+    organizationMailSettingForm.smtpPass = mail.smtpPass
+    organizationMailSettingForm.mailgunDomain = mail.mailgunDomain
+    organizationMailSettingForm.mailgunApiKey = mail.mailgunApiKey
+    organizationMailSettingForm.mailgunApiBase = mail.mailgunApiBase
+    organizationMailSettingForm.sendgridApiKey = mail.sendgridApiKey
   },
   { immediate: true }
 )
@@ -225,6 +316,30 @@ function buildOrganizationConsoleSettings() {
   return rest
 }
 
+function parseOrganizationMailSettings(settings?: unknown) {
+  const parsed = settings && typeof settings === 'object' && !Array.isArray(settings)
+    ? settings as Record<string, any>
+    : {}
+  const mail = parsed.mail && typeof parsed.mail === 'object' && !Array.isArray(parsed.mail)
+    ? parsed.mail
+    : {}
+  const provider = ['disabled', 'smtp', 'mailgun', 'sendgrid'].includes(String(mail.provider || '').toLowerCase())
+    ? String(mail.provider).toLowerCase() as 'disabled' | 'smtp' | 'mailgun' | 'sendgrid'
+    : 'disabled'
+  return {
+    provider,
+    from: String(mail.from || ''),
+    smtpHost: String(mail.smtpHost || ''),
+    smtpPort: Number(mail.smtpPort || 587),
+    smtpUser: String(mail.smtpUser || ''),
+    smtpPass: String(mail.smtpPass || ''),
+    mailgunDomain: String(mail.mailgunDomain || ''),
+    mailgunApiKey: String(mail.mailgunApiKey || ''),
+    mailgunApiBase: String(mail.mailgunApiBase || ''),
+    sendgridApiKey: String(mail.sendgridApiKey || '')
+  }
+}
+
 async function saveOrganizationBasicSettings() {
   try {
     await organizationStore.saveOrganizationConsoleSettings(buildOrganizationConsoleSettings(), {
@@ -239,6 +354,36 @@ async function saveOrganizationBasicSettings() {
     showToast(String(error), 'danger', {
       source: 'console/Organization.saveOrganizationBasicSettings',
       trigger: 'saveOrganizationBasicSettings',
+      error
+    })
+  }
+}
+
+async function saveOrganizationMailSettings() {
+  try {
+    await organizationStore.saveOrganizationConsoleSettings({
+      ...buildOrganizationConsoleSettings(),
+      mail: {
+        provider: organizationMailSettingForm.provider,
+        from: organizationMailSettingForm.from.trim(),
+        smtpHost: organizationMailSettingForm.smtpHost.trim(),
+        smtpPort: Number(organizationMailSettingForm.smtpPort),
+        smtpUser: organizationMailSettingForm.smtpUser.trim(),
+        smtpPass: organizationMailSettingForm.smtpPass,
+        mailgunDomain: organizationMailSettingForm.mailgunDomain.trim(),
+        mailgunApiKey: organizationMailSettingForm.mailgunApiKey.trim(),
+        mailgunApiBase: organizationMailSettingForm.mailgunApiBase.trim(),
+        sendgridApiKey: organizationMailSettingForm.sendgridApiKey.trim()
+      }
+    })
+    showToast('邮箱配置已保存', 'success', {
+      source: 'console/Organization.saveOrganizationMailSettings',
+      trigger: 'saveOrganizationMailSettings'
+    })
+  } catch (error) {
+    showToast(String(error), 'danger', {
+      source: 'console/Organization.saveOrganizationMailSettings',
+      trigger: 'saveOrganizationMailSettings',
       error
     })
   }

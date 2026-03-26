@@ -60,9 +60,10 @@ func defaultOrganizationConsoleSettings() model.OrganizationSetting {
 			AllowSmsCode:       false,
 			AllowU2F:           true,
 			AllowRecoveryCode:  true,
-			EmailChannel: model.OrganizationEmailChannel{
-				Port: 587,
-			},
+		},
+		Mail: model.OrganizationMailSettings{
+			Provider: "disabled",
+			SMTPPort: 587,
 		},
 		Captcha: model.OrganizationCaptchaSettings{
 			Provider: "disabled",
@@ -75,14 +76,15 @@ func normalizeOrganizationConsoleSettings(input *model.OrganizationSetting) mode
 	defaults := settings
 	if input != nil {
 		settings = *input
-		if settings.MFAPolicy.EmailChannel.Port == 0 {
-			settings.MFAPolicy.EmailChannel.Port = 587
+		if settings.Mail.SMTPPort == 0 {
+			settings.Mail.SMTPPort = 587
 		}
 		if strings.TrimSpace(settings.Captcha.Provider) == "" {
 			settings.Captcha.Provider = defaults.Captcha.Provider
 		}
 	}
 	settings.Domains = normalizeOrganizationDomains(settings.Domains)
+	settings.Mail = normalizeOrganizationMailSettings(settings.Mail)
 	settings.Captcha = normalizeOrganizationCaptchaSettings(settings.Captcha)
 	return settings
 }
@@ -237,6 +239,87 @@ func normalizeOrganizationCaptchaSettings(input model.OrganizationCaptchaSetting
 	return settings
 }
 
+func normalizeOrganizationMailSettings(input model.OrganizationMailSettings) model.OrganizationMailSettings {
+	settings := model.OrganizationMailSettings{
+		Provider:       strings.ToLower(strings.TrimSpace(input.Provider)),
+		From:           strings.TrimSpace(input.From),
+		SMTPHost:       strings.TrimSpace(input.SMTPHost),
+		SMTPPort:       input.SMTPPort,
+		SMTPUser:       strings.TrimSpace(input.SMTPUser),
+		SMTPPass:       input.SMTPPass,
+		MailgunDomain:  strings.TrimSpace(input.MailgunDomain),
+		MailgunAPIKey:  strings.TrimSpace(input.MailgunAPIKey),
+		MailgunAPIBase: strings.TrimRight(strings.TrimSpace(input.MailgunAPIBase), "/"),
+		SendGridAPIKey: strings.TrimSpace(input.SendGridAPIKey),
+	}
+	if settings.Provider == "" {
+		settings.Provider = "disabled"
+	}
+	if settings.SMTPPort == 0 {
+		settings.SMTPPort = 587
+	}
+	if settings.Provider == "disabled" {
+		settings.From = ""
+		settings.SMTPHost = ""
+		settings.SMTPPort = 587
+		settings.SMTPUser = ""
+		settings.SMTPPass = ""
+		settings.MailgunDomain = ""
+		settings.MailgunAPIKey = ""
+		settings.MailgunAPIBase = ""
+		settings.SendGridAPIKey = ""
+	}
+	if settings.Provider == "mailgun" && settings.MailgunAPIBase == "" {
+		settings.MailgunAPIBase = "https://api.mailgun.net"
+	}
+	return settings
+}
+
+func ValidateOrganizationMailSettings(input model.OrganizationMailSettings) error {
+	settings := normalizeOrganizationMailSettings(input)
+	switch settings.Provider {
+	case "disabled":
+		return nil
+	case "smtp":
+		if settings.From == "" {
+			return fmt.Errorf("mail from is required when provider is smtp")
+		}
+		if settings.SMTPHost == "" {
+			return fmt.Errorf("mail smtpHost is required when provider is smtp")
+		}
+		if settings.SMTPPort <= 0 {
+			return fmt.Errorf("mail smtpPort is required when provider is smtp")
+		}
+		return nil
+	case "mailgun":
+		if settings.From == "" {
+			return fmt.Errorf("mail from is required when provider is mailgun")
+		}
+		if settings.MailgunDomain == "" {
+			return fmt.Errorf("mail mailgunDomain is required when provider is mailgun")
+		}
+		if settings.MailgunAPIKey == "" {
+			return fmt.Errorf("mail mailgunApiKey is required when provider is mailgun")
+		}
+		return nil
+	case "sendgrid":
+		if settings.From == "" {
+			return fmt.Errorf("mail from is required when provider is sendgrid")
+		}
+		if settings.SendGridAPIKey == "" {
+			return fmt.Errorf("mail sendgridApiKey is required when provider is sendgrid")
+		}
+		return nil
+	default:
+		return fmt.Errorf("invalid mail provider: %s", settings.Provider)
+	}
+}
+
+func OrganizationMailSettingsReady(input model.OrganizationMailSettings) bool {
+	settings := normalizeOrganizationMailSettings(input)
+	return ValidateOrganizationMailSettings(settings) == nil && settings.Provider != "disabled"
+}
+
 func ValidateOrganizationCaptchaSettings(input model.OrganizationCaptchaSettings) error {
 	settings := normalizeOrganizationCaptchaSettings(input)
 	switch settings.Provider {
@@ -357,6 +440,7 @@ func loadOrganizationConsoleSettings(ctx context.Context, db *gorm.DB, organizat
 		LoginPolicy:    organization.LoginPolicy,
 		PasswordPolicy: organization.PasswordPolicy,
 		MFAPolicy:      organization.MFAPolicy,
+		Mail:           organization.Mail,
 		Captcha:        organization.Captcha,
 	})
 	return organization, settings, nil

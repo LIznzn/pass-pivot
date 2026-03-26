@@ -191,10 +191,7 @@ func (s *OIDCService) AvailableMFAMethodsForSession(ctx context.Context, session
 
 	if settings.MFAPolicy.AllowEmailCode &&
 		strings.TrimSpace(user.Email) != "" &&
-		settings.MFAPolicy.EmailChannel.Enabled &&
-		strings.TrimSpace(settings.MFAPolicy.EmailChannel.From) != "" &&
-		strings.TrimSpace(settings.MFAPolicy.EmailChannel.Host) != "" &&
-		settings.MFAPolicy.EmailChannel.Port > 0 {
+		coreservice.OrganizationMailSettingsReady(settings.Mail) {
 		primaryMethods = append(primaryMethods, "email_code")
 	}
 

@@ -467,11 +467,14 @@ func (s *Service) CreateOrganization(ctx context.Context, org model.Organization
 		if err := coreservice.ValidateOrganizationDomains(settings.Domains); err != nil {
 			return err
 		}
+		if err := coreservice.ValidateOrganizationMailSettings(settings.Mail); err != nil {
+			return err
+		}
 		if err := coreservice.ValidateOrganizationCaptchaSettings(settings.Captcha); err != nil {
 			return err
 		}
 		return tx.Model(&org).
-			Select("SupportEmail", "LogoURL", "Domains", "LoginPolicy", "PasswordPolicy", "MFAPolicy", "Captcha").
+			Select("SupportEmail", "LogoURL", "Domains", "LoginPolicy", "PasswordPolicy", "MFAPolicy", "Mail", "Captcha").
 			Updates(model.Organization{
 				SupportEmail:   settings.SupportEmail,
 				LogoURL:        settings.LogoURL,
@@ -479,6 +482,7 @@ func (s *Service) CreateOrganization(ctx context.Context, org model.Organization
 				LoginPolicy:    settings.LoginPolicy,
 				PasswordPolicy: settings.PasswordPolicy,
 				MFAPolicy:      settings.MFAPolicy,
+				Mail:           settings.Mail,
 				Captcha:        settings.Captcha,
 			}).Error
 	}); err != nil {
@@ -545,6 +549,9 @@ func (s *Service) UpdateOrganization(ctx context.Context, org model.Organization
 		if err := coreservice.ValidateOrganizationDomains(settings.Domains); err != nil {
 			return nil, err
 		}
+		if err := coreservice.ValidateOrganizationMailSettings(settings.Mail); err != nil {
+			return nil, err
+		}
 		if err := coreservice.ValidateOrganizationCaptchaSettings(settings.Captcha); err != nil {
 			return nil, err
 		}
@@ -554,6 +561,7 @@ func (s *Service) UpdateOrganization(ctx context.Context, org model.Organization
 		updateModel.LoginPolicy = settings.LoginPolicy
 		updateModel.PasswordPolicy = settings.PasswordPolicy
 		updateModel.MFAPolicy = settings.MFAPolicy
+		updateModel.Mail = settings.Mail
 		updateModel.Captcha = settings.Captcha
 		selectedFields = append(selectedFields,
 			"SupportEmail",
@@ -562,6 +570,7 @@ func (s *Service) UpdateOrganization(ctx context.Context, org model.Organization
 			"LoginPolicy",
 			"PasswordPolicy",
 			"MFAPolicy",
+			"Mail",
 			"Captcha",
 		)
 	}

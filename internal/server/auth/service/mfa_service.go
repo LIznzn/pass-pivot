@@ -316,16 +316,20 @@ func (s *MFAService) mailerForOrganization(ctx context.Context, organizationID s
 	if err != nil {
 		return nil, err
 	}
-	channel := settings.MFAPolicy.EmailChannel
-	if !channel.Enabled {
+	if !coreservice.OrganizationMailSettingsReady(settings.Mail) {
 		return nil, errors.New("email mfa is not configured for this organization")
 	}
-	return notify.NewMailer(notify.SMTPConfig{
-		From:     strings.TrimSpace(channel.From),
-		Host:     strings.TrimSpace(channel.Host),
-		Port:     channel.Port,
-		Username: strings.TrimSpace(channel.Username),
-		Password: channel.Password,
+	return notify.NewMailer(notify.MailConfig{
+		Provider:       settings.Mail.Provider,
+		From:           strings.TrimSpace(settings.Mail.From),
+		SMTPHost:       strings.TrimSpace(settings.Mail.SMTPHost),
+		SMTPPort:       settings.Mail.SMTPPort,
+		SMTPUser:       strings.TrimSpace(settings.Mail.SMTPUser),
+		SMTPPass:       settings.Mail.SMTPPass,
+		MailgunDomain:  strings.TrimSpace(settings.Mail.MailgunDomain),
+		MailgunAPIKey:  strings.TrimSpace(settings.Mail.MailgunAPIKey),
+		MailgunAPIBase: strings.TrimSpace(settings.Mail.MailgunAPIBase),
+		SendGridAPIKey: strings.TrimSpace(settings.Mail.SendGridAPIKey),
 	}), nil
 }
 

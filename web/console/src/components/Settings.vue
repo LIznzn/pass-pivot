@@ -136,42 +136,6 @@
             <div class="col-md-4"><div class="form-check"><input id="setting-mfa-sms" v-model="organizationMFAPolicyForm.allowSmsCode" class="form-check-input" type="checkbox" /><label class="form-check-label" for="setting-mfa-sms">手机验证码</label></div></div>
             <div class="col-md-4"><div class="form-check"><input id="setting-mfa-u2f" v-model="organizationMFAPolicyForm.allowU2f" class="form-check-input" type="checkbox" /><label class="form-check-label" for="setting-mfa-u2f">安全密钥</label></div></div>
             <div class="col-md-4"><div class="form-check"><input id="setting-mfa-recovery" v-model="organizationMFAPolicyForm.allowRecoveryCode" class="form-check-input" type="checkbox" /><label class="form-check-label" for="setting-mfa-recovery">备用验证码</label></div></div>
-            <div class="col-12">
-              <div class="detail-card h-100">
-                <div class="d-flex align-items-center justify-content-between mb-3">
-                  <div>
-                    <div class="section-subtitle mb-1">邮箱验证码通道</div>
-                    <div class="record-meta">用于组织级邮箱验证码发送配置。</div>
-                  </div>
-                  <div class="form-check m-0">
-                    <input id="setting-mfa-email-channel-enabled" v-model="organizationMFAPolicyForm.emailChannelEnabled" class="form-check-input" type="checkbox" />
-                    <label class="form-check-label ms-2" for="setting-mfa-email-channel-enabled">启用 SMTP</label>
-                  </div>
-                </div>
-                <div class="row g-3">
-                  <div class="col-md-6">
-                    <label class="form-label">发件人邮箱</label>
-                    <BFormInput v-model="organizationMFAPolicyForm.emailChannelFrom" type="email" />
-                  </div>
-                  <div class="col-md-6">
-                    <label class="form-label">SMTP 主机</label>
-                    <BFormInput v-model="organizationMFAPolicyForm.emailChannelHost" />
-                  </div>
-                  <div class="col-md-4">
-                    <label class="form-label">SMTP 端口</label>
-                    <BFormInput v-model="organizationMFAPolicyForm.emailChannelPort" type="number" min="1" />
-                  </div>
-                  <div class="col-md-4">
-                    <label class="form-label">SMTP 用户名</label>
-                    <BFormInput v-model="organizationMFAPolicyForm.emailChannelUsername" />
-                  </div>
-                  <div class="col-md-4">
-                    <label class="form-label">SMTP 密码</label>
-                    <BFormInput v-model="organizationMFAPolicyForm.emailChannelPassword" type="password" />
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
           <div class="d-flex justify-content-end mt-3">
             <BButton type="submit" variant="primary">保存两步验证策略</BButton>
@@ -368,13 +332,19 @@ const organizationMFAPolicyForm = reactive({
   allowEmailCode: true,
   allowSmsCode: false,
   allowU2f: true,
-  allowRecoveryCode: true,
-  emailChannelEnabled: false,
-  emailChannelFrom: '',
-  emailChannelHost: '',
-  emailChannelPort: 587,
-  emailChannelUsername: '',
-  emailChannelPassword: ''
+  allowRecoveryCode: true
+})
+const organizationMailSettingsSnapshot = reactive({
+  provider: 'disabled' as 'disabled' | 'smtp' | 'mailgun' | 'sendgrid',
+  from: '',
+  smtpHost: '',
+  smtpPort: 587,
+  smtpUser: '',
+  smtpPass: '',
+  mailgunDomain: '',
+  mailgunApiKey: '',
+  mailgunApiBase: '',
+  sendgridApiKey: ''
 })
 const organizationCaptchaForm = reactive({
   provider: 'disabled' as 'disabled' | 'default' | 'google' | 'cloudflare',
@@ -435,14 +405,18 @@ type OrganizationConsoleSettings = {
     allowSmsCode: boolean
     allowU2f: boolean
     allowRecoveryCode: boolean
-    emailChannel: {
-      enabled: boolean
-      from: string
-      host: string
-      port: number
-      username: string
-      password: string
-    }
+  }
+  mail: {
+    provider: 'disabled' | 'smtp' | 'mailgun' | 'sendgrid'
+    from: string
+    smtpHost: string
+    smtpPort: number
+    smtpUser: string
+    smtpPass: string
+    mailgunDomain: string
+    mailgunApiKey: string
+    mailgunApiBase: string
+    sendgridApiKey: string
   }
   captcha: {
     provider: 'disabled' | 'default' | 'google' | 'cloudflare'
@@ -517,12 +491,16 @@ watch(
     organizationMFAPolicyForm.allowSmsCode = settings.mfaPolicy.allowSmsCode
     organizationMFAPolicyForm.allowU2f = settings.mfaPolicy.allowU2f
     organizationMFAPolicyForm.allowRecoveryCode = settings.mfaPolicy.allowRecoveryCode
-    organizationMFAPolicyForm.emailChannelEnabled = settings.mfaPolicy.emailChannel.enabled
-    organizationMFAPolicyForm.emailChannelFrom = settings.mfaPolicy.emailChannel.from
-    organizationMFAPolicyForm.emailChannelHost = settings.mfaPolicy.emailChannel.host
-    organizationMFAPolicyForm.emailChannelPort = settings.mfaPolicy.emailChannel.port
-    organizationMFAPolicyForm.emailChannelUsername = settings.mfaPolicy.emailChannel.username
-    organizationMFAPolicyForm.emailChannelPassword = settings.mfaPolicy.emailChannel.password
+    organizationMailSettingsSnapshot.provider = settings.mail.provider
+    organizationMailSettingsSnapshot.from = settings.mail.from
+    organizationMailSettingsSnapshot.smtpHost = settings.mail.smtpHost
+    organizationMailSettingsSnapshot.smtpPort = settings.mail.smtpPort
+    organizationMailSettingsSnapshot.smtpUser = settings.mail.smtpUser
+    organizationMailSettingsSnapshot.smtpPass = settings.mail.smtpPass
+    organizationMailSettingsSnapshot.mailgunDomain = settings.mail.mailgunDomain
+    organizationMailSettingsSnapshot.mailgunApiKey = settings.mail.mailgunApiKey
+    organizationMailSettingsSnapshot.mailgunApiBase = settings.mail.mailgunApiBase
+    organizationMailSettingsSnapshot.sendgridApiKey = settings.mail.sendgridApiKey
     organizationCaptchaForm.provider = settings.captcha.provider
     organizationCaptchaForm.client_key = settings.captcha.client_key
     organizationCaptchaForm.client_secret = settings.captcha.client_secret
@@ -727,15 +705,19 @@ function parseOrganizationConsoleSettings(organization?: any): OrganizationConso
       allowEmailCode: true,
       allowSmsCode: false,
       allowU2f: true,
-      allowRecoveryCode: true,
-      emailChannel: {
-        enabled: false,
-        from: '',
-        host: '',
-        port: 587,
-        username: '',
-        password: ''
-      }
+      allowRecoveryCode: true
+    },
+    mail: {
+      provider: 'disabled',
+      from: '',
+      smtpHost: '',
+      smtpPort: 587,
+      smtpUser: '',
+      smtpPass: '',
+      mailgunDomain: '',
+      mailgunApiKey: '',
+      mailgunApiBase: '',
+      sendgridApiKey: ''
     },
     captcha: {
       provider: 'disabled',
@@ -754,11 +736,23 @@ function parseOrganizationConsoleSettings(organization?: any): OrganizationConso
     passwordPolicy: { ...defaults.passwordPolicy, ...(parsed.passwordPolicy || {}) },
     mfaPolicy: {
       ...defaults.mfaPolicy,
-      ...(parsed.mfaPolicy || {}),
-      emailChannel: {
-        ...defaults.mfaPolicy.emailChannel,
-        ...((parsed.mfaPolicy && parsed.mfaPolicy.emailChannel) || {})
-      }
+      ...(parsed.mfaPolicy || {})
+    },
+    mail: {
+      ...defaults.mail,
+      ...(parsed.mail || {}),
+      provider: ['disabled', 'smtp', 'mailgun', 'sendgrid'].includes(String(parsed?.mail?.provider || '').toLowerCase())
+        ? String(parsed.mail.provider).toLowerCase() as OrganizationConsoleSettings['mail']['provider']
+        : defaults.mail.provider,
+      from: String(parsed?.mail?.from || ''),
+      smtpHost: String(parsed?.mail?.smtpHost || ''),
+      smtpPort: Number(parsed?.mail?.smtpPort || 587),
+      smtpUser: String(parsed?.mail?.smtpUser || ''),
+      smtpPass: String(parsed?.mail?.smtpPass || ''),
+      mailgunDomain: String(parsed?.mail?.mailgunDomain || ''),
+      mailgunApiKey: String(parsed?.mail?.mailgunApiKey || ''),
+      mailgunApiBase: String(parsed?.mail?.mailgunApiBase || ''),
+      sendgridApiKey: String(parsed?.mail?.sendgridApiKey || '')
     },
     captcha: {
       ...defaults.captcha,
@@ -815,15 +809,19 @@ function buildOrganizationConsoleSettings(): OrganizationConsoleSettings {
       allowEmailCode: organizationMFAPolicyForm.allowEmailCode,
       allowSmsCode: organizationMFAPolicyForm.allowSmsCode,
       allowU2f: organizationMFAPolicyForm.allowU2f,
-      allowRecoveryCode: organizationMFAPolicyForm.allowRecoveryCode,
-      emailChannel: {
-        enabled: organizationMFAPolicyForm.emailChannelEnabled,
-        from: organizationMFAPolicyForm.emailChannelFrom.trim(),
-        host: organizationMFAPolicyForm.emailChannelHost.trim(),
-        port: Number(organizationMFAPolicyForm.emailChannelPort),
-        username: organizationMFAPolicyForm.emailChannelUsername.trim(),
-        password: organizationMFAPolicyForm.emailChannelPassword
-      }
+      allowRecoveryCode: organizationMFAPolicyForm.allowRecoveryCode
+    },
+    mail: {
+      provider: organizationMailSettingsSnapshot.provider,
+      from: organizationMailSettingsSnapshot.from.trim(),
+      smtpHost: organizationMailSettingsSnapshot.smtpHost.trim(),
+      smtpPort: Number(organizationMailSettingsSnapshot.smtpPort),
+      smtpUser: organizationMailSettingsSnapshot.smtpUser.trim(),
+      smtpPass: organizationMailSettingsSnapshot.smtpPass,
+      mailgunDomain: organizationMailSettingsSnapshot.mailgunDomain.trim(),
+      mailgunApiKey: organizationMailSettingsSnapshot.mailgunApiKey.trim(),
+      mailgunApiBase: organizationMailSettingsSnapshot.mailgunApiBase.trim(),
+      sendgridApiKey: organizationMailSettingsSnapshot.sendgridApiKey.trim()
     },
     captcha: {
       provider: organizationCaptchaForm.provider,

@@ -44,6 +44,7 @@ type Organization struct {
 	LoginPolicy       OrganizationLoginPolicy     `gorm:"serializer:json;type:json" json:"-"`
 	PasswordPolicy    OrganizationPasswordPolicy  `gorm:"serializer:json;type:json" json:"-"`
 	MFAPolicy         OrganizationMFAPolicy       `gorm:"serializer:json;type:json" json:"-"`
+	Mail              OrganizationMailSettings    `gorm:"serializer:json;type:json" json:"-"`
 	Captcha           OrganizationCaptchaSettings `gorm:"serializer:json;type:json" json:"-"`
 	ConsoleSettings   *OrganizationSetting        `gorm:"-" json:"consoleSettings,omitempty"`
 	Projects          []Project                   `json:"projects,omitempty"`
@@ -85,24 +86,27 @@ type OrganizationPasswordPolicy struct {
 	ExpiryDays       int  `json:"expiryDays"`
 }
 
-type OrganizationEmailChannel struct {
-	Enabled  bool   `json:"enabled"`
-	From     string `json:"from"`
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	Username string `json:"username"`
-	Password string `json:"password"`
+type OrganizationMailSettings struct {
+	Provider       string `json:"provider"`
+	From           string `json:"from"`
+	SMTPHost       string `json:"smtpHost,omitempty"`
+	SMTPPort       int    `json:"smtpPort,omitempty"`
+	SMTPUser       string `json:"smtpUser,omitempty"`
+	SMTPPass       string `json:"smtpPass,omitempty"`
+	MailgunDomain  string `json:"mailgunDomain,omitempty"`
+	MailgunAPIKey  string `json:"mailgunApiKey,omitempty"`
+	MailgunAPIBase string `json:"mailgunApiBase,omitempty"`
+	SendGridAPIKey string `json:"sendgridApiKey,omitempty"`
 }
 
 type OrganizationMFAPolicy struct {
-	RequireForAllUsers bool                     `json:"requireForAllUsers"`
-	AllowWebAuthn      bool                     `json:"allowWebauthn"`
-	AllowTotp          bool                     `json:"allowTotp"`
-	AllowEmailCode     bool                     `json:"allowEmailCode"`
-	AllowSmsCode       bool                     `json:"allowSmsCode"`
-	AllowU2F           bool                     `json:"allowU2f"`
-	AllowRecoveryCode  bool                     `json:"allowRecoveryCode"`
-	EmailChannel       OrganizationEmailChannel `json:"emailChannel"`
+	RequireForAllUsers bool `json:"requireForAllUsers"`
+	AllowWebAuthn      bool `json:"allowWebauthn"`
+	AllowTotp          bool `json:"allowTotp"`
+	AllowEmailCode     bool `json:"allowEmailCode"`
+	AllowSmsCode       bool `json:"allowSmsCode"`
+	AllowU2F           bool `json:"allowU2f"`
+	AllowRecoveryCode  bool `json:"allowRecoveryCode"`
 }
 
 type OrganizationCaptchaSettings struct {
@@ -138,6 +142,7 @@ type OrganizationSetting struct {
 	LoginPolicy    OrganizationLoginPolicy     `gorm:"serializer:json;type:json" json:"loginPolicy"`
 	PasswordPolicy OrganizationPasswordPolicy  `gorm:"serializer:json;type:json" json:"passwordPolicy"`
 	MFAPolicy      OrganizationMFAPolicy       `gorm:"serializer:json;type:json" json:"mfaPolicy"`
+	Mail           OrganizationMailSettings    `gorm:"serializer:json;type:json" json:"mail"`
 	Captcha        OrganizationCaptchaSettings `gorm:"serializer:json;type:json" json:"captcha"`
 }
 

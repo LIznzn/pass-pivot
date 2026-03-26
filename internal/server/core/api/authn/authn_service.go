@@ -437,26 +437,26 @@ func (s *AuthnService) passwordResetMailer(ctx context.Context, organizationID s
 	if err != nil {
 		return nil, err
 	}
-	channel := settings.MFAPolicy.EmailChannel
-	if !channel.Enabled {
+	if !coreservice.OrganizationMailSettingsReady(settings.Mail) {
 		return nil, errors.New("email password reset is not configured for this organization")
 	}
-	return notify.NewMailer(notify.SMTPConfig{
-		From:     strings.TrimSpace(channel.From),
-		Host:     strings.TrimSpace(channel.Host),
-		Port:     channel.Port,
-		Username: strings.TrimSpace(channel.Username),
-		Password: channel.Password,
+	return notify.NewMailer(notify.MailConfig{
+		Provider:       settings.Mail.Provider,
+		From:           strings.TrimSpace(settings.Mail.From),
+		SMTPHost:       strings.TrimSpace(settings.Mail.SMTPHost),
+		SMTPPort:       settings.Mail.SMTPPort,
+		SMTPUser:       strings.TrimSpace(settings.Mail.SMTPUser),
+		SMTPPass:       settings.Mail.SMTPPass,
+		MailgunDomain:  strings.TrimSpace(settings.Mail.MailgunDomain),
+		MailgunAPIKey:  strings.TrimSpace(settings.Mail.MailgunAPIKey),
+		MailgunAPIBase: strings.TrimSpace(settings.Mail.MailgunAPIBase),
+		SendGridAPIKey: strings.TrimSpace(settings.Mail.SendGridAPIKey),
 	}), nil
 }
 
 func (s *AuthnService) passwordResetMethodOptions(settings model.OrganizationSetting, user model.User) []PasswordResetMethodOption {
 	options := make([]PasswordResetMethodOption, 0, 2)
-	emailChannelReady := settings.MFAPolicy.EmailChannel.Enabled &&
-		strings.TrimSpace(settings.MFAPolicy.EmailChannel.From) != "" &&
-		strings.TrimSpace(settings.MFAPolicy.EmailChannel.Host) != "" &&
-		settings.MFAPolicy.EmailChannel.Port > 0
-	if emailChannelReady && strings.TrimSpace(user.Email) != "" {
+	if coreservice.OrganizationMailSettingsReady(settings.Mail) && strings.TrimSpace(user.Email) != "" {
 		options = append(options, PasswordResetMethodOption{
 			Method:       "email_code",
 			MaskedTarget: maskEmailForDisplay(user.Email),
@@ -938,10 +938,7 @@ func (s *AuthnService) evaluateMFALoginRequirement(ctx context.Context, user mod
 
 	if settings.MFAPolicy.AllowEmailCode &&
 		strings.TrimSpace(user.Email) != "" &&
-		settings.MFAPolicy.EmailChannel.Enabled &&
-		strings.TrimSpace(settings.MFAPolicy.EmailChannel.From) != "" &&
-		strings.TrimSpace(settings.MFAPolicy.EmailChannel.Host) != "" &&
-		settings.MFAPolicy.EmailChannel.Port > 0 {
+		coreservice.OrganizationMailSettingsReady(settings.Mail) {
 		primaryMethods = append(primaryMethods, "email_code")
 	}
 

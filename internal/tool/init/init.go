@@ -617,14 +617,10 @@ func defaultConsoleSettings() model.OrganizationSetting {
 			AllowSmsCode:       false,
 			AllowU2F:           true,
 			AllowRecoveryCode:  true,
-			EmailChannel: model.OrganizationEmailChannel{
-				Enabled:  false,
-				From:     "",
-				Host:     "",
-				Port:     587,
-				Username: "",
-				Password: "",
-			},
+		},
+		Mail: model.OrganizationMailSettings{
+			Provider: "disabled",
+			SMTPPort: 587,
 		},
 		Captcha: model.OrganizationCaptchaSettings{
 			Provider: "disabled",
