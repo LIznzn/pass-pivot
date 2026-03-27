@@ -50,8 +50,6 @@ func GetIdProvider(idpInfo *ProviderInfo, redirectUrl string) (Provider, error) 
 		return NewGithubIdProvider(idpInfo.ClientId, idpInfo.ClientSecret, redirectUrl), nil
 	case "Google":
 		return NewGoogleIdProvider(idpInfo.ClientId, idpInfo.ClientSecret, redirectUrl), nil
-	case "Custom":
-		return NewCustomIdProvider(idpInfo, redirectUrl), nil
 	default:
 		return nil, fmt.Errorf("OAuth provider type: %s is not supported", idpInfo.Type)
 	}

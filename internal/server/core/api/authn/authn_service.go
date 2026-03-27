@@ -13,13 +13,13 @@ import (
 
 	"pass-pivot/internal/config"
 	"pass-pivot/internal/model"
-	"pass-pivot/internal/notify"
 	authservice "pass-pivot/internal/server/auth/service"
 	coreservice "pass-pivot/internal/server/core/service"
 	sharedauthn "pass-pivot/internal/server/shared/authn"
 	sharedfido "pass-pivot/internal/server/shared/fido"
 	sharedhandler "pass-pivot/internal/server/shared/handler"
 	captchaprovider "pass-pivot/provider/captcha"
+	mailprovider "pass-pivot/provider/mail"
 	"pass-pivot/utils"
 
 	"gorm.io/gorm"
@@ -432,16 +432,15 @@ func validatePasswordAgainstPolicy(password string, policy model.OrganizationPas
 	return nil
 }
 
-func (s *AuthnService) passwordResetMailer(ctx context.Context, organizationID string) (notify.Mailer, error) {
+func (s *AuthnService) loadOrganizationMailConfig(ctx context.Context, organizationID string) (string, mailprovider.Config, error) {
 	_, settings, err := coreservice.LoadOrganizationConsoleSettings(ctx, s.db, organizationID)
 	if err != nil {
-		return nil, err
+		return "", mailprovider.Config{}, err
 	}
 	if !coreservice.OrganizationMailSettingsReady(settings.Mail) {
-		return nil, errors.New("email password reset is not configured for this organization")
+		return "", mailprovider.Config{}, errors.New("email password reset is not configured for this organization")
 	}
-	return notify.NewMailer(notify.MailConfig{
-		Provider:       settings.Mail.Provider,
+	return settings.Mail.Provider, mailprovider.Config{
 		From:           strings.TrimSpace(settings.Mail.From),
 		SMTPHost:       strings.TrimSpace(settings.Mail.SMTPHost),
 		SMTPPort:       settings.Mail.SMTPPort,
@@ -451,7 +450,15 @@ func (s *AuthnService) passwordResetMailer(ctx context.Context, organizationID s
 		MailgunAPIKey:  strings.TrimSpace(settings.Mail.MailgunAPIKey),
 		MailgunAPIBase: strings.TrimSpace(settings.Mail.MailgunAPIBase),
 		SendGridAPIKey: strings.TrimSpace(settings.Mail.SendGridAPIKey),
-	}), nil
+	}, nil
+}
+
+func (s *AuthnService) sendPasswordResetMail(mailType string, mailConfig mailprovider.Config, target, code string) error {
+	return mailprovider.SendMailByMailType(mailType, mailConfig, mailprovider.Message{
+		To:       target,
+		Subject:  "PPVT Password Reset Code",
+		TextBody: fmt.Sprintf("Your PPVT password reset code is %s. It expires in 10 minutes.", code),
+	})
 }
 
 func (s *AuthnService) passwordResetMethodOptions(settings model.OrganizationSetting, user model.User) []PasswordResetMethodOption {
@@ -619,11 +626,11 @@ func (s *AuthnService) StartPasswordReset(ctx context.Context, organizationID, c
 	})
 	switch trimmedMethod {
 	case "email_code":
-		mailer, err := s.passwordResetMailer(ctx, organization.ID)
+		mailType, mailConfig, err := s.loadOrganizationMailConfig(ctx, organization.ID)
 		if err != nil {
 			return err
 		}
-		if err := mailer.Send(ctx, selectedTarget, "PPVT Password Reset Code", fmt.Sprintf("Your PPVT password reset code is %s. It expires in 10 minutes.", code)); err != nil {
+		if err := s.sendPasswordResetMail(mailType, mailConfig, selectedTarget, code); err != nil {
 			return err
 		}
 	case "sms_code":

@@ -18,10 +18,10 @@ import (
 	"pass-pivot/internal/config"
 
 	"pass-pivot/internal/model"
-	"pass-pivot/internal/notify"
 	coreservice "pass-pivot/internal/server/core/service"
 	sharedauthn "pass-pivot/internal/server/shared/authn"
 	sharedfido "pass-pivot/internal/server/shared/fido"
+	mailprovider "pass-pivot/provider/mail"
 	"pass-pivot/utils"
 )
 
@@ -282,13 +282,11 @@ func (s *MFAService) CreateDeliveryChallenge(ctx context.Context, sessionID, met
 	challenge.UpdatedAt = challenge.CreatedAt
 	storeMFAChallenge(*challenge)
 	if method == "email_code" {
-		mailer, err := s.mailerForOrganization(ctx, user.OrganizationID)
+		mailType, mailConfig, err := s.loadOrganizationMailConfig(ctx, user.OrganizationID)
 		if err != nil {
 			return nil, "", err
 		}
-		subject := "PPVT MFA Verification Code"
-		body := fmt.Sprintf("Your PPVT verification code is %s. It expires in 5 minutes.", code)
-		if err := mailer.Send(ctx, target, subject, body); err != nil {
+		if err := s.sendMFAVerificationMail(mailType, mailConfig, target, code); err != nil {
 			return nil, "", err
 		}
 		challenge.DeliveryMessage = fmt.Sprintf("OTP sent to %s by email", maskTarget(method, target))
@@ -311,16 +309,15 @@ func (s *MFAService) CreateDeliveryChallenge(ctx context.Context, sessionID, met
 	return challenge, "", nil
 }
 
-func (s *MFAService) mailerForOrganization(ctx context.Context, organizationID string) (notify.Mailer, error) {
+func (s *MFAService) loadOrganizationMailConfig(ctx context.Context, organizationID string) (string, mailprovider.Config, error) {
 	_, settings, err := coreservice.LoadOrganizationConsoleSettings(ctx, s.db, organizationID)
 	if err != nil {
-		return nil, err
+		return "", mailprovider.Config{}, err
 	}
 	if !coreservice.OrganizationMailSettingsReady(settings.Mail) {
-		return nil, errors.New("email mfa is not configured for this organization")
+		return "", mailprovider.Config{}, errors.New("email mfa is not configured for this organization")
 	}
-	return notify.NewMailer(notify.MailConfig{
-		Provider:       settings.Mail.Provider,
+	return settings.Mail.Provider, mailprovider.Config{
 		From:           strings.TrimSpace(settings.Mail.From),
 		SMTPHost:       strings.TrimSpace(settings.Mail.SMTPHost),
 		SMTPPort:       settings.Mail.SMTPPort,
@@ -330,7 +327,15 @@ func (s *MFAService) mailerForOrganization(ctx context.Context, organizationID s
 		MailgunAPIKey:  strings.TrimSpace(settings.Mail.MailgunAPIKey),
 		MailgunAPIBase: strings.TrimSpace(settings.Mail.MailgunAPIBase),
 		SendGridAPIKey: strings.TrimSpace(settings.Mail.SendGridAPIKey),
-	}), nil
+	}, nil
+}
+
+func (s *MFAService) sendMFAVerificationMail(mailType string, mailConfig mailprovider.Config, target, code string) error {
+	return mailprovider.SendMailByMailType(mailType, mailConfig, mailprovider.Message{
+		To:       target,
+		Subject:  "PPVT MFA Verification Code",
+		TextBody: fmt.Sprintf("Your PPVT verification code is %s. It expires in 5 minutes.", code),
+	})
 }
 
 func (s *MFAService) Verify(ctx context.Context, sessionID, method, code string) error {

@@ -29,7 +29,7 @@ PPVT 是一个控制面导向的 IAM 平台实现。
 - `cmd/ppvt-core`: 控制面入口，承载 `/api/*`
 - `cmd/ppvt-init`: 初始化数据库与系统内置数据
 - `internal/`: 领域模型、服务、路由、中间件与数据库初始化
-- `provider/`: Captcha、GeoIP、外部 IdP 等外部能力接入点
+- `provider/`: Captcha、Mail、GeoIP、外部 IdP 等外部能力接入点
 - `web/auth`: `/auth/authorize` 直出认证交互前端
 - `web/portal`: 用户中心前端
 - `web/console`: 控制台前端
@@ -270,6 +270,7 @@ npm run dev:console
 当前 `provider/` 目录中的扩展点为：
 
 - `provider/captcha`：验证码 provider 工厂与各 provider 独立实现文件
+- `provider/mail`：邮件 provider 工厂，当前接 SMTP、Mailgun、SendGrid
 - `provider/geoip`：IP 归属地 provider 工厂，当前接 MaxMind GeoLite
 - `provider/idp`：外部 OAuth/OIDC IdP provider 工厂与各实现
 

@@ -15,7 +15,7 @@ func GetGeoipProvider(geoipType string) Provider {
 	}
 }
 
-func VerifyCaptchaByCaptchaType(geoipType, ipAddress string) (string, error) {
+func LookupLocationByGeoipType(geoipType, ipAddress string) (string, error) {
 	provider := GetGeoipProvider(geoipType)
 	if provider == nil {
 		return "", fmt.Errorf("invalid geoip provider: %s", geoipType)
