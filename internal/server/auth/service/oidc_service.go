@@ -123,7 +123,7 @@ func (s *OIDCService) authorizeCaptchaPublicConfig(ctx context.Context, organiza
 	case "google", "cloudflare":
 		return &AuthorizeCaptchaBootstrap{
 			Provider:  settings.Captcha.Provider,
-			ClientKey: strings.TrimSpace(settings.Captcha.ClientKey),
+			ClientKey: settings.Captcha.ClientKey,
 		}, nil
 	default:
 		return nil, errors.New("invalid captcha provider")

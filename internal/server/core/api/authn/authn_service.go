@@ -441,15 +441,15 @@ func (s *AuthnService) loadOrganizationMailConfig(ctx context.Context, organizat
 		return "", mailprovider.Config{}, errors.New("email password reset is not configured for this organization")
 	}
 	return settings.Mail.Provider, mailprovider.Config{
-		From:           strings.TrimSpace(settings.Mail.From),
-		SMTPHost:       strings.TrimSpace(settings.Mail.SMTPHost),
+		From:           settings.Mail.From,
+		SMTPHost:       settings.Mail.SMTPHost,
 		SMTPPort:       settings.Mail.SMTPPort,
-		SMTPUser:       strings.TrimSpace(settings.Mail.SMTPUser),
+		SMTPUser:       settings.Mail.SMTPUser,
 		SMTPPass:       settings.Mail.SMTPPass,
-		MailgunDomain:  strings.TrimSpace(settings.Mail.MailgunDomain),
-		MailgunAPIKey:  strings.TrimSpace(settings.Mail.MailgunAPIKey),
-		MailgunAPIBase: strings.TrimSpace(settings.Mail.MailgunAPIBase),
-		SendGridAPIKey: strings.TrimSpace(settings.Mail.SendGridAPIKey),
+		MailgunDomain:  settings.Mail.MailgunDomain,
+		MailgunAPIKey:  settings.Mail.MailgunAPIKey,
+		MailgunAPIBase: settings.Mail.MailgunAPIBase,
+		SendGridAPIKey: settings.Mail.SendGridAPIKey,
 	}, nil
 }
 
