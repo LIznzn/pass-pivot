@@ -60,6 +60,17 @@ func ensureCanManageOrganization(ctx context.Context, organizationID string) err
 	return errors.New("organization management role is required")
 }
 
+func currentActorFromContext(ctx context.Context) (string, string) {
+	identity, ok := sharedhandler.AccessTokenIdentityFromContext(ctx)
+	if !ok || identity.User == nil {
+		return "", ""
+	}
+	if text := strings.TrimSpace(identity.User.Email); text != "" {
+		return identity.User.ID, text
+	}
+	return identity.User.ID, identity.User.ID
+}
+
 func (s *AuthzService) CreateRole(ctx context.Context, role ppvtmodel.Role) (*ppvtmodel.Role, error) {
 	if strings.TrimSpace(role.OrganizationID) == "" || strings.TrimSpace(role.Name) == "" {
 		return nil, errors.New("organizationId and name are required")
@@ -78,6 +89,21 @@ func (s *AuthzService) CreateRole(ctx context.Context, role ppvtmodel.Role) (*pp
 	if err := s.db.WithContext(ctx).Create(&role).Error; err != nil {
 		return nil, err
 	}
+	actorID, actorName := currentActorFromContext(ctx)
+	_ = s.audit.Record(ctx, coreservice.AuditEvent{
+		OrganizationID: role.OrganizationID,
+		ActorType:      "admin",
+		ActorID:        actorID,
+		ActorName:   actorName,
+		EventType:      "role.created",
+		Result:         "success",
+		TargetType:     "role",
+		TargetID:       role.ID,
+		TargetName:  role.Name,
+		Detail: map[string]any{
+			"type": role.Type,
+		},
+	})
 	return &role, nil
 }
 
@@ -112,6 +138,21 @@ func (s *AuthzService) UpdateRole(ctx context.Context, role ppvtmodel.Role) (*pp
 	if err := s.db.WithContext(ctx).First(&existing, "id = ?", role.ID).Error; err != nil {
 		return nil, err
 	}
+	actorID, actorName := currentActorFromContext(ctx)
+	_ = s.audit.Record(ctx, coreservice.AuditEvent{
+		OrganizationID: existing.OrganizationID,
+		ActorType:      "admin",
+		ActorID:        actorID,
+		ActorName:   actorName,
+		EventType:      "role.updated",
+		Result:         "success",
+		TargetType:     "role",
+		TargetID:       existing.ID,
+		TargetName:  existing.Name,
+		Detail: map[string]any{
+			"type": existing.Type,
+		},
+	})
 	return &existing, nil
 }
 
@@ -190,6 +231,22 @@ func (s *AuthzService) CreatePolicy(ctx context.Context, policy ppvtmodel.Policy
 	if err := s.db.WithContext(ctx).Create(&policy).Error; err != nil {
 		return nil, err
 	}
+	actorID, actorName := currentActorFromContext(ctx)
+	_ = s.audit.Record(ctx, coreservice.AuditEvent{
+		OrganizationID: policy.OrganizationID,
+		ActorType:      "admin",
+		ActorID:        actorID,
+		ActorName:   actorName,
+		EventType:      "policy.created",
+		Result:         "success",
+		TargetType:     "policy",
+		TargetID:       policy.ID,
+		TargetName:  policy.Name,
+		Detail: map[string]any{
+			"effect":   policy.Effect,
+			"priority": policy.Priority,
+		},
+	})
 	return &policy, nil
 }
 
@@ -238,6 +295,22 @@ func (s *AuthzService) UpdatePolicy(ctx context.Context, policy ppvtmodel.Policy
 	if err := s.db.WithContext(ctx).First(&existing, "id = ?", policy.ID).Error; err != nil {
 		return nil, err
 	}
+	actorID, actorName := currentActorFromContext(ctx)
+	_ = s.audit.Record(ctx, coreservice.AuditEvent{
+		OrganizationID: existing.OrganizationID,
+		ActorType:      "admin",
+		ActorID:        actorID,
+		ActorName:   actorName,
+		EventType:      "policy.updated",
+		Result:         "success",
+		TargetType:     "policy",
+		TargetID:       existing.ID,
+		TargetName:  existing.Name,
+		Detail: map[string]any{
+			"effect":   existing.Effect,
+			"priority": existing.Priority,
+		},
+	})
 	return &existing, nil
 }
 

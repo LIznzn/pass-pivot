@@ -288,6 +288,7 @@ func (s *AuthnService) LoginWithUserCredential(ctx context.Context, in sharedaut
 			OrganizationID: in.OrganizationID,
 			ApplicationID:  in.ApplicationID,
 			ActorType:      "anonymous",
+			ActorName:   strings.TrimSpace(in.Identifier),
 			EventType:      "auth.login.failed",
 			Result:         "denied",
 			TargetType:     "user",
@@ -302,10 +303,12 @@ func (s *AuthnService) LoginWithUserCredential(ctx context.Context, in sharedaut
 			OrganizationID: in.OrganizationID,
 			ApplicationID:  in.ApplicationID,
 			ActorType:      "anonymous",
+			ActorName:   strings.TrimSpace(in.Identifier),
 			EventType:      "auth.login.failed",
 			Result:         "denied",
 			TargetType:     "user",
 			TargetID:       user.ID,
+			TargetName:  authnUserDisplayName(user),
 			IPAddress:      in.IPAddress,
 			UserAgent:      in.UserAgent,
 			Detail:         map[string]any{"identifier": in.Identifier, "reason": "secret_mismatch"},
@@ -1056,6 +1059,7 @@ func (s *AuthnService) completeMFASession(ctx context.Context, user model.User, 
 			ApplicationID:  session.ApplicationID,
 			ActorType:      "user",
 			ActorID:        session.UserID,
+			ActorName:   authnUserDisplayName(user),
 			EventType:      "auth.mfa.verified",
 			Result:         "success",
 			TargetType:     "session",
@@ -1085,6 +1089,7 @@ func (s *AuthnService) completeMFASession(ctx context.Context, user model.User, 
 		ApplicationID:  session.ApplicationID,
 		ActorType:      "user",
 		ActorID:        session.UserID,
+		ActorName:   authnUserDisplayName(user),
 		EventType:      "auth.mfa.verified",
 		Result:         "success",
 		TargetType:     "session",
@@ -1095,11 +1100,17 @@ func (s *AuthnService) completeMFASession(ctx context.Context, user model.User, 
 }
 
 func (s *AuthnService) recordLoginSucceeded(ctx context.Context, session model.Session, userID, ipAddress, userAgent string, detail map[string]any) {
+	actorName := strings.TrimSpace(userID)
+	var user model.User
+	if err := s.db.WithContext(ctx).Select("id", "name", "username", "email", "phone_number").First(&user, "id = ?", userID).Error; err == nil {
+		actorName = authnUserDisplayName(user)
+	}
 	_ = s.audit.Record(ctx, coreservice.AuditEvent{
 		OrganizationID: session.OrganizationID,
 		ApplicationID:  session.ApplicationID,
 		ActorType:      "user",
 		ActorID:        userID,
+		ActorName:   actorName,
 		EventType:      "auth.login.succeeded",
 		Result:         "success",
 		TargetType:     "session",
@@ -1325,6 +1336,7 @@ func (s *AuthnService) IssueClientCredentialTokenForApplication(ctx context.Cont
 		ApplicationID: app.ID,
 		ActorType:     "client",
 		ActorID:       app.ID,
+		ActorName:  strings.TrimSpace(app.Name),
 		EventType:     "token.issued",
 		Result:        "success",
 		TargetType:    "token",
@@ -1392,6 +1404,7 @@ func (s *AuthnService) IssuePasswordGrantTokenForApplication(ctx context.Context
 		ApplicationID:  app.ID,
 		ActorType:      "user",
 		ActorID:        user.ID,
+		ActorName:   authnUserDisplayName(user),
 		EventType:      "token.issued",
 		Result:         "success",
 		TargetType:     "session",
@@ -1571,6 +1584,7 @@ func (s *AuthnService) issueTokensForApplication(ctx context.Context, user model
 		ApplicationID:  applicationID,
 		ActorType:      "user",
 		ActorID:        user.ID,
+		ActorName:   authnUserDisplayName(user),
 		EventType:      "token.issued",
 		Result:         "success",
 		TargetType:     "session",
@@ -1582,6 +1596,13 @@ func (s *AuthnService) issueTokensForApplication(ctx context.Context, user model
 
 func applicationIssuesAccessToken(tokenType []string) bool {
 	return coreservice.TokenTypesContain(tokenType, "access_token")
+}
+
+func authnUserDisplayName(user model.User) string {
+	if text := strings.TrimSpace(user.Email); text != "" {
+		return text
+	}
+	return user.ID
 }
 
 func (s *AuthnService) IssueTokens(ctx context.Context, user model.User, session model.Session, scope string) ([]model.Token, error) {

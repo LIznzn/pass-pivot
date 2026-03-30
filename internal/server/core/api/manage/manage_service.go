@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -18,6 +20,7 @@ import (
 	"pass-pivot/internal/model"
 	authservice "pass-pivot/internal/server/auth/service"
 	coreservice "pass-pivot/internal/server/core/service"
+	sharedaudit "pass-pivot/internal/server/shared/auditlog"
 	sharedauthn "pass-pivot/internal/server/shared/authn"
 	sharedfido "pass-pivot/internal/server/shared/fido"
 	sharedhandler "pass-pivot/internal/server/shared/handler"
@@ -221,6 +224,14 @@ func currentUserIDFromContext(ctx context.Context) string {
 		return ""
 	}
 	return identity.User.ID
+}
+
+func currentActorNameFromContext(ctx context.Context) string {
+	identity, ok := sharedhandler.AccessTokenIdentityFromContext(ctx)
+	if !ok || identity.User == nil {
+		return ""
+	}
+	return userDisplayName(*identity.User)
 }
 
 func (s *Service) ensureCanManageOrganization(ctx context.Context, organizationID string) error {
@@ -514,6 +525,7 @@ func (s *Service) UpdateOrganization(ctx context.Context, org model.Organization
 	if err := s.db.WithContext(ctx).First(&existing, "id = ?", org.ID).Error; err != nil {
 		return nil, err
 	}
+	before := existing
 	metadata := normalizeMetadata(org.Metadata, existing.Metadata)
 	metadata = coreservice.NormalizeOrganizationMetadata(metadata, nil)
 	delete(metadata, "console_settings")
@@ -590,6 +602,27 @@ func (s *Service) UpdateOrganization(ctx context.Context, org model.Organization
 		return nil, err
 	}
 	existing.ConsoleSettings = &settings
+	_ = s.audit.Record(ctx, coreservice.AuditEvent{
+		OrganizationID: existing.ID,
+		ActorType:      "admin",
+		ActorID:        currentUserIDFromContext(ctx),
+		ActorName:   currentActorNameFromContext(ctx),
+		EventType:      "organization.updated",
+		Result:         "success",
+		TargetType:     "organization",
+		TargetID:       existing.ID,
+		TargetName:  existing.Name,
+		Changes: collectAuditFieldChanges(
+			auditFieldChange("name", before.Name, existing.Name),
+			auditFieldChange("description", before.Description, existing.Description),
+			auditFieldChange("status.allowJWTAccess", before.AllowJWTAccess, existing.AllowJWTAccess),
+			auditFieldChange("status.allowBasicAccess", before.AllowBasicAccess, existing.AllowBasicAccess),
+			auditFieldChange("status.allowNoAuthAccess", before.AllowNoAuthAccess, existing.AllowNoAuthAccess),
+			auditFieldChange("status.allowRefreshToken", before.AllowRefreshToken, existing.AllowRefreshToken),
+			auditFieldChange("status.allowAuthorizationCode", before.AllowAuthCode, existing.AllowAuthCode),
+			auditFieldChange("status.allowPKCE", before.AllowPKCE, existing.AllowPKCE),
+		),
+	})
 	return &existing, nil
 }
 
@@ -1153,6 +1186,68 @@ func normalizeMetadata(candidate map[string]string, fallback map[string]string) 
 	return result
 }
 
+func auditFieldChange(field string, before, after any) *sharedaudit.FieldChange {
+	if reflect.DeepEqual(before, after) {
+		return nil
+	}
+	return &sharedaudit.FieldChange{
+		Field:  field,
+		Before: before,
+		After:  after,
+	}
+}
+
+func collectAuditFieldChanges(items ...*sharedaudit.FieldChange) []sharedaudit.FieldChange {
+	result := make([]sharedaudit.FieldChange, 0, len(items))
+	for _, item := range items {
+		if item != nil {
+			result = append(result, *item)
+		}
+	}
+	return result
+}
+
+func userDisplayName(user model.User) string {
+	if text := strings.TrimSpace(user.Email); text != "" {
+		return text
+	}
+	return user.ID
+}
+
+func recordApplicationUpdatedAudit(s *Service, ctx context.Context, organizationID string, before, after model.Application, generatedPrivateKey string) error {
+	detail := map[string]any{}
+	if strings.TrimSpace(generatedPrivateKey) != "" {
+		detail["generatedPrivateKey"] = true
+	}
+	return s.audit.Record(ctx, coreservice.AuditEvent{
+		OrganizationID: organizationID,
+		ProjectID:      after.ProjectID,
+		ApplicationID:  after.ID,
+		ActorType:      "admin",
+		ActorID:        currentUserIDFromContext(ctx),
+		ActorName:   currentActorNameFromContext(ctx),
+		EventType:      "application.updated",
+		Result:         "success",
+		TargetType:     "application",
+		TargetID:       after.ID,
+		TargetName:  after.Name,
+		Detail:         detail,
+		Changes: collectAuditFieldChanges(
+			auditFieldChange("name", before.Name, after.Name),
+			auditFieldChange("description", before.Description, after.Description),
+			auditFieldChange("redirectUris", before.RedirectURIs, after.RedirectURIs),
+			auditFieldChange("applicationType", before.ApplicationType, after.ApplicationType),
+			auditFieldChange("grantType", before.GrantType, after.GrantType),
+			auditFieldChange("enableRefreshToken", before.EnableRefreshToken, after.EnableRefreshToken),
+			auditFieldChange("clientAuthenticationType", before.ClientAuthenticationType, after.ClientAuthenticationType),
+			auditFieldChange("tokenType", before.TokenType, after.TokenType),
+			auditFieldChange("roles", before.Roles, after.Roles),
+			auditFieldChange("accessTokenTTLMinutes", before.AccessTokenTTLMinutes, after.AccessTokenTTLMinutes),
+			auditFieldChange("refreshTokenTTLHours", before.RefreshTokenTTLHours, after.RefreshTokenTTLHours),
+		),
+	})
+}
+
 func (s *Service) DisableUser(ctx context.Context, userID string) error {
 	user, err := s.loadUserForManagement(ctx, userID)
 	if err != nil {
@@ -1273,10 +1368,13 @@ func (s *Service) CreateProject(ctx context.Context, project model.Project) (*mo
 		OrganizationID: project.OrganizationID,
 		ProjectID:      project.ID,
 		ActorType:      "admin",
+		ActorID:        currentUserIDFromContext(ctx),
+		ActorName:   currentActorNameFromContext(ctx),
 		EventType:      "project.created",
 		Result:         "success",
 		TargetType:     "project",
 		TargetID:       project.ID,
+		TargetName:  project.Name,
 		Detail:         map[string]any{"name": project.Name},
 	})
 	return &project, nil
@@ -1290,6 +1388,7 @@ func (s *Service) UpdateProject(ctx context.Context, project model.Project) (*mo
 	if err != nil {
 		return nil, err
 	}
+	before := *existing
 	updates := map[string]any{
 		"name":             coalesceString(project.Name, existing.Name),
 		"description":      coalesceString(project.Description, existing.Description),
@@ -1301,6 +1400,23 @@ func (s *Service) UpdateProject(ctx context.Context, project model.Project) (*mo
 	if err := s.db.WithContext(ctx).First(existing, "id = ?", project.ID).Error; err != nil {
 		return nil, err
 	}
+	_ = s.audit.Record(ctx, coreservice.AuditEvent{
+		OrganizationID: existing.OrganizationID,
+		ProjectID:      existing.ID,
+		ActorType:      "admin",
+		ActorID:        currentUserIDFromContext(ctx),
+		ActorName:   currentActorNameFromContext(ctx),
+		EventType:      "project.updated",
+		Result:         "success",
+		TargetType:     "project",
+		TargetID:       existing.ID,
+		TargetName:  existing.Name,
+		Changes: collectAuditFieldChanges(
+			auditFieldChange("name", before.Name, existing.Name),
+			auditFieldChange("description", before.Description, existing.Description),
+			auditFieldChange("userAclEnabled", before.UserACLEnabled, existing.UserACLEnabled),
+		),
+	})
 	return existing, nil
 }
 
@@ -1459,6 +1575,7 @@ func (s *Service) UpdateApplication(ctx context.Context, app model.Application) 
 	if err != nil {
 		return nil, err
 	}
+	before := *existing
 	updateModel := model.Application{
 		Name:                     coalesceString(app.Name, existing.Name),
 		Metadata:                 coreservice.NormalizeApplicationMetadata(app.Metadata, existing.Metadata),
@@ -1541,7 +1658,7 @@ func (s *Service) UpdateApplication(ctx context.Context, app model.Application) 
 	return &coreservice.ApplicationMutationResult{
 		Application:         *existing,
 		GeneratedPrivateKey: generatedPrivateKey,
-	}, nil
+	}, recordApplicationUpdatedAudit(s, ctx, project.OrganizationID, before, *existing, generatedPrivateKey)
 }
 
 func (s *Service) DisableApplication(ctx context.Context, applicationID string) error {
@@ -2273,10 +2390,13 @@ func (s *Service) CreateUser(ctx context.Context, user model.User, identifier, p
 		OrganizationID: user.OrganizationID,
 		ApplicationID:  applicationID,
 		ActorType:      "admin",
+		ActorID:        currentUserIDFromContext(ctx),
+		ActorName:   currentActorNameFromContext(ctx),
 		EventType:      "user.created",
 		Result:         "success",
 		TargetType:     "user",
 		TargetID:       user.ID,
+		TargetName:  userDisplayName(user),
 		Detail: map[string]any{
 			"identifier": identifier,
 		},
@@ -2292,6 +2412,7 @@ func (s *Service) UpdateUser(ctx context.Context, user model.User) (*model.User,
 	if err != nil {
 		return nil, err
 	}
+	before := *existing
 	nextRoles := coalesceRoles(user.Roles, existing.Roles)
 	validatedRoles, err := s.validateRoleAssignments(ctx, existing.OrganizationID, nextRoles, "user")
 	if err != nil {
@@ -2314,6 +2435,25 @@ func (s *Service) UpdateUser(ctx context.Context, user model.User) (*model.User,
 	if err := s.db.WithContext(ctx).First(existing, "id = ?", user.ID).Error; err != nil {
 		return nil, err
 	}
+	_ = s.audit.Record(ctx, coreservice.AuditEvent{
+		OrganizationID: existing.OrganizationID,
+		ActorType:      "admin",
+		ActorID:        currentUserIDFromContext(ctx),
+		ActorName:   currentActorNameFromContext(ctx),
+		EventType:      "user.updated",
+		Result:         "success",
+		TargetType:     "user",
+		TargetID:       existing.ID,
+		TargetName:  userDisplayName(*existing),
+		Changes: collectAuditFieldChanges(
+			auditFieldChange("name", before.Name, existing.Name),
+			auditFieldChange("username", before.Username, existing.Username),
+			auditFieldChange("email", before.Email, existing.Email),
+			auditFieldChange("phoneNumber", before.PhoneNumber, existing.PhoneNumber),
+			auditFieldChange("roles", before.Roles, existing.Roles),
+			auditFieldChange("status", before.Status, existing.Status),
+		),
+	})
 	return existing, nil
 }
 
@@ -3019,21 +3159,59 @@ func (s *Service) DeleteCurrentExternalIdentityBinding(ctx context.Context, sess
 	return s.DeleteExternalIdentityBinding(ctx, user.ID, bindingID)
 }
 
-func (s *Service) ListAuditLogs(ctx context.Context, organizationID string) ([]coreservice.AuditLogView, error) {
+func normalizeAuditPage(page int) int {
+	if page <= 0 {
+		return 1
+	}
+	return page
+}
+
+func normalizeAuditPageSize(pageSize int) int {
+	switch {
+	case pageSize <= 0:
+		return 20
+	case pageSize > 100:
+		return 100
+	default:
+		return pageSize
+	}
+}
+
+func (s *Service) ListAuditLogs(ctx context.Context, query coreservice.AuditLogQuery) (*coreservice.AuditLogPage, error) {
 	var items []model.AuditLog
-	query := s.db.WithContext(ctx).Order("created_at desc").Limit(100)
-	if organizationID != "" {
-		if err := s.ensureCanManageOrganization(ctx, organizationID); err != nil {
+	dbQuery := s.db.WithContext(ctx).Model(&model.AuditLog{})
+	if query.OrganizationID != "" {
+		if err := s.ensureCanManageOrganization(ctx, query.OrganizationID); err != nil {
 			return nil, err
 		}
-		query = query.Where("organization_id = ?", organizationID)
+		dbQuery = dbQuery.Where("organization_id = ?", query.OrganizationID)
 	} else if managedOrganizationIDs := s.managedOrganizationIDs(ctx); len(managedOrganizationIDs) > 0 {
-		query = query.Where("organization_id IN ?", managedOrganizationIDs)
+		dbQuery = dbQuery.Where("organization_id IN ?", managedOrganizationIDs)
 	}
-	if err := query.Find(&items).Error; err != nil {
+	var total int64
+	if err := dbQuery.Count(&total).Error; err != nil {
 		return nil, err
 	}
-	return s.decorateAuditLogs(items), nil
+	page := normalizeAuditPage(query.Page)
+	pageSize := normalizeAuditPageSize(query.PageSize)
+	if totalPages := int(math.Ceil(float64(total) / float64(pageSize))); totalPages > 0 && page > totalPages {
+		page = totalPages
+	}
+	offset := (page - 1) * pageSize
+	if err := dbQuery.Order("created_at desc").Offset(offset).Limit(pageSize).Find(&items).Error; err != nil {
+		return nil, err
+	}
+	totalPages := 0
+	if total > 0 {
+		totalPages = int(math.Ceil(float64(total) / float64(pageSize)))
+	}
+	return &coreservice.AuditLogPage{
+		Items:      s.decorateAuditLogs(items),
+		Page:       page,
+		PageSize:   pageSize,
+		Total:      total,
+		TotalPages: totalPages,
+	}, nil
 }
 
 func (s *Service) ListExternalIDPs(ctx context.Context, organizationID string) ([]model.ExternalIDP, error) {
@@ -3392,9 +3570,14 @@ func (s *Service) resolveIPLocation(ipAddress string) string {
 func (s *Service) decorateAuditLogs(items []model.AuditLog) []coreservice.AuditLogView {
 	result := make([]coreservice.AuditLogView, 0, len(items))
 	for _, item := range items {
+		var detailJSON map[string]any
+		if strings.TrimSpace(item.Detail) != "" {
+			_ = json.Unmarshal([]byte(item.Detail), &detailJSON)
+		}
 		result = append(result, coreservice.AuditLogView{
 			AuditLog:   item,
 			IPLocation: s.resolveIPLocation(item.IPAddress),
+			DetailJSON: detailJSON,
 		})
 	}
 	return result

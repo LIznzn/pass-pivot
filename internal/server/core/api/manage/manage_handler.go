@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"pass-pivot/internal/model"
+	coreservice "pass-pivot/internal/server/core/service"
 	sharedweb "pass-pivot/internal/server/shared/web"
 )
 
@@ -623,16 +624,22 @@ func (h *Handler) ResetUserUKID(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListAuditLogs(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		OrganizationID string `json:"organizationId"`
+		Page           int    `json:"page"`
+		PageSize       int    `json:"pageSize"`
 	}
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&payload)
 	}
-	items, err := h.service.ListAuditLogs(r.Context(), payload.OrganizationID)
+	page, err := h.service.ListAuditLogs(r.Context(), coreservice.AuditLogQuery{
+		OrganizationID: payload.OrganizationID,
+		Page:           payload.Page,
+		PageSize:       payload.PageSize,
+	})
 	if err != nil {
 		sharedweb.Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	sharedweb.JSON(w, http.StatusOK, map[string]any{"items": items})
+	sharedweb.JSON(w, http.StatusOK, page)
 }
 
 func (h *Handler) ListExternalIDPs(w http.ResponseWriter, r *http.Request) {

@@ -438,19 +438,25 @@ func (Policy) TableName() string {
 
 type AuditLog struct {
 	BaseModel
-	OrganizationID string `gorm:"index;size:36" json:"organizationId"`
-	ProjectID      string `gorm:"index;size:36" json:"projectId"`
-	ApplicationID  string `gorm:"index;size:36" json:"applicationId"`
-	ActorType      string `gorm:"size:32" json:"actorType"`
-	ActorID        string `gorm:"size:36" json:"actorId"`
-	EventType      string `gorm:"size:64;index" json:"eventType"`
-	Result         string `gorm:"size:16" json:"result"`
-	TargetType     string `gorm:"size:32" json:"targetType"`
-	TargetID       string `gorm:"size:36" json:"targetId"`
-	IPAddress      string `gorm:"size:64" json:"ipAddress"`
-	UserAgent      string `gorm:"size:255" json:"userAgent"`
-	CorrelationID  string `gorm:"size:64;index" json:"correlationId"`
-	Detail         string `gorm:"type:text" json:"detail"`
+	OrganizationID   string `gorm:"index;size:36" json:"organizationId"`
+	OrganizationName string `gorm:"size:255" json:"organizationName"`
+	ProjectID        string `gorm:"index;size:36" json:"projectId"`
+	ProjectName      string `gorm:"size:255" json:"projectName"`
+	ApplicationID    string `gorm:"index;size:36" json:"applicationId"`
+	ApplicationName  string `gorm:"size:255" json:"applicationName"`
+	ActorType        string `gorm:"size:32" json:"actorType"`
+	ActorID          string `gorm:"size:36" json:"actorId"`
+	ActorName        string `gorm:"size:255" json:"actorName"`
+	EventType        string `gorm:"size:64;index" json:"eventType"`
+	Result           string `gorm:"size:16" json:"result"`
+	TargetType       string `gorm:"size:32" json:"targetType"`
+	TargetID         string `gorm:"size:36" json:"targetId"`
+	TargetName       string `gorm:"size:255" json:"targetName"`
+	RequestMethod    string `gorm:"size:16;index" json:"requestMethod"`
+	RequestPath      string `gorm:"size:255;index" json:"requestPath"`
+	IPAddress        string `gorm:"size:64" json:"ipAddress"`
+	UserAgent        string `gorm:"size:255" json:"userAgent"`
+	Detail           string `gorm:"type:text" json:"detail"`
 }
 
 func (AuditLog) TableName() string {

@@ -7,6 +7,7 @@ import (
 
 	"pass-pivot/internal/model"
 	coreservice "pass-pivot/internal/server/core/service"
+	sharedauditctx "pass-pivot/internal/server/shared/auditctx"
 	sharedhandler "pass-pivot/internal/server/shared/handler"
 	sharedweb "pass-pivot/internal/server/shared/web"
 )
@@ -21,6 +22,8 @@ type PrivateKeyJWTAuthenticator interface {
 
 func APIClientAuthentication(platform AccessTokenAuthenticator, oidc PrivateKeyJWTAuthenticator, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := sharedauditctx.WithRequestContext(r.Context(), sharedauditctx.BuildRequestContext(r))
+		r = r.WithContext(ctx)
 		requirement := classifyAPIAccess(r.URL.Path, r.Method)
 		switch requirement.mode {
 		case apiAuthModeAccessToken:

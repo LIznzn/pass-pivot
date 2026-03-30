@@ -60,7 +60,22 @@ type UserDetailDevice struct {
 
 type AuditLogView struct {
 	model.AuditLog
-	IPLocation string `json:"ipLocation"`
+	IPLocation string         `json:"ipLocation"`
+	DetailJSON map[string]any `json:"detailJson,omitempty"`
+}
+
+type AuditLogQuery struct {
+	OrganizationID string `json:"organizationId"`
+	Page           int    `json:"page"`
+	PageSize       int    `json:"pageSize"`
+}
+
+type AuditLogPage struct {
+	Items      []AuditLogView `json:"items"`
+	Page       int            `json:"page"`
+	PageSize   int            `json:"pageSize"`
+	Total      int64          `json:"total"`
+	TotalPages int            `json:"totalPages"`
 }
 
 type UserDetailData struct {
@@ -84,17 +99,17 @@ type PublicExternalIDP struct {
 }
 
 type LoginTarget struct {
-	OrganizationID    string              `json:"organizationId"`
-	OrganizationName  string              `json:"organizationName"`
-	DisplayName       string              `json:"displayName"`
-	OrganizationDisplayNames map[string]string `json:"organizationDisplayNames"`
-	WebsiteURL        string              `json:"websiteUrl"`
-	TermsOfServiceURL string              `json:"termsOfServiceUrl"`
-	PrivacyPolicyURL  string              `json:"privacyPolicyUrl"`
-	ProjectID         string              `json:"projectId"`
-	ProjectName       string              `json:"projectName"`
-	ApplicationID     string              `json:"applicationId"`
-	ApplicationName   string              `json:"applicationName"`
-	ApplicationDisplayNames map[string]string `json:"applicationDisplayNames"`
-	ExternalIDPs      []PublicExternalIDP `json:"externalIdps"`
+	OrganizationID           string              `json:"organizationId"`
+	OrganizationName         string              `json:"organizationName"`
+	DisplayName              string              `json:"displayName"`
+	OrganizationDisplayNames map[string]string   `json:"organizationDisplayNames"`
+	WebsiteURL               string              `json:"websiteUrl"`
+	TermsOfServiceURL        string              `json:"termsOfServiceUrl"`
+	PrivacyPolicyURL         string              `json:"privacyPolicyUrl"`
+	ProjectID                string              `json:"projectId"`
+	ProjectName              string              `json:"projectName"`
+	ApplicationID            string              `json:"applicationId"`
+	ApplicationName          string              `json:"applicationName"`
+	ApplicationDisplayNames  map[string]string   `json:"applicationDisplayNames"`
+	ExternalIDPs             []PublicExternalIDP `json:"externalIdps"`
 }
